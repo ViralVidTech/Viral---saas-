@@ -1,8 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import random
-import os
-import uvicorn
 
 app = FastAPI()
 
@@ -37,7 +35,7 @@ Abonne-toi pour plus de conseils.
 
 @app.get("/")
 def home():
-    return {"message": "SaaS Viral actif 🚀"}
+    return {"message": "SaaS Viral actif"}
 
 @app.post("/generate")
 def generate(data: RequestData):
@@ -45,8 +43,3 @@ def generate(data: RequestData):
         "titles": generate_titles(data.niche),
         "script": generate_script(data.niche)
     }
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
