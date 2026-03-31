@@ -1,9 +1,9 @@
-from moviepy.editor import *
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import random
+import os
 
 app = FastAPI()
 
@@ -25,7 +25,7 @@ class RequestData(BaseModel):
     niche: str
     langue: str
 
-def generate_titles(niche):
+def generate_titles(niche: str):
     hooks = [
         f"Tu ne croiras jamais ça sur {niche}",
         f"La vérité cachée sur {niche}",
@@ -35,7 +35,7 @@ def generate_titles(niche):
     ]
     return random.sample(hooks, 3)
 
-def generate_script(niche):
+def generate_script(niche: str):
     return f"""
 Hook : Tu fais cette erreur avec {niche} sans le savoir...
 
@@ -50,6 +50,23 @@ CTA :
 Abonne-toi pour plus de conseils.
 """
 
+def create_video(filename: str = "video.mp4"):
+    # Import déplacé ici pour éviter que Render plante au démarrage
+    from moviepy.editor import ColorClip
+
+    duration = 30
+    clip = ColorClip(size=(720, 1280), color=(20, 20, 20), duration=duration)
+
+    clip.write_videofile(
+        filename,
+        fps=24,
+        codec="libx264",
+        audio=False,
+        logger=None
+    )
+
+    return filename
+
 @app.get("/")
 def home():
     return {"message": "SaaS Viral actif"}
@@ -60,29 +77,27 @@ def generate(data: RequestData):
         "titles": generate_titles(data.niche),
         "script": generate_script(data.niche)
     }
-    def create_video(script, filename="video.mp4"):
-    def create_video(script: str, filename: str = "video.mp4"):
-    duration = 30
 
-    # simple fond couleur (pas de texte pour éviter bug)
-    clip = ColorClip(size=(720, 1280), color=(20, 20, 20), duration=duration)
-
-    clip.write_videofile(
-        filename,
-        fps=24,
-        codec="libx264",
-        audio=False
-    )
-
-    return filename
-    from fastapi.responses import FileResponse
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 @app.post("/create-video")
 def create_video_endpoint(data: RequestData):
-    script = generate_script(data.niche)
-
     file_path = "output.mp4"
 
-    create_video(script, file_path)
-
-    return FileResponse(file_path, media_type="video/mp4", filename="video.mp4")
+    try:
+        create_video(file_path)
+        return FileResponse(
+            path=file_path,
+            media_type="video/mp4",
+            filename="video.mp4"
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "video_creation_failed",
+                "detail": str(e)
+            }
+        )
