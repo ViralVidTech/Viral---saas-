@@ -1,9 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import random
-import os
 
 app = FastAPI()
 
@@ -50,26 +48,13 @@ CTA :
 Abonne-toi pour plus de conseils.
 """
 
-def create_video(filename: str = "video.mp4"):
-    # Import déplacé ici pour éviter que Render plante au démarrage
-    from moviepy.editor import ColorClip
-
-    duration = 30
-    clip = ColorClip(size=(720, 1280), color=(20, 20, 20), duration=duration)
-
-    clip.write_videofile(
-        filename,
-        fps=24,
-        codec="libx264",
-        audio=False,
-        logger=None
-    )
-
-    return filename
-
 @app.get("/")
 def home():
     return {"message": "SaaS Viral actif"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 @app.post("/generate")
 def generate(data: RequestData):
@@ -77,27 +62,3 @@ def generate(data: RequestData):
         "titles": generate_titles(data.niche),
         "script": generate_script(data.niche)
     }
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-@app.post("/create-video")
-def create_video_endpoint(data: RequestData):
-    file_path = "output.mp4"
-
-    try:
-        create_video(file_path)
-        return FileResponse(
-            path=file_path,
-            media_type="video/mp4",
-            filename="video.mp4"
-        )
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "video_creation_failed",
-                "detail": str(e)
-            }
-        )
