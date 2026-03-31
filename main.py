@@ -60,3 +60,23 @@ def generate(data: RequestData):
         "titles": generate_titles(data.niche),
         "script": generate_script(data.niche)
     }
+    def create_video(script, filename="video.mp4"):
+    duration = 30  # secondes
+
+    # fond noir
+    clip = ColorClip(size=(720, 1280), color=(0, 0, 0), duration=duration)
+
+    # texte au centre
+    txt = TextClip(
+        script,
+        fontsize=40,
+        color='white',
+        method='caption',
+        size=(600, 1000)
+    ).set_position("center").set_duration(duration)
+
+    video = CompositeVideoClip([clip, txt])
+
+    video.write_videofile(filename, fps=24)
+
+    return filename
