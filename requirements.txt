@@ -1,6 +1,7 @@
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
 moviepy
 imageio
 imageio-ffmpeg
+numpy
