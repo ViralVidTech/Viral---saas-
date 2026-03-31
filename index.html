@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ViralVidTech</title>
+  <style>
+    :root {
+      --gold: #c9a646;
+      --gold-strong: #b88f28;
+      --emerald: #00d084;
+      --emerald-dark: #00b36f;
+      --cyan: #00a3ff;
+      --text: #ffffff;
+      --muted: #d8d8d8;
+      --panel: rgba(0, 0, 0, 0.68);
+      --panel-2: rgba(8, 8, 8, 0.6);
+      --border: rgba(255,255,255,0.08);
+      --radius: 20px;
+      --shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 0 20px rgba(255,255,255,0.02);
+      --danger: #ff7b7b;
+      --success: #8ef0c6;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 14% 10%, rgba(229, 201, 122, 0.95), transparent 26%),
+        radial-gradient(circle at 86% 12%, rgba(0, 208, 132, 0.92), transparent 24%),
+        linear-gradient(135deg, var(--gold-strong) 0%, var(--emerald) 100%);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      top: -180px;
+      left: -180px;
+      width: 620px;
+      height: 620px;
+      background: radial-gradient(circle, rgba(0,208,132,0.24), transparent 60%);
+      filter: blur(120px);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      bottom: -220px;
+      right: -120px;
+      width: 520px;
+      height: 520px;
+      background: radial-gradient(circle, rgba(201,166,70,0.2), transparent 60%);
+      filter: blur(110px);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .app-shell {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(14px);
+      border-right: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 0 40px rgba(0,0,0,0.4);
+      padding: 28px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .brand {
+      display: grid;
+      gap: 8px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .nav-section {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-label {
+      color: rgba(255,255,255,0.58);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      padding: 0 10px;
+    }
+
+    .sidebar a {
+      display: block;
+      padding: 12px 14px;
+      border-radius: 12px;
+      color: #E0E0E0;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+
+    .sidebar a:hover,
+    .sidebar a.active {
+      background: linear-gradient(90deg, rgba(0,208,132,0.15), rgba(201,166,70,0.15));
+      transform: translateX(4px);
+      border-color: rgba(255,255,255,0.08);
+    }
+
+    .side-card {
+      margin-top: auto;
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 12px;
+    }
+
+    .side-card h3, .side-card p { margin: 0; }
+    .side-card p { color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
+
+    .side-card button, .auth-btn, .plan-btn, button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .gold-btn {
+      background: linear-gradient(135deg, var(--gold), var(--gold-strong));
+      color: #0b0b0b;
+      font-weight: 800;
+    }
+
+    .main {
+      padding: 28px;
+      display: grid;
+      gap: 22px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .headline { display: grid; gap: 8px; }
+    .headline h2 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3.3rem);
+      line-height: 0.96;
+      letter-spacing: -0.05em;
+      max-width: 11ch;
+    }
+    .headline p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 68ch;
+      font-size: 1rem;
+    }
+
+    .top-controls, .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .badge-pill {
+      background: rgba(0,0,0,0.5);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 14px;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 16px rgba(0,208,132,0.7);
+    }
+
+    select, input, textarea {
+      width: 100%;
+      background: rgba(10,10,10,0.55);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 13px 14px;
+      outline: none;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    select:focus, input:focus, textarea:focus {
+      border-color: rgba(0,163,255,0.55);
+      box-shadow: 0 0 0 3px rgba(0,163,255,0.12);
+    }
+
+    .lang-switcher {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(0,0,0,0.48);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 14px;
+    }
+
+    .lang-switcher label { color: var(--muted); font-size: 0.92rem; }
+
+    .auth-btn {
+      background: rgba(0,0,0,0.52);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .panel {
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .kpi-card { padding: 18px; display: grid; gap: 8px; }
+    .kpi-card span { color: var(--muted); font-size: 0.92rem; }
+    .kpi-card strong { font-size: 1.55rem; }
+    .kpi-card small { color: var(--cyan); font-size: 0.85rem; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 0.94fr 1.06fr;
+      gap: 22px;
+    }
+
+    .form-panel, .results-panel, .pricing-panel, .detector-panel { padding: 22px; }
+    .section-title { margin: 0 0 6px; font-size: 1.25rem; letter-spacing: -0.03em; }
+    .section-subtitle { margin: 0 0 18px; color: var(--muted); font-size: 0.95rem; }
+    .form-grid, .result-block, .activity-feed { display: grid; gap: 14px; }
+    .field { display: grid; gap: 8px; }
+    .field label { font-size: 0.93rem; }
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+
+    button {
+      transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .primary-btn {
+      background: linear-gradient(135deg, #00D084, #00b36f);
+      color: #000000;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      box-shadow: 0 10px 25px rgba(0,208,132,0.4), 0 0 15px rgba(0,208,132,0.2);
+    }
+    .primary-btn:hover { transform: translateY(-1px) scale(1.03); }
+
+    .secondary-btn {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .status { min-height: 24px; color: var(--muted); font-size: 0.93rem; }
+    .status.error { color: var(--danger); }
+    .status.success { color: var(--cyan); }
+
+    .result-card, .detector-item, .plan-card {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+    }
+
+    .result-card h3, .detector-item h3, .plan-card h3 { margin: 0 0 12px; font-size: 1.02rem; }
+    .titles-list { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
+    .script-box { min-height: 290px; resize: vertical; line-height: 1.56; }
+    .footer-note { margin-top: 18px; color: var(--muted); font-size: 0.9rem; }
+    .link-accent { color: var(--cyan); }
+
+    .chart-box {
+      height: 190px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .plan-card.featured {
+      border-color: rgba(0,208,132,0.35);
+      box-shadow: 0 14px 40px rgba(0,208,132,0.14);
+      transform: translateY(-4px);
+    }
+
+    .plan-price {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .plan-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 18px;
+      display: grid;
+      gap: 10px;
+      color: var(--muted);
+    }
+
+    .plan-btn {
+      width: 100%;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--gold), var(--gold-strong));
+      color: #0a0a0a;
+    }
+
+    .detector-controls {
+      display: grid;
+      grid-template-columns: 1fr 180px 160px auto;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .detector-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .detector-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+    }
+
+    .score-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(0,208,132,0.14);
+      color: var(--success);
+      font-weight: 700;
+      border: 1px solid rgba(0,208,132,0.18);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      padding: 20px;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      width: min(460px, 100%);
+      background: rgba(0,0,0,0.86);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .close-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .user-badge {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.48);
+      border: 1px solid var(--border);
+    }
+
+    .user-badge.show { display: inline-flex; }
+
+    @media (max-width: 1180px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .workspace { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .detector-controls { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 980px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    }
+
+    @media (max-width: 720px) {
+      .main { padding: 18px; }
+      .kpi-grid, .mini-grid { grid-template-columns: 1fr; }
+      .detector-controls { grid-template-columns: 1fr; }
+      .headline h2 { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>ViralVidTech</h1>
+        <p id="brandSlogan">Turn trends into profitable multilingual content.</p>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label" id="navMainLabel">Main</div>
+        <a href="#dashboard" class="active" id="navDashboard">Dashboard</a>
+        <a href="#generator" id="navGenerator">Generator</a>
+        <a href="#detector" id="navAnalytics">Viral Detector</a>
+        <a href="#pricing" id="navLibrary">Pricing</a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label" id="navSystemLabel">System</div>
+        <a href="#overview" id="navBilling">Revenue</a>
+        <a href="#login" id="navSettings">Login</a>
+      </div>
+
+      <div class="side-card">
+        <h3 id="sideCardTitle">Brand promise</h3>
+        <p id="sideCardText">Build faster. Publish smarter. Grow globally with an English-first SaaS your users can switch into their own language.</p>
+        <button class="gold-btn" id="sideCardButton">Upgrade UI</button>
+      </div>
+    </aside>
+
+    <main class="main" id="dashboard">
+      <div class="topbar">
+        <div class="headline">
+          <h2 id="headlineTitle">Generate viral titles and scripts in seconds.</h2>
+          <p id="headlineText">Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.</p>
+        </div>
+        <div class="top-actions">
+          <div class="badge-pill">
+            <span class="dot"></span>
+            <span id="apiStatusLabel">API status</span>
+          </div>
+          <div class="user-badge" id="userBadge">
+            <span>👤</span>
+            <span id="userBadgeText">Guest</span>
+          </div>
+          <button class="auth-btn" id="openLoginBtn">Login</button>
+          <button class="auth-btn" id="logoutBtn" style="display:none;">Logout</button>
+          <div class="lang-switcher">
+            <label for="uiLanguage" id="uiLanguageLabel">Interface language</label>
+            <select id="uiLanguage">
+              <option value="en">English</option>
+              <option value="fr">Français</option>
+              <option value="es">Español</option>
+              <option value="pt">Português</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <section class="kpi-grid">
+        <div class="panel kpi-card">
+          <span id="kpi1Label">Estimated revenue</span>
+          <strong id="kpiRevenue">$0</strong>
+          <small id="kpi1Trend">+18.4% this month</small>
+        </div>
+        <div class="panel kpi-card">
+          <span id="kpi2Label">Generated scripts</span>
+          <strong id="kpiScripts">0</strong>
+          <small id="kpi2Trend">+312 this week</small>
+        </div>
+        <div class="panel kpi-card">
+          <span id="kpi3Label">Viral score alerts</span>
+          <strong id="kpiAlerts">0</strong>
+          <small id="kpi3Trend">8 trending niches</small>
+        </div>
+        <div class="panel kpi-card">
+          <span id="kpi4Label">Active languages</span>
+          <strong id="kpiLanguages">4</strong>
+          <small id="kpi4Trend">English-first experience</small>
+        </div>
+      </section>
+
+      <section class="workspace" id="generator">
+        <div class="panel form-panel">
+          <h2 class="section-title" id="generatorTitle">Content Generator</h2>
+          <p class="section-subtitle" id="generatorSubtitle">Use the live API deployed on Render.</p>
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="apiUrl" id="apiUrlLabel">API base URL</label>
+              <input id="apiUrl" type="text" placeholder="https://your-service.onrender.com" />
+            </div>
+
+            <div class="field">
+              <label for="niche" id="nicheLabel">Niche</label>
+              <input id="niche" type="text" placeholder="money" />
+            </div>
+
+            <div class="field">
+              <label for="contentLanguage" id="contentLanguageLabel">Content language</label>
+              <select id="contentLanguage">
+                <option value="en">English</option>
+                <option value="fr">French</option>
+                <option value="es">Spanish</option>
+                <option value="pt">Portuguese</option>
+              </select>
+            </div>
+
+            <div class="actions">
+              <button class="primary-btn" id="generateBtn">Generate</button>
+              <button class="secondary-btn" id="copyBtn">Copy script</button>
+            </div>
+
+            <div class="status" id="status"></div>
+          </div>
+
+          <p class="footer-note" id="helpText">Tip: paste your Render URL above, without /docs. Example: <span class="link-accent">https://your-service.onrender.com</span></p>
+        </div>
+
+        <div class="panel results-panel">
+          <h2 class="section-title" id="resultsTitle">Results</h2>
+          <p class="section-subtitle" id="resultsSubtitle">Your generated titles and script will appear here.</p>
+
+          <div class="result-block">
+            <div class="result-card">
+              <h3 id="titlesHeading">Viral Titles</h3>
+              <ol class="titles-list" id="titlesList">
+                <li>—</li>
+                <li>—</li>
+                <li>—</li>
+              </ol>
+            </div>
+
+            <div class="result-card">
+              <h3 id="scriptHeading">Script</h3>
+              <textarea id="scriptOutput" class="script-box" readonly placeholder="Your script will appear here..."></textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace" id="overview" style="grid-template-columns: 1.08fr 0.92fr;">
+        <div class="panel results-panel">
+          <h2 class="section-title" id="overviewTitle">Performance Overview</h2>
+          <p class="section-subtitle" id="overviewSubtitle">A premium dashboard preview for revenue, growth, and viral momentum.</p>
+
+          <div class="result-card" style="min-height: 280px; display: grid; gap: 18px; align-content: start;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <h3 id="chartTitle" style="margin:0;">Revenue Trend</h3>
+              <span class="badge-pill"><span id="chartBadge">Live preview</span></span>
+            </div>
+
+            <div class="chart-box">
+              <div style="position:absolute; inset:0; background: linear-gradient(180deg, transparent 0%, rgba(0,163,255,0.12) 100%);"></div>
+              <svg viewBox="0 0 600 190" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true">
+                <polyline fill="none" stroke="rgba(0,163,255,0.95)" stroke-width="4" points="20,150 95,132 170,140 245,96 320,108 395,68 470,78 545,36" />
+                <polyline fill="none" stroke="rgba(0,208,132,0.82)" stroke-width="3" points="20,160 95,150 170,145 245,134 320,126 395,110 470,94 545,72" />
+              </svg>
+            </div>
+
+            <div class="mini-grid">
+              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
+                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat1Label">Projected MRR</h3>
+                <strong style="font-size:1.35rem;" id="miniStat1Value">$0</strong>
+              </div>
+              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
+                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat2Label">Top Niche</h3>
+                <strong style="font-size:1.35rem;" id="miniStat2Value">—</strong>
+              </div>
+              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
+                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat3Label">Growth Rate</h3>
+                <strong style="font-size:1.35rem;" id="miniStat3Value">0%</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel results-panel">
+          <h2 class="section-title" id="activityTitle">Recent Activity</h2>
+          <p class="section-subtitle" id="activitySubtitle">A clean SaaS-style feed for the next stage of the product.</p>
+
+          <div class="activity-feed" id="activityFeed">
+            <div class="result-card">
+              <h3 id="activity1Title">Viral script generated</h3>
+              <p style="margin:0; color:var(--muted);" id="activity1Text">A new script was generated for the finance niche in English.</p>
+            </div>
+            <div class="result-card">
+              <h3 id="activity2Title">Trend alert triggered</h3>
+              <p style="margin:0; color:var(--muted);" id="activity2Text">A high-momentum content opportunity was detected in the AI niche.</p>
+            </div>
+            <div class="result-card">
+              <h3 id="activity3Title">Multilingual mode ready</h3>
+              <p style="margin:0; color:var(--muted);" id="activity3Text">Your interface is prepared for English, French, Spanish, and Portuguese.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel detector-panel" id="detector">
+        <h2 class="section-title" id="detectorTitle">Viral Video Detector</h2>
+        <p class="section-subtitle" id="detectorSubtitle">Scan by keyword, niche, and platform to surface high-potential video ideas.</p>
+
+        <div class="detector-controls">
+          <input id="detectorKeyword" type="text" placeholder="AI money" />
+          <select id="detectorPlatform">
+            <option value="YouTube Shorts">YouTube Shorts</option>
+            <option value="TikTok">TikTok</option>
+            <option value="Instagram Reels">Instagram Reels</option>
+            <option value="Facebook Reels">Facebook Reels</option>
+          </select>
+          <select id="detectorLanguage">
+            <option value="en">English</option>
+            <option value="fr">French</option>
+            <option value="es">Spanish</option>
+            <option value="pt">Portuguese</option>
+          </select>
+          <button class="primary-btn" id="scanBtn">Scan trends</button>
+        </div>
+
+        <div class="detector-grid" id="detectorResults"></div>
+      </section>
+
+      <section class="panel detector-panel" id="videoCreation">
+        <h2 class="section-title" id="videoTitle">Video Creation</h2>
+        <p class="section-subtitle" id="videoSubtitle">Build 30 to 60 second faceless videos from your script with your own internal video engine.</p>
+
+        <div class="workspace" style="grid-template-columns: 0.95fr 1.05fr; gap:18px;">
+          <div class="result-card" style="display:grid; gap:14px;">
+            <div class="field">
+              <label for="videoType" id="videoTypeLabel">Video type</label>
+              <select id="videoType">
+                <option value="faceless-business">Faceless Business</option>
+                <option value="faceless-education">Faceless Education</option>
+                <option value="faceless-motivation">Faceless Motivation</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="videoDuration" id="videoDurationLabel">Duration</label>
+              <select id="videoDuration">
+                <option value="30">30 seconds</option>
+                <option value="45">45 seconds</option>
+                <option value="60">60 seconds</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="videoVoice" id="videoVoiceLabel">Voice style</label>
+              <select id="videoVoice">
+                <option value="clear-male">Clear Male</option>
+                <option value="clear-female">Clear Female</option>
+                <option value="energetic">Energetic</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="subtitleStyle" id="subtitleStyleLabel">Subtitle style</label>
+              <select id="subtitleStyle">
+                <option value="bold-center">Bold Center</option>
+                <option value="bottom-clean">Bottom Clean</option>
+                <option value="highlight-words">Highlight Words</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="templatePack" id="templatePackLabel">Template pack</label>
+              <select id="templatePack">
+                <option value="money">Money / Business</option>
+                <option value="ai">AI / Tech</option>
+                <option value="motivation">Motivation</option>
+              </select>
+            </div>
+
+            <div class="actions">
+              <button class="primary-btn" id="buildVideoPlanBtn">Build Video Plan</button>
+            </div>
+            <div class="status" id="videoStatus"></div>
+          </div>
+
+          <div class="result-card" style="display:grid; gap:14px;">
+            <h3 id="videoWorkflowTitle">Video Workflow Preview</h3>
+            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
+              <strong id="videoSpecTitle">Production spec</strong>
+              <p id="videoSpecText" style="margin:8px 0 0; color:var(--muted);">Vertical 9:16 video, 30–60 seconds, faceless structure, internal rendering pipeline, subtitle-ready.</p>
+            </div>
+            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
+              <strong id="scenePlanTitle">Scene plan</strong>
+              <ol id="scenePlanList" class="titles-list">
+                <li>Hook scene</li>
+                <li>Problem / opportunity scene</li>
+                <li>Solution / insight scene</li>
+                <li>CTA scene</li>
+              </ol>
+            </div>
+            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
+              <strong id="renderQueueTitle">Render queue</strong>
+              <p id="renderQueueText" style="margin:8px 0 0; color:var(--muted);">Next step: connect script + voice + subtitles + FFmpeg/MoviePy render worker.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pricing-panel" id="pricing">
+        <h2 class="section-title" id="pricingTitle">Pricing</h2>
+        <p class="section-subtitle" id="pricingSubtitle">Launch with simple plans, then expand as your SaaS grows.</p>
+
+        <div class="pricing-grid">
+          <div class="plan-card">
+            <h3 id="plan1Name">Starter</h3>
+            <div class="plan-price">$19<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
+            <ul class="plan-list">
+              <li id="plan1f1">50 script generations</li>
+              <li id="plan1f2">Basic viral detector</li>
+              <li id="plan1f3">4 interface languages</li>
+            </ul>
+            <button class="plan-btn" id="plan1Btn">Choose Starter</button>
+          </div>
+
+          <div class="plan-card featured">
+            <h3 id="plan2Name">Pro</h3>
+            <div class="plan-price">$49<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
+            <ul class="plan-list">
+              <li id="plan2f1">Unlimited scripts</li>
+              <li id="plan2f2">Advanced detector</li>
+              <li id="plan2f3">Priority support</li>
+            </ul>
+            <button class="plan-btn" id="plan2Btn">Choose Pro</button>
+          </div>
+
+          <div class="plan-card">
+            <h3 id="plan3Name">Business</h3>
+            <div class="plan-price">$99<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
+            <ul class="plan-list">
+              <li id="plan3f1">Team seats</li>
+              <li id="plan3f2">Analytics dashboard</li>
+              <li id="plan3f3">Multiplatform workflow</li>
+            </ul>
+            <button class="plan-btn" id="plan3Btn">Choose Business</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="authModal">
+    <div class="modal" id="login">
+      <div class="modal-header">
+        <div>
+          <h2 id="loginTitle" style="margin:0;">User Login</h2>
+          <p id="loginSubtitle" style="margin:6px 0 0; color:var(--muted);">Create a local demo account to unlock the dashboard experience.</p>
+        </div>
+        <button class="close-btn" id="closeModalBtn">✕</button>
+      </div>
+
+      <div class="field">
+        <label for="authName" id="authNameLabel">Name</label>
+        <input id="authName" type="text" placeholder="John Creator" />
+      </div>
+      <div class="field">
+        <label for="authEmail" id="authEmailLabel">Email</label>
+        <input id="authEmail" type="email" placeholder="john@example.com" />
+      </div>
+      <div class="field">
+        <label for="authPassword" id="authPasswordLabel">Password</label>
+        <input id="authPassword" type="password" placeholder="••••••••" />
+      </div>
+      <div class="actions">
+        <button class="primary-btn" id="loginBtn">Login / Register</button>
+      </div>
+      <div class="status" id="authStatus"></div>
+    </div>
+  </div>
+
+  <script>
+    const translations = {
+      en: {
+        brandSlogan: 'Turn trends into profitable multilingual content.',
+        navMainLabel: 'Main', navDashboard: 'Dashboard', navGenerator: 'Generator', navAnalytics: 'Viral Detector', navLibrary: 'Pricing',
+        navSystemLabel: 'System', navBilling: 'Revenue', navSettings: 'Login',
+        sideCardTitle: 'Brand promise', sideCardText: 'Build faster. Publish smarter. Grow globally with an English-first SaaS your users can switch into their own language.', sideCardButton: 'Upgrade UI',
+        headlineTitle: 'Generate viral titles and scripts in seconds.', headlineText: 'Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.',
+        apiStatusLabel: 'API status', uiLanguageLabel: 'Interface language',
+        kpi1Label: 'Estimated revenue', kpi1Trend: '+18.4% this month', kpi2Label: 'Generated scripts', kpi2Trend: '+312 this week', kpi3Label: 'Viral score alerts', kpi3Trend: 'Live signal count', kpi4Label: 'Active languages', kpi4Trend: 'English-first experience',
+        generatorTitle: 'Content Generator', generatorSubtitle: 'Use the live API deployed on Render.', apiUrlLabel: 'API base URL', nicheLabel: 'Niche', nichePlaceholder: 'money', contentLanguageLabel: 'Content language', generateBtn: 'Generate', copyBtn: 'Copy script',
+        helpPrefix: 'Tip: paste your Render URL above, without /docs. Example: ', resultsTitle: 'Results', resultsSubtitle: 'Your generated titles and script will appear here.', titlesHeading: 'Viral Titles', scriptHeading: 'Script', scriptPlaceholder: 'Your script will appear here...',
+        overviewTitle: 'Performance Overview', overviewSubtitle: 'A premium dashboard preview for revenue, growth, and viral momentum.', chartTitle: 'Revenue Trend', chartBadge: 'Live preview', miniStat1Label: 'Projected MRR', miniStat2Label: 'Top Niche', miniStat3Label: 'Growth Rate',
+        activityTitle: 'Recent Activity', activitySubtitle: 'A clean SaaS-style feed for the next stage of the product.', activity1Title: 'Viral script generated', activity1Text: 'A new script was generated for the finance niche in English.', activity2Title: 'Trend alert triggered', activity2Text: 'A high-momentum content opportunity was detected in the AI niche.', activity3Title: 'Multilingual mode ready', activity3Text: 'Your interface is prepared for English, French, Spanish, and Portuguese.',
+        detectorTitle: 'Viral Video Detector', detectorSubtitle: 'Scan by keyword, niche, and platform to surface high-potential video ideas.', detectorKeywordPlaceholder: 'AI money', scanBtn: 'Scan trends',
+        videoTitle: 'Video Creation',
+        videoSubtitle: 'Build 30 to 60 second faceless videos from your script with your own internal video engine.',
+        videoTypeLabel: 'Video type',
+        videoDurationLabel: 'Duration',
+        videoVoiceLabel: 'Voice style',
+        subtitleStyleLabel: 'Subtitle style',
+        templatePackLabel: 'Template pack',
+        buildVideoPlanBtn: 'Build Video Plan',
+        videoWorkflowTitle: 'Video Workflow Preview',
+        videoSpecTitle: 'Production spec',
+        videoSpecText: 'Vertical 9:16 video, 30–60 seconds, faceless structure, internal rendering pipeline, subtitle-ready.',
+        scenePlanTitle: 'Scene plan',
+        renderQueueTitle: 'Render queue',
+        renderQueueText: 'Next step: connect script + voice + subtitles + FFmpeg/MoviePy render worker.',
+        pricingTitle: 'Pricing', pricingSubtitle: 'Launch with simple plans, then expand as your SaaS grows.',
+        plan1Name: 'Starter', plan1f1: '50 script generations', plan1f2: 'Basic viral detector', plan1f3: '4 interface languages', plan1Btn: 'Choose Starter',
+        plan2Name: 'Pro', plan2f1: 'Unlimited scripts', plan2f2: 'Advanced detector', plan2f3: 'Priority support', plan2Btn: 'Choose Pro',
+        plan3Name: 'Business', plan3f1: 'Team seats', plan3f2: 'Analytics dashboard', plan3f3: 'Multiplatform workflow', plan3Btn: 'Choose Business',
+        loginTitle: 'User Login', loginSubtitle: 'Create a local demo account to unlock the dashboard experience.', authNameLabel: 'Name', authEmailLabel: 'Email', authPasswordLabel: 'Password', loginBtn: 'Login / Register',
+        authMissing: 'Please fill in all login fields.', authSuccess: 'You are now logged in.', authLogout: 'You have been logged out.',
+        statusReady: 'Ready.', statusGenerating: 'Generating content...', statusMissingUrl: 'Please enter your Render API URL.', statusMissingNiche: 'Please enter a niche.', statusSuccess: 'Content generated successfully.', statusCopyEmpty: 'There is no script to copy yet.', statusCopied: 'Script copied.', statusError: 'Something went wrong. Check your API URL and try again.'
+      },
+      fr: {
+        brandSlogan: 'Transformez les tendances en contenu multilingue rentable.',
+        navMainLabel: 'Principal', navDashboard: 'Tableau de bord', navGenerator: 'Générateur', navAnalytics: 'Détecteur viral', navLibrary: 'Tarifs',
+        navSystemLabel: 'Système', navBilling: 'Revenus', navSettings: 'Connexion',
+        sideCardTitle: 'Promesse de marque', sideCardText: 'Construisez plus vite. Publiez plus intelligemment. Développez-vous à l’international avec un SaaS pensé d’abord en anglais mais adaptable à la langue de chaque utilisateur.', sideCardButton: 'Améliorer l’UI',
+        headlineTitle: 'Generate viral titles and scripts in seconds.', headlineText: 'Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.',
+        apiStatusLabel: 'Statut API', uiLanguageLabel: 'Langue de l’interface',
+        kpi1Label: 'Revenu estimé', kpi1Trend: '+18,4 % ce mois-ci', kpi2Label: 'Scripts générés', kpi2Trend: '+312 cette semaine', kpi3Label: 'Alertes score viral', kpi3Trend: 'Nombre de signaux en direct', kpi4Label: 'Langues actives', kpi4Trend: 'Expérience d’abord en anglais',
+        generatorTitle: 'Générateur de contenu', generatorSubtitle: 'Utilisez l’API en ligne déployée sur Render.', apiUrlLabel: 'URL de base de l’API', nicheLabel: 'Niche', nichePlaceholder: 'argent', contentLanguageLabel: 'Langue du contenu', generateBtn: 'Générer', copyBtn: 'Copier le script',
+        helpPrefix: 'Conseil : colle ton URL Render ci-dessus, sans /docs. Exemple : ', resultsTitle: 'Résultats', resultsSubtitle: 'Tes titres et ton script générés apparaîtront ici.', titlesHeading: 'Titres viraux', scriptHeading: 'Script', scriptPlaceholder: 'Ton script apparaîtra ici...',
+        overviewTitle: 'Vue d’ensemble des performances', overviewSubtitle: 'Un aperçu premium du tableau de bord pour les revenus, la croissance et l’élan viral.', chartTitle: 'Tendance des revenus', chartBadge: 'Aperçu en direct', miniStat1Label: 'MRR projeté', miniStat2Label: 'Meilleure niche', miniStat3Label: 'Taux de croissance',
+        activityTitle: 'Activité récente', activitySubtitle: 'Un flux propre de style SaaS pour la prochaine étape du produit.', activity1Title: 'Script viral généré', activity1Text: 'Un nouveau script a été généré pour la niche finance en anglais.', activity2Title: 'Alerte de tendance déclenchée', activity2Text: 'Une opportunité de contenu à forte dynamique a été détectée dans la niche IA.', activity3Title: 'Mode multilingue prêt', activity3Text: 'Ton interface est prête pour l’anglais, le français, l’espagnol et le portugais.',
+        detectorTitle: 'Détecteur de vidéos virales', detectorSubtitle: 'Scanne par mot-clé, niche et plateforme pour faire remonter les idées de vidéos à fort potentiel.', detectorKeywordPlaceholder: 'IA argent', scanBtn: 'Scanner les tendances',
+        videoTitle: 'Création vidéo',
+        videoSubtitle: 'Construis des vidéos faceless de 30 à 60 secondes à partir de ton script avec ton propre moteur vidéo interne.',
+        videoTypeLabel: 'Type de vidéo',
+        videoDurationLabel: 'Durée',
+        videoVoiceLabel: 'Style de voix',
+        subtitleStyleLabel: 'Style de sous-titres',
+        templatePackLabel: 'Pack de template',
+        buildVideoPlanBtn: 'Construire le plan vidéo',
+        videoWorkflowTitle: 'Aperçu du workflow vidéo',
+        videoSpecTitle: 'Spécification de production',
+        videoSpecText: 'Vidéo verticale 9:16, 30–60 secondes, structure faceless, pipeline de rendu interne, sous-titres prêts.',
+        scenePlanTitle: 'Plan des scènes',
+        renderQueueTitle: 'File de rendu',
+        renderQueueText: 'Prochaine étape : connecter script + voix + sous-titres + worker de rendu FFmpeg/MoviePy.',
+        pricingTitle: 'Tarifs', pricingSubtitle: 'Lance avec des plans simples, puis élargis ton SaaS au fur et à mesure.',
+        plan1Name: 'Starter', plan1f1: '50 générations de scripts', plan1f2: 'Détecteur viral basique', plan1f3: '4 langues d’interface', plan1Btn: 'Choisir Starter',
+        plan2Name: 'Pro', plan2f1: 'Scripts illimités', plan2f2: 'Détecteur avancé', plan2f3: 'Support prioritaire', plan2Btn: 'Choisir Pro',
+        plan3Name: 'Business', plan3f1: 'Comptes équipe', plan3f2: 'Dashboard analytique', plan3f3: 'Workflow multiplateforme', plan3Btn: 'Choisir Business',
+        loginTitle: 'Connexion utilisateur', loginSubtitle: 'Crée un compte local de démonstration pour débloquer l’expérience du dashboard.', authNameLabel: 'Nom', authEmailLabel: 'Email', authPasswordLabel: 'Mot de passe', loginBtn: 'Connexion / Inscription',
+        authMissing: 'Merci de remplir tous les champs de connexion.', authSuccess: 'Tu es maintenant connecté.', authLogout: 'Tu as été déconnecté.',
+        statusReady: 'Prêt.', statusGenerating: 'Génération en cours...', statusMissingUrl: 'Entre l’URL de ton API Render.', statusMissingNiche: 'Entre une niche.', statusSuccess: 'Contenu généré avec succès.', statusCopyEmpty: 'Il n’y a pas encore de script à copier.', statusCopied: 'Script copié.', statusError: 'Une erreur est survenue. Vérifie l’URL de l’API et réessaie.'
+      }
+    };
+
+    const ids = ['brandSlogan','navMainLabel','navDashboard','navGenerator','navAnalytics','navLibrary','navSystemLabel','navBilling','navSettings','sideCardTitle','sideCardText','sideCardButton','headlineTitle','headlineText','apiStatusLabel','uiLanguageLabel','kpi1Label','kpi1Trend','kpi2Label','kpi2Trend','kpi3Label','kpi3Trend','kpi4Label','kpi4Trend','generatorTitle','generatorSubtitle','apiUrlLabel','nicheLabel','contentLanguageLabel','generateBtn','copyBtn','resultsTitle','resultsSubtitle','titlesHeading','scriptHeading','overviewTitle','overviewSubtitle','chartTitle','chartBadge','miniStat1Label','miniStat2Label','miniStat3Label','activityTitle','activitySubtitle','activity1Title','activity1Text','activity2Title','activity2Text','activity3Title','activity3Text','detectorTitle','detectorSubtitle','scanBtn','pricingTitle','pricingSubtitle','plan1Name','plan1f1','plan1f2','plan1f3','plan1Btn','plan2Name','plan2f1','plan2f2','plan2f3','plan2Btn','plan3Name','plan3f1','plan3f2','plan3f3','plan3Btn','loginTitle','loginSubtitle','authNameLabel','authEmailLabel','authPasswordLabel','loginBtn','videoTitle','videoSubtitle','videoTypeLabel','videoDurationLabel','videoVoiceLabel','subtitleStyleLabel','templatePackLabel','buildVideoPlanBtn','videoWorkflowTitle','videoSpecTitle','videoSpecText','scenePlanTitle','renderQueueTitle','renderQueueText'];
+
+    const uiLanguage = document.getElementById('uiLanguage');
+    const apiUrlInput = document.getElementById('apiUrl');
+    const nicheInput = document.getElementById('niche');
+    const contentLanguage = document.getElementById('contentLanguage');
+    const generateBtn = document.getElementById('generateBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const statusEl = document.getElementById('status');
+    const titlesList = document.getElementById('titlesList');
+    const scriptOutput = document.getElementById('scriptOutput');
+    const helpTextEl = document.getElementById('helpText');
+    const detectorKeyword = document.getElementById('detectorKeyword');
+    const detectorPlatform = document.getElementById('detectorPlatform');
+    const detectorLanguage = document.getElementById('detectorLanguage');
+    const scanBtn = document.getElementById('scanBtn');
+    const detectorResults = document.getElementById('detectorResults');
+    const openLoginBtn = document.getElementById('openLoginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const authModal = document.getElementById('authModal');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const loginBtn = document.getElementById('loginBtn');
+    const authName = document.getElementById('authName');
+    const authEmail = document.getElementById('authEmail');
+    const authPassword = document.getElementById('authPassword');
+    const authStatus = document.getElementById('authStatus');
+    const userBadge = document.getElementById('userBadge');
+    const userBadgeText = document.getElementById('userBadgeText');
+
+    const detectorSeed = [
+      { title: '3 hooks that explode watch time', creator: '@trendpilot', platform: 'TikTok', views: 482000, likes: 43100, comments: 2800, shares: 3900 },
+      { title: 'The faceless format making money now', creator: '@cashcreator', platform: 'YouTube Shorts', views: 721000, likes: 59300, comments: 3500, shares: 5100 },
+      { title: 'This niche is quietly going viral', creator: '@nichehunter', platform: 'Instagram Reels', views: 318000, likes: 21900, comments: 1400, shares: 1800 },
+      { title: 'Why this short script format converts', creator: '@viralstudio', platform: 'Facebook Reels', views: 264000, likes: 17300, comments: 1100, shares: 1500 }
+    ];
+
+    function getState() {
+      return JSON.parse(localStorage.getItem('viral_dashboard_state') || '{"scripts":0,"alerts":0,"revenue":0,"topNiche":"—","growth":0}');
+    }
+
+    function saveState(state) {
+      localStorage.setItem('viral_dashboard_state', JSON.stringify(state));
+    }
+
+    function updateDashboard() {
+      const state = getState();
+      document.getElementById('kpiRevenue').textContent = `$${state.revenue}`;
+      document.getElementById('kpiScripts').textContent = String(state.scripts);
+      document.getElementById('kpiAlerts').textContent = String(state.alerts);
+      document.getElementById('miniStat1Value').textContent = `$${state.revenue}`;
+      document.getElementById('miniStat2Value').textContent = state.topNiche || '—';
+      document.getElementById('miniStat3Value').textContent = `${state.growth}%`;
+    }
+
+    function addActivity(title, text) {
+      const feed = document.getElementById('activityFeed');
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.innerHTML = `<h3>${title}</h3><p style="margin:0; color:var(--muted);">${text}</p>`;
+      feed.prepend(card);
+      while (feed.children.length > 5) feed.removeChild(feed.lastChild);
+    }
+
+    function setStatus(message, state = 'ready') {
+      statusEl.textContent = message;
+      statusEl.dataset.state = state;
+      statusEl.className = 'status';
+      if (state === 'error') statusEl.classList.add('error');
+      if (state === 'success') statusEl.classList.add('success');
+    }
+
+    function applyTranslations(lang) {
+      const t = translations[lang] || translations.en;
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && t[id]) el.textContent = t[id];
+      });
+      nicheInput.placeholder = t.nichePlaceholder || 'money';
+      scriptOutput.placeholder = t.scriptPlaceholder || '';
+      detectorKeyword.placeholder = t.detectorKeywordPlaceholder || 'AI money';
+      helpTextEl.innerHTML = `${t.helpPrefix || ''}<span class="link-accent">https://your-service.onrender.com</span>`;
+      if (!statusEl.textContent || statusEl.dataset.state === 'ready') setStatus(t.statusReady, 'ready');
+    }
+
+    function normalizeApiUrl(url) {
+      return url.trim().replace(/\/$/, '').replace(/\/docs$/, '');
+    }
+
+    async function generateContent() {
+      const lang = uiLanguage.value;
+      const t = translations[lang] || translations.en;
+      const apiUrl = normalizeApiUrl(apiUrlInput.value);
+      const niche = nicheInput.value.trim();
+      const outputLang = contentLanguage.value;
+      if (!apiUrl) return setStatus(t.statusMissingUrl, 'error');
+      if (!niche) return setStatus(t.statusMissingNiche, 'error');
+
+      generateBtn.disabled = true;
+      setStatus(t.statusGenerating, 'ready');
+
+      try {
+        const response = await fetch(`${apiUrl}/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ niche, langue: outputLang })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        titlesList.innerHTML = '';
+        (data.titles || []).forEach((title) => {
+          const li = document.createElement('li');
+          li.textContent = title;
+          titlesList.appendChild(li);
+        });
+        scriptOutput.value = data.script || '';
+        setStatus(t.statusSuccess, 'success');
+
+        const state = getState();
+        state.scripts += 1;
+        state.revenue += 19;
+        state.topNiche = niche;
+        state.growth = Math.min(99, state.growth + 7);
+        saveState(state);
+        updateDashboard();
+        addActivity('Content generated', `A new content batch was generated for "${niche}" in ${outputLang.toUpperCase()}.`);
+      } catch (error) {
+        console.error(error);
+        setStatus(t.statusError, 'error');
+      } finally {
+        generateBtn.disabled = false;
+      }
+    }
+
+    async function copyScript() {
+      const lang = uiLanguage.value;
+      const t = translations[lang] || translations.en;
+      if (!scriptOutput.value.trim()) return setStatus(t.statusCopyEmpty, 'error');
+      try {
+        await navigator.clipboard.writeText(scriptOutput.value);
+      } catch {
+        scriptOutput.select();
+        document.execCommand('copy');
+      }
+      setStatus(t.statusCopied, 'success');
+    }
+
+    function renderDetector(results) {
+      detectorResults.innerHTML = '';
+      results.forEach((item) => {
+        const score = Math.min(99, Math.round((item.views / 10000) * 0.55 + (item.likes / 1000) * 0.9 + item.shares * 0.008 + item.comments * 0.01));
+        const el = document.createElement('div');
+        el.className = 'detector-item';
+        el.innerHTML = `
+          <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;">
+            <h3>${item.title}</h3>
+            <span class="score-pill">Score ${score}</span>
+          </div>
+          <div class="detector-meta">
+            <span>${item.platform}</span>
+            <span>${item.creator}</span>
+            <span>${item.views.toLocaleString()} views</span>
+            <span>${item.likes.toLocaleString()} likes</span>
+            <span>${item.comments.toLocaleString()} comments</span>
+            <span>${item.shares.toLocaleString()} shares</span>
+          </div>
+          <p style="margin:0; color:var(--muted);">Keyword match: <strong style="color:var(--text);">${detectorKeyword.value || 'general trend'}</strong></p>
+        `;
+        detectorResults.appendChild(el);
+      });
+    }
+
+    function scanTrends() {
+      const keyword = detectorKeyword.value.trim() || 'viral';
+      const platform = detectorPlatform.value;
+      const state = getState();
+      const results = detectorSeed.map((item, index) => ({
+        ...item,
+        title: `${keyword} — ${item.title}`,
+        platform,
+        views: item.views + index * 14000,
+        likes: item.likes + index * 1200,
+        comments: item.comments + index * 90,
+        shares: item.shares + index * 140
+      }));
+      renderDetector(results);
+      state.alerts += results.length;
+      state.growth = Math.min(99, state.growth + 3);
+      saveState(state);
+      updateDashboard();
+      addActivity('Trend scan completed', `A new viral scan was run for "${keyword}" on ${platform}.`);
+    }
+
+    function updateAuthUI() {
+      const user = JSON.parse(localStorage.getItem('viral_user') || 'null');
+      if (user) {
+        userBadge.classList.add('show');
+        userBadgeText.textContent = user.name;
+        openLoginBtn.style.display = 'none';
+        logoutBtn.style.display = 'inline-flex';
+      } else {
+        userBadge.classList.remove('show');
+        openLoginBtn.style.display = 'inline-flex';
+        logoutBtn.style.display = 'none';
+      }
+    }
+
+    function loginUser() {
+      const t = translations[uiLanguage.value] || translations.en;
+      if (!authName.value.trim() || !authEmail.value.trim() || !authPassword.value.trim()) {
+        authStatus.textContent = t.authMissing;
+        authStatus.className = 'status error';
+        return;
+      }
+      localStorage.setItem('viral_user', JSON.stringify({ name: authName.value.trim(), email: authEmail.value.trim() }));
+      authStatus.textContent = t.authSuccess;
+      authStatus.className = 'status success';
+      updateAuthUI();
+      setTimeout(() => authModal.classList.remove('open'), 500);
+    }
+
+    function logoutUser() {
+      const t = translations[uiLanguage.value] || translations.en;
+      localStorage.removeItem('viral_user');
+      updateAuthUI();
+      setStatus(t.authLogout, 'success');
+    }
+
+    const videoStatus = document.getElementById('videoStatus');
+    const buildVideoPlanBtn = document.getElementById('buildVideoPlanBtn');
+    const scenePlanList = document.getElementById('scenePlanList');
+    const videoDuration = document.getElementById('videoDuration');
+    const videoType = document.getElementById('videoType');
+    const videoVoice = document.getElementById('videoVoice');
+    const subtitleStyle = document.getElementById('subtitleStyle');
+    const templatePack = document.getElementById('templatePack');
+
+    function buildVideoPlan() {
+      const duration = videoDuration.value;
+      const type = videoType.value;
+      const voice = videoVoice.value;
+      const subtitles = subtitleStyle.value;
+      const template = templatePack.value;
+      const niche = nicheInput.value.trim() || 'general niche';
+
+      const scenes = duration === '60'
+        ? ['Hook scene', 'Problem scene', 'Opportunity scene', 'Main solution scene', 'Proof / reinforcement scene', 'CTA scene']
+        : duration === '45'
+        ? ['Hook scene', 'Problem scene', 'Solution scene', 'Proof scene', 'CTA scene']
+        : ['Hook scene', 'Problem / opportunity scene', 'Solution / insight scene', 'CTA scene'];
+
+      scenePlanList.innerHTML = '';
+      scenes.forEach((scene, index) => {
+        const li = document.createElement('li');
+        li.textContent = `${index + 1}. ${scene} — ${niche}`;
+        scenePlanList.appendChild(li);
+      });
+
+      const specText = `${duration}-second vertical 9:16 ${type} video, voice: ${voice}, subtitles: ${subtitles}, template: ${template}.`;
+      document.getElementById('videoSpecText').textContent = specText;
+      videoStatus.textContent = 'Video plan ready. Next we connect the internal render engine.';
+      videoStatus.className = 'status success';
+      addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
+    }
+
+    const savedApiUrl = localStorage.getItem('viral_api_url');
+    if (savedApiUrl) apiUrlInput.value = savedApiUrl;
+    apiUrlInput.addEventListener('input', () => localStorage.setItem('viral_api_url', apiUrlInput.value.trim()));
+
+    uiLanguage.addEventListener('change', () => applyTranslations(uiLanguage.value));
+    generateBtn.addEventListener('click', generateContent);
+    copyBtn.addEventListener('click', copyScript);
+    scanBtn.addEventListener('click', scanTrends);
+    buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
+    openLoginBtn.addEventListener('click', () => authModal.classList.add('open'));
+    closeModalBtn.addEventListener('click', () => authModal.classList.remove('open'));
+    loginBtn.addEventListener('click', loginUser);
+    logoutBtn.addEventListener('click', logoutUser);
+    authModal.addEventListener('click', (e) => { if (e.target === authModal) authModal.classList.remove('open'); });
+
+    document.getElementById('plan1Btn').addEventListener('click', () => addActivity('Plan selected', 'Starter plan clicked. Connect billing next.'));
+    document.getElementById('plan2Btn').addEventListener('click', () => addActivity('Plan selected', 'Pro plan clicked. Connect Stripe next.'));
+    document.getElementById('plan3Btn').addEventListener('click', () => addActivity('Plan selected', 'Business plan clicked. Enterprise workflow ready.'));
+
+    uiLanguage.value = 'en';
+    applyTranslations('en');
+    updateDashboard();
+    updateAuthUI();
+    renderDetector(detectorSeed);
+  </script>
+</body>
+</html>
