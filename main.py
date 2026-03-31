@@ -80,3 +80,14 @@ def generate(data: RequestData):
     video.write_videofile(filename, fps=24)
 
     return filename
+    from fastapi.responses import FileResponse
+
+@app.post("/create-video")
+def create_video_endpoint(data: RequestData):
+    script = generate_script(data.niche)
+
+    file_path = "output.mp4"
+
+    create_video(script, file_path)
+
+    return FileResponse(file_path, media_type="video/mp4", filename="video.mp4")
