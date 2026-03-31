@@ -61,23 +61,18 @@ def generate(data: RequestData):
         "script": generate_script(data.niche)
     }
     def create_video(script, filename="video.mp4"):
-    duration = 30  # secondes
+    def create_video(script: str, filename: str = "video.mp4"):
+    duration = 30
 
-    # fond noir
-    clip = ColorClip(size=(720, 1280), color=(0, 0, 0), duration=duration)
+    # simple fond couleur (pas de texte pour éviter bug)
+    clip = ColorClip(size=(720, 1280), color=(20, 20, 20), duration=duration)
 
-    # texte au centre
-    txt = TextClip(
-        script,
-        fontsize=40,
-        color='white',
-        method='caption',
-        size=(600, 1000)
-    ).set_position("center").set_duration(duration)
-
-    video = CompositeVideoClip([clip, txt])
-
-    video.write_videofile(filename, fps=24)
+    clip.write_videofile(
+        filename,
+        fps=24,
+        codec="libx264",
+        audio=False
+    )
 
     return filename
     from fastapi.responses import FileResponse
