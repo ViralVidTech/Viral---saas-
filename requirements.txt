@@ -1,7 +1,8 @@
-fastapi
-uvicorn[standard]
-pydantic
-moviepy
-imageio
-imageio-ffmpeg
-numpy
+fastapi==0.115.12
+uvicorn==0.30.6
+pydantic==2.9.2
+moviepy==1.0.3
+imageio==2.35.1
+imageio-ffmpeg==0.5.1
+numpy==1.26.4
+Pillow==10.4.0
