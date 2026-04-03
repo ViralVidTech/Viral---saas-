@@ -1192,8 +1192,9 @@
     buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
     document.getElementById('createVideoBtn').addEventListener('click', async () => {
       const apiUrl = normalizeApiUrl(apiUrlInput.value);
-      const text1 = nicheInput.value.trim() || 'The best content ever';
-      const text2 = 'Start creating now';
+      const titles = Array.from(titlesList.querySelectorAll('li')).map(li => li.textContent).filter(t => t !== '—');
+      const text1 = titles[0] || nicheInput.value.trim() || 'The best content ever';
+      const text2 = titles[1] || 'Start creating now';
       videoStatus.textContent = 'Sending to Creatomate...';
       videoStatus.className = 'status';
       try {
