@@ -742,9 +742,9 @@
                 <option value="motivation">Motivation</option>
               </select>
             </div>
-
-            <div class="actions">
+<div class="actions">
               <button class="primary-btn" id="buildVideoPlanBtn">Build Video Plan</button>
+              <button class="primary-btn" id="createVideoBtn" style="background: linear-gradient(135deg, var(--gold), var(--gold-strong)); color:#000;">Create Video</button>
             </div>
             <div class="status" id="videoStatus"></div>
           </div>
@@ -1190,6 +1190,32 @@
     copyBtn.addEventListener('click', copyScript);
     scanBtn.addEventListener('click', scanTrends);
     buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
+    document.getElementById('createVideoBtn').addEventListener('click', async () => {
+      const apiUrl = normalizeApiUrl(apiUrlInput.value);
+      const text1 = nicheInput.value.trim() || 'The best content ever';
+      const text2 = 'Start creating now';
+      videoStatus.textContent = 'Sending to Creatomate...';
+      videoStatus.className = 'status';
+      try {
+        const res = await fetch(`${apiUrl}/create-video`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text1, text2 })
+        });
+        const data = await res.json();
+        if (data[0]?.url) {
+          videoStatus.innerHTML = `Video ready: <a href="${data[0].url}" target="_blank" style="color:var(--cyan);">Download here</a>`;
+          videoStatus.className = 'status success';
+          addActivity('Video created', `A new video was generated via Creatomate.`);
+        } else {
+          videoStatus.textContent = 'Video is being rendered. Check Creatomate dashboard.';
+          videoStatus.className = 'status success';
+        }
+      } catch (e) {
+        videoStatus.textContent = 'Error creating video. Check your API URL.';
+        videoStatus.className = 'status error';
+      }
+    });
     openLoginBtn.addEventListener('click', () => authModal.classList.add('open'));
     closeModalBtn.addEventListener('click', () => authModal.classList.remove('open'));
     loginBtn.addEventListener('click', loginUser);
