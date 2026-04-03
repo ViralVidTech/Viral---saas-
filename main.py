@@ -48,7 +48,9 @@ async def generate(req: GenerateRequest):
 async def create_video(req: VideoRequest):
     api_key = os.getenv("CREATOMATE_API_KEY")
     template_id = os.getenv("CREATOMATE_TEMPLATE_ID")
-    async with httpx.AsyncClient() as client:
+    if not api_key or not template_id:
+        return {"error": "Missing API key or template ID"}
+    async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
             "https://api.creatomate.com/v1/renders",
             headers={
@@ -63,4 +65,4 @@ async def create_video(req: VideoRequest):
                 }
             }
         )
-    return response.json()
+        return response.json()
