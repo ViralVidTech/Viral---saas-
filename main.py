@@ -21,6 +21,8 @@ class GenerateRequest(BaseModel):
 class VideoRequest(BaseModel):
     text1: str
     text2: str
+    text3: str
+    text4: str
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
@@ -31,17 +33,66 @@ async def serve_ui():
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     niche = req.niche.strip() or "general"
-    titles = [
-        f"How to make money with {niche} in 2025",
-        f"The {niche} secret nobody talks about",
-        f"I tried {niche} for 30 days — here's what happened",
-    ]
-    script = (
-        f"Hook: Did you know that {niche} is changing everything right now?\n\n"
-        f"Problem: Most people ignore {niche} and lose out on huge opportunities.\n\n"
-        f"Solution: Here's exactly how you can leverage {niche} starting today.\n\n"
-        f"CTA: Follow for more {niche} content every week!"
-    )
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {openai_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a viral content creator. Respond only in the requested language."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""Create viral content about '{niche}' in language '{req.langue}'.
+Return exactly this format:
+
+TITLES:
+1. [title 1]
+2. [title 2]
+3. [title 3]
+
+HOOK: [one punchy sentence]
+
+PROBLEM: [one sentence about the problem]
+
+SOLUTION: [one sentence about the solution]
+
+CTA: [one call to action sentence]"""
+                    }
+                ]
+            }
+        )
+
+    data = response.json()
+    text = data["choices"][0]["message"]["content"]
+
+    lines = text.strip().split("\n")
+    titles = []
+    hook = problem = solution = cta = ""
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith("1.") or line.startswith("2.") or line.startswith("3."):
+            titles.append(line[2:].strip())
+        elif line.startswith("HOOK:"):
+            hook = line.replace("HOOK:", "").strip()
+        elif line.startswith("PROBLEM:"):
+            problem = line.replace("PROBLEM:", "").strip()
+        elif line.startswith("SOLUTION:"):
+            solution = line.replace("SOLUTION:", "").strip()
+        elif line.startswith("CTA:"):
+            cta = line.replace("CTA:", "").strip()
+
+    script = f"{hook}\n\n{problem}\n\n{solution}\n\n{cta}"
+
     return {"titles": titles, "script": script}
 
 @app.post("/create-video")
@@ -62,6 +113,8 @@ async def create_video(req: VideoRequest):
                 "modifications": {
                     "Text-1.text": req.text1,
                     "Text-2.text": req.text2,
+                    "Text-3.text": req.text3,
+                    "Text-4.text": req.text4,
                 }
             }
         )
