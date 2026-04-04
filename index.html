@@ -1032,8 +1032,10 @@
           titlesList.appendChild(li);
         });
         scriptOutput.value = data.script || '';
+        if (data.video_url) {
+          window._pexelsVideoUrl = data.video_url;
+        }
         setStatus(t.statusSuccess, 'success');
-
         const state = getState();
         state.scripts += 1;
         state.revenue += 19;
@@ -1203,7 +1205,7 @@
         const res = await fetch(`${apiUrl}/create-video`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text1, text2, text3, text4 })
+          body: JSON.stringify({ text1, text2, text3, text4, video_url: window._pexelsVideoUrl || '' })
         });
         const data = await res.json();
         if (data[0]?.url) {
