@@ -134,8 +134,10 @@ async def create_video(req: VideoRequest):
                     "Text-2.text": req.text2,
                     "Text-3.text": req.text3,
                     "Text-4.text": req.text4,
-                    "Video.source": req.video_url,
-                    "Image.source": req.video_url,
+                    "Background-1.source": req.video_url,
+                    "Background-2.source": req.video_url,
+                    "Background-3.source": req.video_url,
+                    "Background-4.source": req.video_url,
                 }
             }
         )
