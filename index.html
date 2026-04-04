@@ -1192,16 +1192,18 @@
     buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
     document.getElementById('createVideoBtn').addEventListener('click', async () => {
       const apiUrl = normalizeApiUrl(apiUrlInput.value);
-      const titles = Array.from(titlesList.querySelectorAll('li')).map(li => li.textContent).filter(t => t !== '—');
-      const text1 = titles[0] || nicheInput.value.trim() || 'The best content ever';
-      const text2 = titles[1] || 'Start creating now';
+      const scriptLines = scriptOutput.value.split('\n\n').filter(t => t.trim() !== '');
+      const text1 = scriptLines[0] || nicheInput.value.trim() || 'Hook here';
+      const text2 = scriptLines[1] || 'Problem here';
+      const text3 = scriptLines[2] || 'Solution here';
+      const text4 = scriptLines[3] || 'CTA here';
       videoStatus.textContent = 'Sending to Creatomate...';
       videoStatus.className = 'status';
       try {
         const res = await fetch(`${apiUrl}/create-video`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text1, text2 })
+          body: JSON.stringify({ text1, text2, text3, text4 })
         });
         const data = await res.json();
         if (data[0]?.url) {
