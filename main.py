@@ -94,25 +94,25 @@ CTA: [one call to action sentence]"""
 
     script = f"{hook}\n\n{problem}\n\n{solution}\n\n{cta}"
 
-    # Chercher une vidéo Pexels selon la niche
+    # Chercher 4 vidéos Pexels selon la niche
     pexels_key = os.getenv("PEXELS_API_KEY")
-    video_url = ""
+    video_urls = ["", "", "", ""]
     async with httpx.AsyncClient(timeout=30) as client:
         pexels_response = await client.get(
-            f"https://api.pexels.com/videos/search?query={niche}&per_page=1&orientation=portrait",
+            f"https://api.pexels.com/videos/search?query={niche}&per_page=4&orientation=portrait",
             headers={"Authorization": pexels_key}
         )
         pexels_data = pexels_response.json()
         videos = pexels_data.get("videos", [])
-        if videos:
-            files = videos[0].get("video_files", [])
+        for i, video in enumerate(videos[:4]):
+            files = video.get("video_files", [])
             hd_files = [f for f in files if f.get("quality") == "hd"]
             if hd_files:
-                video_url = hd_files[0]["link"]
+                video_urls[i] = hd_files[0]["link"]
             elif files:
-                video_url = files[0]["link"]
+                video_urls[i] = files[0]["link"]
 
-    return {"titles": titles, "script": script, "video_url": video_url}
+    return {"titles": titles, "script": script, "video_url": video_urls[0], "video_url2": video_urls[1], "video_url3": video_urls[2], "video_url4": video_urls[3]}
 
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
