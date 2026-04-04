@@ -93,7 +93,25 @@ CTA: [one call to action sentence]"""
 
     script = f"{hook}\n\n{problem}\n\n{solution}\n\n{cta}"
 
-    return {"titles": titles, "script": script}
+    # Chercher une vidéo Pexels selon la niche
+    pexels_key = os.getenv("PEXELS_API_KEY")
+    video_url = ""
+    async with httpx.AsyncClient(timeout=30) as client:
+        pexels_response = await client.get(
+            f"https://api.pexels.com/videos/search?query={niche}&per_page=1&orientation=portrait",
+            headers={"Authorization": pexels_key}
+        )
+        pexels_data = pexels_response.json()
+        videos = pexels_data.get("videos", [])
+        if videos:
+            files = videos[0].get("video_files", [])
+            hd_files = [f for f in files if f.get("quality") == "hd"]
+            if hd_files:
+                video_url = hd_files[0]["link"]
+            elif files:
+                video_url = files[0]["link"]
+
+    return {"titles": titles, "script": script, "video_url": video_url}
 
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
