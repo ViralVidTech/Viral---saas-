@@ -33,22 +33,20 @@ async def serve_ui():
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     niche = req.niche.strip() or "general"
-    openai_key = os.getenv("OPENAI_API_KEY")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
 
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.anthropic.com/v1/messages",
             headers={
-                "Authorization": f"Bearer {openai_key}",
+                "x-api-key": anthropic_key,
+                "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
             },
             json={
-                "model": "gpt-4o-mini",
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1024,
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a viral content creator. Respond only in the requested language."
-                    },
                     {
                         "role": "user",
                         "content": f"""Create viral content about '{niche}' in language '{req.langue}'.
@@ -72,7 +70,9 @@ CTA: [one call to action sentence]"""
         )
 
     data = response.json()
-    text = data["choices"][0]["message"]["content"]
+    if "content" not in data:
+        return {"titles": [], "script": str(data)}
+    text = data["content"][0]["text"]
 
     lines = text.strip().split("\n")
     titles = []
