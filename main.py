@@ -24,6 +24,9 @@ class VideoRequest(BaseModel):
     text3: str
     text4: str
     video_url: str = ""
+    video_url2: str = ""
+    video_url3: str = ""
+    video_url4: str = ""
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
@@ -135,9 +138,9 @@ async def create_video(req: VideoRequest):
                     "Text-3.text": req.text3,
                     "Text-4.text": req.text4,
                     "Background-1.source": req.video_url,
-                    "Background-2.source": req.video_url,
-                    "Background-3.source": req.video_url,
-                    "Background-4.source": req.video_url,
+                    "Background-2.source": req.video_url2,
+                    "Background-3.source": req.video_url3,
+                    "Background-4.source": req.video_url4,
                 }
             }
         )
