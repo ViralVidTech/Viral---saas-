@@ -102,7 +102,7 @@ CTA: [one call to action sentence]"""
     video_urls = ["", "", "", ""]
     async with httpx.AsyncClient(timeout=30) as client:
         pexels_response = await client.get(
-            f"https://api.pexels.com/videos/search?query={niche}&per_page=4&orientation=portrait",
+            f"https://api.pexels.com/videos/search?query={niche}&per_page=4",
             headers={"Authorization": pexels_key}
         )
         pexels_data = pexels_response.json()
