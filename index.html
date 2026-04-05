@@ -1047,7 +1047,7 @@
           window._pexelsVideoUrl2 = data.video_url2;
           window._pexelsVideoUrl3 = data.video_url3;
           window._pexelsVideoUrl4 = data.video_url4;
-          music_url: window._generatedVoiceUrl || window._musicUrl || '';
+          window._musicUrl = data.music_url || '';
         }
         setStatus(t.statusSuccess, 'success');
         const state = getState();
@@ -1255,7 +1255,7 @@ async function generateVoice() {
         const res = await fetch(`${apiUrl}/create-video`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ text1, text2, text3, text4, video_url: window._pexelsVideoUrl || '', video_url2: window._pexelsVideoUrl2 || '', video_url3: window._pexelsVideoUrl3 || '', video_url4: window._pexelsVideoUrl4 || '', music_url: window._musicUrl || '' })
+body: JSON.stringify({ text1, text2, text3, text4, video_url: window._pexelsVideoUrl || '', video_url2: window._pexelsVideoUrl2 || '', video_url3: window._pexelsVideoUrl3 || '', video_url4: window._pexelsVideoUrl4 || '', music_url: window._generatedVoiceUrl || window._musicUrl || '' })
         });
         const data = await res.json();
         if (data[0]?.url) {
