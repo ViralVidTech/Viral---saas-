@@ -115,8 +115,19 @@ CTA: [one call to action sentence]"""
             elif files:
                 video_urls[i] = files[0]["link"]
 
-    return {"titles": titles, "script": script, "video_url": video_urls[0], "video_url2": video_urls[1], "video_url3": video_urls[2], "video_url4": video_urls[3]}
+    # Chercher une musique sur Pixabay
+    pixabay_key = os.getenv("PIXABAY_API_KEY")
+    music_url = ""
+    async with httpx.AsyncClient(timeout=30) as client:
+        pixabay_response = await client.get(
+            f"https://pixabay.com/api/videos/music/?key={pixabay_key}&q={niche}&per_page=3"
+        )
+        pixabay_data = pixabay_response.json()
+        hits = pixabay_data.get("hits", [])
+        if hits:
+            music_url = hits[0].get("audio", "")
 
+    return {"titles": titles, "script": script, "video_url": video_urls[0], "video_url2": video_urls[1], "video_url3": video_urls[2], "video_url4": video_urls[3], "music_url": music_url}
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
     api_key = os.getenv("CREATOMATE_API_KEY")
