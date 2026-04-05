@@ -725,6 +725,14 @@
     <option value="nova">Nova</option>
     <option value="verse">Verse</option>
   </select>
+              <div class="actions">
+  <button class="primary-btn" id="generateVoiceBtn">Generate Voice</button>
+</div>
+
+<div class="field">
+  <label>Voice preview</label>
+  <audio id="voicePreview" controls style="width:100%;"></audio>
+</div>
 </div>
 
             <div class="field">
@@ -1039,7 +1047,7 @@
           window._pexelsVideoUrl2 = data.video_url2;
           window._pexelsVideoUrl3 = data.video_url3;
           window._pexelsVideoUrl4 = data.video_url4;
-          window._musicUrl = data.music_url || '';
+          music_url: window._generatedVoiceUrl || window._musicUrl || '';
         }
         setStatus(t.statusSuccess, 'success');
         const state = getState();
@@ -1158,6 +1166,8 @@
     const videoDuration = document.getElementById('videoDuration');
     const videoType = document.getElementById('videoType');
     const videoVoice = document.getElementById('videoVoice');
+    const generateVoiceBtn = document.getElementById('generateVoiceBtn');
+const voicePreview = document.getElementById('voicePreview');
     const subtitleStyle = document.getElementById('subtitleStyle');
     const templatePack = document.getElementById('templatePack');
 
@@ -1188,6 +1198,39 @@
       videoStatus.className = 'status success';
       addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
     }
+    function buildVideoPlan() {
+  const duration = videoDuration.value;
+  const type = videoType.value;
+  const voice = videoVoice.value;
+  const subtitles = subtitleStyle.value;
+  const template = templatePack.value;
+  const niche = nicheInput.value.trim() || 'general niche';
+
+  const scenes = duration === '60'
+    ? ['Hook scene', 'Problem scene', 'Opportunity scene', 'Main solution scene', 'Proof / reinforcement scene', 'CTA scene']
+    : duration === '45'
+    ? ['Hook scene', 'Problem scene', 'Solution scene', 'Proof scene', 'CTA scene']
+    : ['Hook scene', 'Problem / opportunity scene', 'Solution / insight scene', 'CTA scene'];
+
+  scenePlanList.innerHTML = '';
+  scenes.forEach((scene, index) => {
+    const li = document.createElement('li');
+    li.textContent = `${index + 1}. ${scene} — ${niche}`;
+    scenePlanList.appendChild(li);
+  });
+
+  const specText = `${duration}-second vertical 9:16 ${type} video, voice: ${voice}, subtitles: ${subtitles}, template: ${template}.`;
+  document.getElementById('videoSpecText').textContent = specText;
+  videoStatus.textContent = 'Video plan ready. Next we connect the internal render engine.';
+  videoStatus.className = 'status success';
+  addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
+}
+
+👉 ICI TU COLLES TON CODE 👇
+
+async function generateVoice() {
+  ...
+}
 
     const savedApiUrl = localStorage.getItem('viral_api_url');
     if (savedApiUrl) apiUrlInput.value = savedApiUrl;
@@ -1195,6 +1238,7 @@
 
     uiLanguage.addEventListener('change', () => applyTranslations(uiLanguage.value));
     generateBtn.addEventListener('click', generateContent);
+    generateVoiceBtn.addEventListener('click', generateVoice);
     copyBtn.addEventListener('click', copyScript);
     scanBtn.addEventListener('click', scanTrends);
     buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
