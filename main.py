@@ -1,3 +1,5 @@
+from fastapi.responses import Response
+from openai import OpenAI
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +30,9 @@ class VideoRequest(BaseModel):
     video_url3: str = ""
     video_url4: str = ""
     music_url: str = ""
+    class VoiceRequest(BaseModel):
+    text: str
+    voice: str
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
@@ -157,3 +162,22 @@ async def create_video(req: VideoRequest):
             }
         )
         return response.json()
+        @app.post("/generate-voice")
+async def generate_voice(req: VoiceRequest):
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    if not openai_key:
+        return {"error": "Clé OpenAI manquante"}
+
+    client = OpenAI(api_key=openai_key)
+
+    response = client.audio.speech.create(
+        model="gpt-4o-mini-tts",
+        voice=req.voice,
+        input=req.text
+    )
+
+    return Response(
+        content=response.read(),
+        media_type="audio/mpeg"
+    )
