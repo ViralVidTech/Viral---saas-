@@ -116,17 +116,16 @@ CTA: [one call to action sentence]"""
             elif files:
                 video_urls[i] = files[0]["link"]
 
-    # Chercher une musique sur Pixabay
-    pixabay_key = os.getenv("PIXABAY_API_KEY")
-    music_url = ""
-    async with httpx.AsyncClient(timeout=30) as client:
-        pixabay_response = await client.get(
-            f"https://pixabay.com/api/videos/music/?key={pixabay_key}&q={niche}&per_page=3"
-        )
-        pixabay_data = pixabay_response.json()
-        hits = pixabay_data.get("hits", [])
-        if hits:
-            music_url = hits[0].get("audio", "")
+    # Musique gratuite Mixkit selon la niche
+    mixkit_music = {
+        "motivation": "https://assets.mixkit.co/music/preview/mixkit-life-is-a-dream-837.mp3",
+        "business": "https://assets.mixkit.co/music/preview/mixkit-business-motivation-169.mp3",
+        "money": "https://assets.mixkit.co/music/preview/mixkit-achieving-878.mp3",
+        "education": "https://assets.mixkit.co/music/preview/mixkit-a-very-happy-christmas-897.mp3",
+        "ai": "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3",
+    }
+    default_music = "https://assets.mixkit.co/music/preview/mixkit-life-is-a-dream-837.mp3"
+    music_url = mixkit_music.get(niche.lower(), default_music)
 
     return {"titles": titles, "script": script, "video_url": video_urls[0], "video_url2": video_urls[1], "video_url3": video_urls[2], "video_url4": video_urls[3], "music_url": music_url}
 @app.post("/create-video")
