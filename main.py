@@ -27,6 +27,7 @@ class VideoRequest(BaseModel):
     video_url2: str = ""
     video_url3: str = ""
     video_url4: str = ""
+    music_url: str = ""
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
@@ -152,6 +153,7 @@ async def create_video(req: VideoRequest):
                     "Background-2.source": req.video_url2,
                     "Background-3.source": req.video_url3,
                     "Background-4.source": req.video_url4,
+                    "Music.source": req.music_url,
                 }
             }
         )
