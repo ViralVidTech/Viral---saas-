@@ -1034,6 +1034,9 @@
         scriptOutput.value = data.script || '';
         if (data.video_url) {
           window._pexelsVideoUrl = data.video_url;
+          window._pexelsVideoUrl2 = data.video_url2;
+          window._pexelsVideoUrl3 = data.video_url3;
+          window._pexelsVideoUrl4 = data.video_url4;
         }
         setStatus(t.statusSuccess, 'success');
         const state = getState();
