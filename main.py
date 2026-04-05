@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from openai import OpenAI
 import os
 import httpx
 
@@ -179,20 +178,7 @@ async def create_video(req: VideoRequest):
 
 @app.post("/generate-voice")
 async def generate_voice(req: VoiceRequest):
-    openai_key = os.getenv("OPENAI_API_KEY")
-
-    if not openai_key:
-        return {"error": "Clé OpenAI manquante"}
-
-    client = OpenAI(api_key=openai_key)
-
-    response = client.audio.speech.create(
-        model="gpt-4o-mini-tts",
-        voice=req.voice,
-        input=req.text
-    )
-
-    return Response(
-        content=response.read(),
-        media_type="audio/mpeg"
-    )
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_key:
+        return {"error": "Clé manquante"}
+    return {"message": "Voice endpoint ready"}
