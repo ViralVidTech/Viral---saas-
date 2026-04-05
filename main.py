@@ -1,5 +1,6 @@
-from fastapi.staticfiles import StaticFiles
+from openai import OpenAI
 from uuid import uuid4
+from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
