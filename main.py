@@ -1,9 +1,8 @@
-from fastapi.responses import Response
-from openai import OpenAI
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from openai import OpenAI
 import os
 import httpx
 
@@ -30,7 +29,8 @@ class VideoRequest(BaseModel):
     video_url3: str = ""
     video_url4: str = ""
     music_url: str = ""
-    class VoiceRequest(BaseModel):
+
+class VoiceRequest(BaseModel):
     text: str
     voice: str
 
@@ -82,6 +82,7 @@ CTA: [one call to action sentence]"""
     data = response.json()
     if "content" not in data:
         return {"titles": [], "script": str(data)}
+
     text = data["content"][0]["text"]
 
     lines = text.strip().split("\n")
@@ -106,6 +107,7 @@ CTA: [one call to action sentence]"""
     # Chercher 4 vidéos Pexels selon la niche
     pexels_key = os.getenv("PEXELS_API_KEY")
     video_urls = ["", "", "", ""]
+
     async with httpx.AsyncClient(timeout=30) as client:
         pexels_response = await client.get(
             f"https://api.pexels.com/videos/search?query={niche}&per_page=4",
@@ -113,6 +115,7 @@ CTA: [one call to action sentence]"""
         )
         pexels_data = pexels_response.json()
         videos = pexels_data.get("videos", [])
+
         for i, video in enumerate(videos[:4]):
             files = video.get("video_files", [])
             hd_files = [f for f in files if f.get("quality") == "hd"]
@@ -132,13 +135,24 @@ CTA: [one call to action sentence]"""
     default_music = "https://assets.mixkit.co/music/preview/mixkit-life-is-a-dream-837.mp3"
     music_url = mixkit_music.get(niche.lower(), default_music)
 
-    return {"titles": titles, "script": script, "video_url": video_urls[0], "video_url2": video_urls[1], "video_url3": video_urls[2], "video_url4": video_urls[3], "music_url": music_url}
+    return {
+        "titles": titles,
+        "script": script,
+        "video_url": video_urls[0],
+        "video_url2": video_urls[1],
+        "video_url3": video_urls[2],
+        "video_url4": video_urls[3],
+        "music_url": music_url
+    }
+
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
     api_key = os.getenv("CREATOMATE_API_KEY")
     template_id = os.getenv("CREATOMATE_TEMPLATE_ID")
+
     if not api_key or not template_id:
         return {"error": "Missing API key or template ID"}
+
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
             "https://api.creatomate.com/v1/renders",
@@ -162,7 +176,8 @@ async def create_video(req: VideoRequest):
             }
         )
         return response.json()
-        @app.post("/generate-voice")
+
+@app.post("/generate-voice")
 async def generate_voice(req: VoiceRequest):
     openai_key = os.getenv("OPENAI_API_KEY")
 
