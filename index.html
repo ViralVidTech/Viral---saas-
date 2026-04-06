@@ -1198,39 +1198,10 @@ const voicePreview = document.getElementById('voicePreview');
       videoStatus.className = 'status success';
       addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
     }
-    function buildVideoPlan() {
-  const duration = videoDuration.value;
-  const type = videoType.value;
-  const voice = videoVoice.value;
-  const subtitles = subtitleStyle.value;
-  const template = templatePack.value;
-  const niche = nicheInput.value.trim() || 'general niche';
-
-  const scenes = duration === '60'
-    ? ['Hook scene', 'Problem scene', 'Opportunity scene', 'Main solution scene', 'Proof / reinforcement scene', 'CTA scene']
-    : duration === '45'
-    ? ['Hook scene', 'Problem scene', 'Solution scene', 'Proof scene', 'CTA scene']
-    : ['Hook scene', 'Problem / opportunity scene', 'Solution / insight scene', 'CTA scene'];
-
-  scenePlanList.innerHTML = '';
-  scenes.forEach((scene, index) => {
-    const li = document.createElement('li');
-    li.textContent = `${index + 1}. ${scene} — ${niche}`;
-    scenePlanList.appendChild(li);
-  });
-
-  const specText = `${duration}-second vertical 9:16 ${type} video, voice: ${voice}, subtitles: ${subtitles}, template: ${template}.`;
-  document.getElementById('videoSpecText').textContent = specText;
-  videoStatus.textContent = 'Video plan ready. Next we connect the internal render engine.';
-  videoStatus.className = 'status success';
-  addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
-}
-
-👉 ICI TU COLLES TON CODE 👇
-
-async function generateVoice() {
-  ...
-}
+   async function generateVoice() {
+      videoStatus.textContent = 'Voice feature coming soon.';
+      videoStatus.className = 'status';
+    }
 
     const savedApiUrl = localStorage.getItem('viral_api_url');
     if (savedApiUrl) apiUrlInput.value = savedApiUrl;
