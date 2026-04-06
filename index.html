@@ -1202,32 +1202,9 @@ const voicePreview = document.getElementById('voicePreview');
       addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
     }
    async function generateVoice() {
-      const apiUrl = normalizeApiUrl(apiUrlInput.value);
-      const text = scriptOutput.value.trim();
-      const voice = videoVoice.value;
-      if (!text) {
-        videoStatus.textContent = 'Please generate a script first.';
-        videoStatus.className = 'status error';
-        return;
-      }
-      videoStatus.textContent = 'Generating voice...';
+      videoStatus.textContent = 'Voice feature coming soon.';
       videoStatus.className = 'status';
-      try {
-        const res = await fetch(`${apiUrl}/upload-voice`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice })
-        });
-        const data = await res.json();
-        if (data.voice_url) {
-          window._voiceAssetUrl = data.voice_url;
-          videoStatus.textContent = 'Voice ready for video!';
-          videoStatus.className = 'status success';
-        } else {
-          videoStatus.textContent = 'Error generating voice.';
-          videoStatus.className = 'status error';
-        }
-      } catch (e) {
+    } catch (e) {
         videoStatus.textContent = 'Error connecting to voice API.';
         videoStatus.className = 'status error';
       }
