@@ -160,7 +160,7 @@ async def create_video(req: VideoRequest):
                     "Background-2.source": req.video_url2,
                     "Background-3.source": req.video_url3,
                     "Background-4.source": req.video_url4,
-                    "Music.source": req.music_url,
+                    
                 }
             }
         )
