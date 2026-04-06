@@ -1225,6 +1225,7 @@ const voicePreview = document.getElementById('voicePreview');
           voicePreview.src = audioUrl;
           voicePreview.play();
           window._generatedVoiceUrl = audioUrl;
+          window._voiceAssetUrl = audioUrl;
           videoStatus.textContent = 'Voice generated successfully.';
           videoStatus.className = 'status success';
         } else {
@@ -1259,7 +1260,7 @@ const voicePreview = document.getElementById('voicePreview');
         const res = await fetch(`${apiUrl}/create-video`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ text1, text2, text3, text4, video_url: window._pexelsVideoUrl || '', video_url2: window._pexelsVideoUrl2 || '', video_url3: window._pexelsVideoUrl3 || '', video_url4: window._pexelsVideoUrl4 || '', music_url: window._generatedVoiceUrl || window._musicUrl || '' })
+body: JSON.stringify({ text1, text2, text3, text4, video_url: window._pexelsVideoUrl || '', video_url2: window._pexelsVideoUrl2 || '', video_url3: window._pexelsVideoUrl3 || '', video_url4: window._pexelsVideoUrl4 || '', music_url: window._musicUrl || '', voice_url: window._voiceAssetUrl || '' })
         });
         const data = await res.json();
         if (data[0]?.url) {
