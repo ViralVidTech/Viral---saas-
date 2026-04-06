@@ -1213,26 +1213,25 @@ const voicePreview = document.getElementById('voicePreview');
       videoStatus.textContent = 'Generating voice...';
       videoStatus.className = 'status';
       try {
-        const res = await fetch(`${apiUrl}/generate-voice`, {
+        const res = await fetch(`${apiUrl}/upload-voice`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, voice })
         });
         const data = await res.json();
-        if (data.audio_b64) {
-          const audioBlob = new Blob([Uint8Array.from(atob(data.audio_b64), c => c.charCodeAt(0))], { type: 'audio/mp3' });
-          const audioUrl = URL.createObjectURL(audioBlob);
-          voicePreview.src = audioUrl;
-          voicePreview.play();
-          window._generatedVoiceUrl = audioUrl;
-          window._voiceAssetUrl = audioUrl;
-          videoStatus.textContent = 'Voice generated successfully.';
+        if (data.voice_url) {
+          window._voiceAssetUrl = data.voice_url;
+          videoStatus.textContent = 'Voice ready for video!';
           videoStatus.className = 'status success';
         } else {
           videoStatus.textContent = 'Error generating voice.';
           videoStatus.className = 'status error';
         }
       } catch (e) {
+        videoStatus.textContent = 'Error connecting to voice API.';
+        videoStatus.className = 'status error';
+      }
+    } catch (e) {
         videoStatus.textContent = 'Error connecting to voice API.';
         videoStatus.className = 'status error';
       }
