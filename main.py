@@ -179,6 +179,43 @@ async def create_video(req: VideoRequest):
 
 @app.post("/generate-voice")
 async def generate_voice(req: VoiceRequest):
+    @app.post("/upload-voice")
+async def upload_voice(req: VoiceRequest):
+    google_key = os.getenv("GOOGLE_TTS_API_KEY")
+    api_key = os.getenv("CREATOMATE_API_KEY")
+    if not google_key or not api_key:
+        return {"error": "Clé manquante"}
+
+    language_code = req.voice[:5]
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        tts_response = await client.post(
+            f"https://texttospeech.googleapis.com/v1/text:synthesize?key={google_key}",
+            json={
+                "input": {"text": req.text},
+                "voice": {"languageCode": language_code, "name": req.voice},
+                "audioConfig": {"audioEncoding": "MP3"}
+            }
+        )
+
+    tts_data = tts_response.json()
+    if "audioContent" not in tts_data:
+        return {"error": str(tts_data)}
+
+    import base64
+    audio_bytes = base64.b64decode(tts_data["audioContent"])
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        upload_response = await client.post(
+            "https://api.creatomate.com/v1/assets",
+            headers={"Authorization": f"Bearer {api_key}"},
+            files={"file": ("voice.mp3", audio_bytes, "audio/mpeg")}
+        )
+
+    upload_data = upload_response.json()
+    voice_url = upload_data.get("url", "")
+
+    return {"voice_url": voice_url}
     google_key = os.getenv("GOOGLE_TTS_API_KEY")
     if not google_key:
         return {"error": "Clé Google manquante"}
