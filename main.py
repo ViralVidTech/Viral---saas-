@@ -1,21 +1,11 @@
-from openai import OpenAI
-from uuid import uuid4
-from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import httpx
 
 app = FastAPI()
-BASE_DIR = os.path.dirname(__file__)
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-VOICE_DIR = os.path.join(STATIC_DIR, "voices")
-
-os.makedirs(VOICE_DIR, exist_ok=True)
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -93,7 +83,6 @@ CTA: [one call to action sentence]"""
         return {"titles": [], "script": str(data)}
 
     text = data["content"][0]["text"]
-
     lines = text.strip().split("\n")
     titles = []
     hook = problem = solution = cta = ""
@@ -113,7 +102,6 @@ CTA: [one call to action sentence]"""
 
     script = f"{hook}\n\n{problem}\n\n{solution}\n\n{cta}"
 
-    # Chercher 4 vidéos Pexels selon la niche
     pexels_key = os.getenv("PEXELS_API_KEY")
     video_urls = ["", "", "", ""]
 
@@ -124,7 +112,6 @@ CTA: [one call to action sentence]"""
         )
         pexels_data = pexels_response.json()
         videos = pexels_data.get("videos", [])
-
         for i, video in enumerate(videos[:4]):
             files = video.get("video_files", [])
             hd_files = [f for f in files if f.get("quality") == "hd"]
@@ -133,7 +120,6 @@ CTA: [one call to action sentence]"""
             elif files:
                 video_urls[i] = files[0]["link"]
 
-    # Musique gratuite Mixkit selon la niche
     mixkit_music = {
         "motivation": "https://assets.mixkit.co/music/preview/mixkit-life-is-a-dream-837.mp3",
         "business": "https://assets.mixkit.co/music/preview/mixkit-business-motivation-169.mp3",
@@ -158,10 +144,8 @@ CTA: [one call to action sentence]"""
 async def create_video(req: VideoRequest):
     api_key = os.getenv("CREATOMATE_API_KEY")
     template_id = os.getenv("CREATOMATE_TEMPLATE_ID")
-
     if not api_key or not template_id:
         return {"error": "Missing API key or template ID"}
-
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
             "https://api.creatomate.com/v1/renders",
@@ -188,25 +172,4 @@ async def create_video(req: VideoRequest):
 
 @app.post("/generate-voice")
 async def generate_voice(req: VoiceRequest):
-    openai_key = os.getenv("OPENAI_API_KEY")
-
-    if not openai_key:
-        return {"error": "Clé OpenAI manquante"}
-
-    client = OpenAI(api_key=openai_key)
-
-    response = client.audio.speech.create(
-        model="gpt-4o-mini-tts",
-        voice=req.voice,
-        input=req.text
-    )
-
-    filename = f"{uuid4()}.mp3"
-    filepath = os.path.join(VOICE_DIR, filename)
-
-    with open(filepath, "wb") as f:
-        f.write(response.content)
-
-    return {
-        "audio_url": f"/static/voices/{filename}"
-    }
+    return {"message": "Voice feature coming soon"}
