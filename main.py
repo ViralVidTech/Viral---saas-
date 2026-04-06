@@ -28,6 +28,7 @@ class VideoRequest(BaseModel):
     video_url3: str = ""
     video_url4: str = ""
     music_url: str = ""
+    voice_url: str = ""
 
 class VoiceRequest(BaseModel):
     text: str
@@ -146,6 +147,22 @@ async def create_video(req: VideoRequest):
     template_id = os.getenv("CREATOMATE_TEMPLATE_ID")
     if not api_key or not template_id:
         return {"error": "Missing API key or template ID"}
+
+    modifications = {
+        "Text-1.text": req.text1,
+        "Text-2.text": req.text2,
+        "Text-3.text": req.text3,
+        "Text-4.text": req.text4,
+        "Background-1.source": req.video_url,
+        "Background-2.source": req.video_url2,
+        "Background-3.source": req.video_url3,
+        "Background-4.source": req.video_url4,
+        "Music.source": req.music_url,
+    }
+
+    if req.voice_url:
+        modifications["Voiceover-WFH.source"] = req.voice_url
+
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
             "https://api.creatomate.com/v1/renders",
@@ -155,17 +172,7 @@ async def create_video(req: VideoRequest):
             },
             json={
                 "template_id": template_id,
-                "modifications": {
-                    "Text-1.text": req.text1,
-                    "Text-2.text": req.text2,
-                    "Text-3.text": req.text3,
-                    "Text-4.text": req.text4,
-                    "Background-1.source": req.video_url,
-                    "Background-2.source": req.video_url2,
-                    "Background-3.source": req.video_url3,
-                    "Background-4.source": req.video_url4,
-                    "Music.source": req.music_url,
-                }
+                "modifications": modifications
             }
         )
         return response.json()
