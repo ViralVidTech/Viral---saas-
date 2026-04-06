@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import base64
 import httpx
 
 app = FastAPI()
@@ -179,7 +180,31 @@ async def create_video(req: VideoRequest):
 
 @app.post("/generate-voice")
 async def generate_voice(req: VoiceRequest):
-    @app.post("/upload-voice")
+    google_key = os.getenv("GOOGLE_TTS_API_KEY")
+    if not google_key:
+        return {"error": "Clé Google manquante"}
+
+    language_code = req.voice[:5]
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            f"https://texttospeech.googleapis.com/v1/text:synthesize?key={google_key}",
+            json={
+                "input": {"text": req.text},
+                "voice": {"languageCode": language_code, "name": req.voice},
+                "audioConfig": {"audioEncoding": "MP3"}
+            }
+        )
+    data = response.json()
+    if "audioContent" not in data:
+        return {"error": str(data)}
+
+    audio_bytes = base64.b64decode(data["audioContent"])
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+    return {"audio_b64": audio_b64}
+
+@app.post("/upload-voice")
 async def upload_voice(req: VoiceRequest):
     google_key = os.getenv("GOOGLE_TTS_API_KEY")
     api_key = os.getenv("CREATOMATE_API_KEY")
@@ -202,7 +227,6 @@ async def upload_voice(req: VoiceRequest):
     if "audioContent" not in tts_data:
         return {"error": str(tts_data)}
 
-    import base64
     audio_bytes = base64.b64decode(tts_data["audioContent"])
 
     async with httpx.AsyncClient(timeout=60) as client:
@@ -216,27 +240,3 @@ async def upload_voice(req: VoiceRequest):
     voice_url = upload_data.get("url", "")
 
     return {"voice_url": voice_url}
-    google_key = os.getenv("GOOGLE_TTS_API_KEY")
-    if not google_key:
-        return {"error": "Clé Google manquante"}
-
-    language_code = req.voice[:5]
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            f"https://texttospeech.googleapis.com/v1/text:synthesize?key={google_key}",
-            json={
-                "input": {"text": req.text},
-                "voice": {"languageCode": language_code, "name": req.voice},
-                "audioConfig": {"audioEncoding": "MP3"}
-            }
-        )
-    data = response.json()
-    if "audioContent" not in data:
-        return {"error": str(data)}
-
-    import base64
-    audio_bytes = base64.b64decode(data["audioContent"])
-    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-
-    return {"audio_b64": audio_b64}
