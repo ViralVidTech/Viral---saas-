@@ -1204,14 +1204,6 @@ const voicePreview = document.getElementById('voicePreview');
    async function generateVoice() {
       videoStatus.textContent = 'Voice feature coming soon.';
       videoStatus.className = 'status';
-    } catch (e) {
-        videoStatus.textContent = 'Error connecting to voice API.';
-        videoStatus.className = 'status error';
-      }
-    } catch (e) {
-        videoStatus.textContent = 'Error connecting to voice API.';
-        videoStatus.className = 'status error';
-      }
     }
     const savedApiUrl = localStorage.getItem('viral_api_url');
     if (savedApiUrl) apiUrlInput.value = savedApiUrl;
