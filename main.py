@@ -176,26 +176,17 @@ async def generate_voice(req: VoiceRequest):
     if not google_key:
         return {"error": "Clé Google manquante"}
 
-    voice_map = {
-        "alloy": "en-US-Standard-A",
-        "aria": "en-US-Standard-C",
-        "echo": "en-US-Standard-B",
-        "nova": "en-US-Standard-E",
-        "verse": "en-US-Standard-D",
-    }
-
-    google_voice = voice_map.get(req.voice, "en-US-Standard-A")
+    language_code = req.voice[:5]
 
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
             f"https://texttospeech.googleapis.com/v1/text:synthesize?key={google_key}",
             json={
                 "input": {"text": req.text},
-                "voice": {"languageCode": "en-US", "name": google_voice},
+                "voice": {"languageCode": language_code, "name": req.voice},
                 "audioConfig": {"audioEncoding": "MP3"}
             }
         )
-
     data = response.json()
     if "audioContent" not in data:
         return {"error": str(data)}
