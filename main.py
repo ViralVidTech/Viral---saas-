@@ -172,4 +172,36 @@ async def create_video(req: VideoRequest):
 
 @app.post("/generate-voice")
 async def generate_voice(req: VoiceRequest):
-    return {"message": "Voice feature coming soon"}
+    google_key = os.getenv("GOOGLE_TTS_API_KEY")
+    if not google_key:
+        return {"error": "Clé Google manquante"}
+
+    voice_map = {
+        "alloy": "en-US-Standard-A",
+        "aria": "en-US-Standard-C",
+        "echo": "en-US-Standard-B",
+        "nova": "en-US-Standard-E",
+        "verse": "en-US-Standard-D",
+    }
+
+    google_voice = voice_map.get(req.voice, "en-US-Standard-A")
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            f"https://texttospeech.googleapis.com/v1/text:synthesize?key={google_key}",
+            json={
+                "input": {"text": req.text},
+                "voice": {"languageCode": "en-US", "name": google_voice},
+                "audioConfig": {"audioEncoding": "MP3"}
+            }
+        )
+
+    data = response.json()
+    if "audioContent" not in data:
+        return {"error": str(data)}
+
+    import base64
+    audio_bytes = base64.b64decode(data["audioContent"])
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+    return {"audio_b64": audio_b64}
