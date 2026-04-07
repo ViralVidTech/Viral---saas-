@@ -129,8 +129,13 @@ Important rules:
         data = response.json()
 
         if response.status_code != 200:
+            message = "Claude API a échoué"
+            if isinstance(data, dict):
+                err = data.get("error")
+                if isinstance(err, dict):
+                    message = err.get("message", message)
             return {
-                "error": "Claude API a échoué",
+                "error": message,
                 "details": data
             }
 
