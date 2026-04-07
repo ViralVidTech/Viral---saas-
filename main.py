@@ -52,6 +52,7 @@ class VideoRequest(BaseModel):
     audio_url: str = ""
     music_url: str = ""
 
+
 # HOME
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
@@ -299,10 +300,8 @@ async def create_video(req: VideoRequest):
         return {"error": "SHOTSTACK_API_KEY manquante"}
 
     video_urls = [req.video_url, req.video_url2, req.video_url3, req.video_url4]
-    texts = [req.text1, req.text2, req.text3, req.text4]
 
     clips_video = []
-    clips_text = []
     start_time = 0
 
     for i in range(4):
@@ -312,25 +311,12 @@ async def create_video(req: VideoRequest):
             clips_video.append({
                 "asset": {
                     "type": "video",
-                    "src": video_urls[i]
+                    "src": video_urls[i],
+                    "volume": 0
                 },
                 "start": start_time,
                 "length": duration,
                 "fit": "cover"
-            })
-
-        if texts[i].strip():
-            clips_text.append({
-                "asset": {
-                    "type": "title",
-                    "text": texts[i],
-                    "style": "subtitle",
-                    "color": "#ffffff",
-                    "size": "medium"
-                },
-                "start": start_time,
-                "length": duration,
-                "position": "center"
             })
 
         start_time += duration
@@ -340,21 +326,59 @@ async def create_video(req: VideoRequest):
 
     timeline = {
         "tracks": [
-            {"clips": clips_video},
-            {"clips": clips_text},
+            {
+                "clips": clips_video
+            }
         ]
     }
 
     if req.audio_url.strip():
-    timeline["soundtrack"] = {
-        "src": req.audio_url
-    }
+        timeline["tracks"].append({
+            "clips": [
+                {
+                    "alias": "speech",
+                    "asset": {
+                        "type": "audio",
+                        "src": req.audio_url
+                    },
+                    "start": 0,
+                    "length": start_time
+                }
+            ]
+        })
 
-if req.music_url.strip():
-    timeline["soundtrack"] = {
-        "src": req.music_url,
-        "volume": 0.15
-    }
+        timeline["tracks"].append({
+            "clips": [
+                {
+                    "asset": {
+                        "type": "caption",
+                        "src": "alias://speech",
+                        "font": {
+                            "color": "#ffffff",
+                            "size": 24
+                        },
+                        "background": {
+                            "color": "#000000",
+                            "opacity": 0.45
+                        },
+                        "margin": {
+                            "bottom": 0.08,
+                            "left": 0.08,
+                            "right": 0.08
+                        }
+                    },
+                    "start": 0,
+                    "length": start_time,
+                    "position": "bottom"
+                }
+            ]
+        })
+
+    if req.music_url.strip():
+        timeline["soundtrack"] = {
+            "src": req.music_url,
+            "volume": 0.12
+        }
 
     payload = {
         "timeline": timeline,
@@ -380,6 +404,7 @@ if req.music_url.strip():
         print("SHOTSTACK STATUS =", response.status_code)
         print("SHOTSTACK BODY =", response.text)
         print("SHOTSTACK AUDIO URL =", req.audio_url)
+        print("SHOTSTACK MUSIC URL =", req.music_url)
         print("SHOTSTACK VIDEO URLS =", video_urls)
         print("SHOTSTACK PAYLOAD =", payload)
         print("========== SHOTSTACK DEBUG END ==========")
