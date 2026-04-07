@@ -135,17 +135,11 @@ Important rules:
                 err = data.get("error")
                 if isinstance(err, dict):
                     message = err.get("message", message)
-            return {
-                "error": message,
-                "details": data
-            }
+            return {"error": message, "details": data}
 
         content_blocks = data.get("content", [])
         if not content_blocks:
-            return {
-                "error": "Claude n'a pas retourné de contenu",
-                "details": data
-            }
+            return {"error": "Claude n'a pas retourné de contenu", "details": data}
 
         text = ""
         for block in content_blocks:
@@ -154,10 +148,7 @@ Important rules:
 
         text = text.strip()
         if not text:
-            return {
-                "error": "Claude a retourné un contenu vide",
-                "details": data
-            }
+            return {"error": "Claude a retourné un contenu vide", "details": data}
 
         lines = text.split("\n")
         titles = []
@@ -344,12 +335,15 @@ async def create_video(req: VideoRequest):
             ]
         })
 
+    subtitle_text = f"{req.text1}\n\n{req.text2}\n\n{req.text3}\n\n{req.text4}".strip()
+
+    if subtitle_text:
         tracks.append({
             "clips": [
                 {
                     "asset": {
                         "type": "title",
-                        "text": f"{req.text1}\n\n{req.text2}\n\n{req.text3}\n\n{req.text4}".strip(),
+                        "text": subtitle_text,
                         "style": "subtitle",
                         "color": "#ffffff",
                         "size": "small"
