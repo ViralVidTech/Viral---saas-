@@ -65,17 +65,51 @@ async def serve_ui():
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     niche = req.niche.strip() or "general topic"
+    lang = (req.langue or "en").lower()
 
-    titles = [
-        f"3 shocking truths about {niche}",
-        f"Why most people fail in {niche}",
-        f"The smartest way to win in {niche}",
-    ]
+    if lang == "fr":
+        titles = [
+            f"3 vérités choquantes sur {niche}",
+            f"Pourquoi la plupart des gens échouent dans {niche}",
+            f"La manière la plus intelligente de réussir dans {niche}",
+        ]
+        hook = f"La plupart des gens comprennent mal {niche}, et cela leur coûte plus cher qu’ils ne l’imaginent."
+        problem = f"Le problème, c’est que beaucoup de personnes abordent {niche} à l’aveugle et répètent toujours les mêmes erreurs."
+        solution = f"La solution consiste à utiliser une stratégie simple, rester constant et se concentrer uniquement sur ce qui fonctionne."
+        cta = f"Abonne-toi pour plus de vidéos sur {niche}."
 
-    hook = f"Most people misunderstand {niche}, and it costs them more than they think."
-    problem = f"The problem is that people approach {niche} blindly and repeat the same mistakes."
-    solution = f"The solution is to use a simple strategy, stay consistent, and focus only on what works."
-    cta = f"Follow for more videos about {niche}."
+    elif lang == "es":
+        titles = [
+            f"3 verdades impactantes sobre {niche}",
+            f"Por qué la mayoría fracasa en {niche}",
+            f"La forma más inteligente de triunfar en {niche}",
+        ]
+        hook = f"La mayoría de la gente entiende mal {niche}, y eso les cuesta más de lo que creen."
+        problem = f"El problema es que muchas personas abordan {niche} a ciegas y repiten los mismos errores."
+        solution = f"La solución es usar una estrategia simple, ser constante y enfocarse solo en lo que funciona."
+        cta = f"Sigue la cuenta para más videos sobre {niche}."
+
+    elif lang == "pt":
+        titles = [
+            f"3 verdades chocantes sobre {niche}",
+            f"Por que a maioria falha em {niche}",
+            f"A forma mais inteligente de vencer em {niche}",
+        ]
+        hook = f"A maioria das pessoas entende {niche} da forma errada, e isso custa mais do que imaginam."
+        problem = f"O problema é que muitas pessoas entram em {niche} no escuro e repetem os mesmos erros."
+        solution = f"A solução é usar uma estratégia simples, manter consistência e focar apenas no que funciona."
+        cta = f"Siga para mais vídeos sobre {niche}."
+
+    else:
+        titles = [
+            f"3 shocking truths about {niche}",
+            f"Why most people fail in {niche}",
+            f"The smartest way to win in {niche}",
+        ]
+        hook = f"Most people misunderstand {niche}, and it costs them more than they think."
+        problem = f"The problem is that people approach {niche} blindly and repeat the same mistakes."
+        solution = f"The solution is to use a simple strategy, stay consistent, and focus only on what works."
+        cta = f"Follow for more videos about {niche}."
 
     script = f"{hook}\n\n{problem}\n\n{solution}\n\n{cta}"
 
