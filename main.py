@@ -20,6 +20,7 @@ app.add_middleware(
 SHOTSTACK_API_KEY = os.getenv("SHOTSTACK_API_KEY", "")
 GOOGLE_TTS_API_KEY = os.getenv("GOOGLE_TTS_API_KEY", "")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
 AUDIO_DIR = "audio"
@@ -67,84 +68,154 @@ async def generate(req: GenerateRequest):
     niche = req.niche.strip() or "general topic"
     lang = (req.langue or "en").lower()
 
-    if lang == "fr":
-        titles = [
-            f"3 vérités choquantes sur {niche}",
-            f"Pourquoi la plupart des gens échouent dans {niche}",
-            f"La manière la plus intelligente de réussir dans {niche}",
-        ]
-        hook = f"La plupart des gens comprennent mal {niche}, et cela leur coûte plus cher qu’ils ne l’imaginent."
-        problem = f"Le problème, c’est que beaucoup de personnes abordent {niche} à l’aveugle et répètent toujours les mêmes erreurs."
-        solution = f"La solution consiste à utiliser une stratégie simple, rester constant et se concentrer uniquement sur ce qui fonctionne."
-        cta = f"Abonne-toi pour plus de vidéos sur {niche}."
+    if not ANTHROPIC_API_KEY:
+        return {"error": "ANTHROPIC_API_KEY manquante"}
 
-    elif lang == "es":
-        titles = [
-            f"3 verdades impactantes sobre {niche}",
-            f"Por qué la mayoría fracasa en {niche}",
-            f"La forma más inteligente de triunfar en {niche}",
-        ]
-        hook = f"La mayoría de la gente entiende mal {niche}, y eso les cuesta más de lo que creen."
-        problem = f"El problema es que muchas personas abordan {niche} a ciegas y repiten los mismos errores."
-        solution = f"La solución es usar una estrategia simple, ser constante y enfocarse solo en lo que funciona."
-        cta = f"Sigue la cuenta para más videos sobre {niche}."
-
-    elif lang == "pt":
-        titles = [
-            f"3 verdades chocantes sobre {niche}",
-            f"Por que a maioria falha em {niche}",
-            f"A forma mais inteligente de vencer em {niche}",
-        ]
-        hook = f"A maioria das pessoas entende {niche} da forma errada, e isso custa mais do que imaginam."
-        problem = f"O problema é que muitas pessoas entram em {niche} no escuro e repetem os mesmos erros."
-        solution = f"A solução é usar uma estratégia simples, manter consistência e focar apenas no que funciona."
-        cta = f"Siga para mais vídeos sobre {niche}."
-
-    else:
-        titles = [
-            f"3 shocking truths about {niche}",
-            f"Why most people fail in {niche}",
-            f"The smartest way to win in {niche}",
-        ]
-        hook = f"Most people misunderstand {niche}, and it costs them more than they think."
-        problem = f"The problem is that people approach {niche} blindly and repeat the same mistakes."
-        solution = f"The solution is to use a simple strategy, stay consistent, and focus only on what works."
-        cta = f"Follow for more videos about {niche}."
-
-    script = f"{hook}\n\n{problem}\n\n{solution}\n\n{cta}"
-
-    video_urls = ["", "", "", ""]
-
-    if PEXELS_API_KEY:
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                pexels_response = await client.get(
-                    "https://api.pexels.com/videos/search",
-                    params={"query": niche, "per_page": 4},
-                    headers={"Authorization": PEXELS_API_KEY},
-                )
-
-            pexels_data = pexels_response.json()
-            videos = pexels_data.get("videos", [])
-
-            for i, video in enumerate(videos[:4]):
-                files = video.get("video_files", [])
-                hd_files = [f for f in files if f.get("quality") == "hd"]
-                if hd_files:
-                    video_urls[i] = hd_files[0].get("link", "")
-                elif files:
-                    video_urls[i] = files[0].get("link", "")
-        except Exception:
-            pass
-
-    return {
-        "titles": titles,
-        "script": script,
-        "video_url": video_urls[0],
-        "video_url2": video_urls[1],
-        "video_url3": video_urls[2],
-        "video_url4": video_urls[3],
+    lang_map = {
+        "en": "English",
+        "fr": "French",
+        "es": "Spanish",
+        "pt": "Portuguese",
     }
+    target_language = lang_map.get(lang, "English")
+
+    prompt = f"""
+Create viral short-form video content about "{niche}" in {target_language}.
+
+Return exactly in this format:
+
+TITLES:
+1. [title 1]
+2. [title 2]
+3. [title 3]
+
+HOOK: [one punchy sentence]
+
+PROBLEM: [one sentence about the problem]
+
+SOLUTION: [one sentence about the solution]
+
+CTA: [one call to action sentence]
+
+Important rules:
+- Write everything in {target_language}
+- Keep it natural, persuasive, and social-media ready
+- Do not add explanations
+- Do not add markdown
+- Do not add anything outside the required format
+""".strip()
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-3-5-haiku-latest",
+                    "max_tokens": 700,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ]
+                }
+            )
+
+        data = response.json()
+
+        if response.status_code != 200:
+            return {
+                "error": "Claude API a échoué",
+                "details": data
+            }
+
+        content_blocks = data.get("content", [])
+        if not content_blocks:
+            return {
+                "error": "Claude n'a pas retourné de contenu",
+                "details": data
+            }
+
+        text = ""
+        for block in content_blocks:
+            if block.get("type") == "text":
+                text += block.get("text", "") + "\n"
+
+        text = text.strip()
+        if not text:
+            return {
+                "error": "Claude a retourné un contenu vide",
+                "details": data
+            }
+
+        lines = text.split("\n")
+        titles = []
+        hook = ""
+        problem = ""
+        solution = ""
+        cta = ""
+
+        for line in lines:
+            clean = line.strip()
+            if clean.startswith("1."):
+                titles.append(clean[2:].strip())
+            elif clean.startswith("2."):
+                titles.append(clean[2:].strip())
+            elif clean.startswith("3."):
+                titles.append(clean[2:].strip())
+            elif clean.upper().startswith("HOOK:"):
+                hook = clean.split(":", 1)[1].strip()
+            elif clean.upper().startswith("PROBLEM:"):
+                problem = clean.split(":", 1)[1].strip()
+            elif clean.upper().startswith("SOLUTION:"):
+                solution = clean.split(":", 1)[1].strip()
+            elif clean.upper().startswith("CTA:"):
+                cta = clean.split(":", 1)[1].strip()
+
+        script_parts = [hook, problem, solution, cta]
+        script = "\n\n".join([part for part in script_parts if part])
+
+        video_urls = ["", "", "", ""]
+
+        if PEXELS_API_KEY:
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    pexels_response = await client.get(
+                        "https://api.pexels.com/videos/search",
+                        params={"query": niche, "per_page": 4},
+                        headers={"Authorization": PEXELS_API_KEY},
+                    )
+
+                pexels_data = pexels_response.json()
+                videos = pexels_data.get("videos", [])
+
+                for i, video in enumerate(videos[:4]):
+                    files = video.get("video_files", [])
+                    hd_files = [f for f in files if f.get("quality") == "hd"]
+                    if hd_files:
+                        video_urls[i] = hd_files[0].get("link", "")
+                    elif files:
+                        video_urls[i] = files[0].get("link", "")
+            except Exception:
+                pass
+
+        return {
+            "titles": titles,
+            "script": script,
+            "video_url": video_urls[0],
+            "video_url2": video_urls[1],
+            "video_url3": video_urls[2],
+            "video_url4": video_urls[3],
+            "raw_claude_text": text
+        }
+
+    except Exception as e:
+        return {"error": f"Erreur Claude: {str(e)}"}
 
 
 # SERVE AUDIO FILES
