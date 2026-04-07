@@ -115,7 +115,7 @@ Important rules:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-3-5-haiku-latest",
+                    "model": "claude-sonnet-4-6",
                     "max_tokens": 700,
                     "messages": [
                         {
