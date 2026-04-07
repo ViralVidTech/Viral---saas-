@@ -179,5 +179,4 @@ async def create_video(req: VideoRequest):
             }
         )
         data = response.json()
-        render_id = data.get("response", {}).get("id", "")
-        return {"render_id": render_id, "message": "Video is being rendered. Check back in 30 seconds."}
+        return {"debug": data}
