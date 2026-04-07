@@ -334,45 +334,26 @@ async def create_video(req: VideoRequest):
 
     if req.audio_url.strip():
         timeline["tracks"].append({
-            "clips": [
-                {
-                    "alias": "speech",
-                    "asset": {
-                        "type": "audio",
-                        "src": req.audio_url
-                    },
-                    "start": 0,
-                    "length": start_time
+    "clips": [
+        {
+            "asset": {
+                "type": "caption",
+                "src": "alias://speech",
+                "font": {
+                    "color": "#ffffff",
+                    "size": 24
+                },
+                "background": {
+                    "color": "#000000",
+                    "opacity": 0.45
                 }
-            ]
-        })
-
-        timeline["tracks"].append({
-            "clips": [
-                {
-                    "asset": {
-                        "type": "caption",
-                        "src": "alias://speech",
-                        "font": {
-                            "color": "#ffffff",
-                            "size": 24
-                        },
-                        "background": {
-                            "color": "#000000",
-                            "opacity": 0.45
-                        },
-                        "margin": {
-                            "bottom": 0.08,
-                            "left": 0.08,
-                            "right": 0.08
-                        }
-                    },
-                    "start": 0,
-                    "length": start_time,
-                    "position": "bottom"
-                }
-            ]
-        })
+            },
+            "start": 0,
+            "length": start_time,
+            "position": "bottom"
+        }
+    ]
+})
 
     if req.music_url.strip():
         timeline["soundtrack"] = {
