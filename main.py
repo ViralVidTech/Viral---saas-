@@ -293,8 +293,118 @@ async def generate_audio(req: TTSRequest):
 
 
 # SHOTSTACK: CREATE VIDEO
+# SHOTSTACK: CREATE VIDEO
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
+    if not SHOTSTACK_API_KEY:
+        return {"error": "SHOTSTACK_API_KEY manquante"}
+
+    video_urls = [req.video_url, req.video_url2, req.video_url3, req.video_url4]
+    texts = [req.text1, req.text2, req.text3, req.text4]
+
+    clips_video = []
+    clips_text = []
+    start_time = 0
+
+    for i in range(4):
+        duration = 5
+
+        if video_urls[i]:
+            clips_video.append({
+                "asset": {
+                    "type": "video",
+                    "src": video_urls[i]
+                },
+                "start": start_time,
+                "length": duration,
+                "fit": "cover"
+            })
+
+        if texts[i].strip():
+            clips_text.append({
+                "asset": {
+                    "type": "title",
+                    "text": texts[i],
+                    "style": "bold",
+                    "color": "#ffffff",
+                    "size": "medium"
+                },
+                "start": start_time,
+                "length": duration,
+                "position": "center"
+            })
+
+        start_time += duration
+
+    if not clips_video:
+        return {"error": "Aucune vidéo n'a été fournie"}
+
+    timeline = {
+        "tracks": [
+            {"clips": clips_video},
+            {"clips": clips_text},
+        ]
+    }
+
+    if req.audio_url.strip():
+        timeline["soundtrack"] = {
+            "src": req.audio_url
+        }
+
+    payload = {
+        "timeline": timeline,
+        "output": {
+            "format": "mp4",
+            "aspectRatio": "9:16",
+            "resolution": "sd"
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                "https://api.shotstack.io/edit/stage/render",
+                headers={
+                    "x-api-key": SHOTSTACK_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                json=payload
+            )
+
+        print("========== SHOTSTACK DEBUG START ==========")
+        print("SHOTSTACK STATUS =", response.status_code)
+        print("SHOTSTACK BODY =", response.text)
+        print("SHOTSTACK AUDIO URL =", req.audio_url)
+        print("SHOTSTACK VIDEO URLS =", video_urls)
+        print("SHOTSTACK PAYLOAD =", payload)
+        print("========== SHOTSTACK DEBUG END ==========")
+
+        try:
+            data = response.json()
+        except Exception:
+            data = {"raw_text": response.text}
+
+        if response.status_code not in [200, 201]:
+            return {
+                "error": "Shotstack a refusé le rendu",
+                "details": data
+            }
+
+        render_id = data.get("response", {}).get("id")
+        if not render_id:
+            return {
+                "error": "Shotstack n'a pas renvoyé d'id",
+                "details": data
+            }
+
+        return {
+            "success": True,
+            "render_id": render_id,
+            "message": "Vidéo envoyée à Shotstack. Vérifie ensuite le statut."
+        }
+
+    except Exception as e:
+        return {"error": f"Erreur Shotstack: {str(e)}"}
     if not SHOTSTACK_API_KEY:
         return {"error": "SHOTSTACK_API_KEY manquante"}
 
