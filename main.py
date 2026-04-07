@@ -50,7 +50,7 @@ class VideoRequest(BaseModel):
     video_url3: str = ""
     video_url4: str = ""
     audio_url: str = ""
-
+    music_url: str = ""
 
 # HOME
 @app.get("/", response_class=HTMLResponse)
@@ -346,9 +346,15 @@ async def create_video(req: VideoRequest):
     }
 
     if req.audio_url.strip():
-        timeline["soundtrack"] = {
-            "src": req.audio_url
-        }
+    timeline["soundtrack"] = {
+        "src": req.audio_url
+    }
+
+if req.music_url.strip():
+    timeline["soundtrack"] = {
+        "src": req.music_url,
+        "volume": 0.15
+    }
 
     payload = {
         "timeline": timeline,
