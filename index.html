@@ -737,6 +737,14 @@
   <audio id="voicePreview" controls style="width:100%;"></audio>
 </div>
 </div>
+            <label for="musicSelect">Background music</label>
+<select id="musicSelect">
+  <option value="">No music</option>
+  <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option>
+  <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option>
+  <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option>
+  <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3">Music 4</option>
+</select>
 
             <div class="field">
               <label for="subtitleStyle" id="subtitleStyleLabel">Subtitle style</label>
@@ -1294,6 +1302,7 @@
   const text2 = scriptLines[1] || 'Problem here';
   const text3 = scriptLines[2] || 'Solution here';
   const text4 = scriptLines[3] || 'CTA here';
+    const chosenMusicUrl = document.getElementById('musicSelect')?.value || '';
 
   if (!apiUrl) {
     setVideoStatus('Enter API URL first.', 'error');
@@ -1312,16 +1321,17 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        text1,
-        text2,
-        text3,
-        text4,
-        video_url: window._pexelsVideoUrl || '',
-        video_url2: window._pexelsVideoUrl2 || '',
-        video_url3: window._pexelsVideoUrl3 || '',
-        video_url4: window._pexelsVideoUrl4 || '',
-        audio_url: window._generatedVoiceUrl || ''
-      })
+  text1,
+  text2,
+  text3,
+  text4,
+  video_url: window._pexelsVideoUrl || '',
+  video_url2: window._pexelsVideoUrl2 || '',
+  video_url3: window._pexelsVideoUrl3 || '',
+  video_url4: window._pexelsVideoUrl4 || '',
+  audio_url: window._generatedVoiceUrl || '',
+  music_url: chosenMusicUrl
+})
     });
 
     const data = await res.json();
