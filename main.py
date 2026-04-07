@@ -430,18 +430,18 @@ async def create_video(req: VideoRequest):
             })
 
         if texts[i].strip():
-            clips_text.append({
-                "asset": {
-                    "type": "title",
-                    "text": texts[i],
-                    "style": "bold",
-                    "color": "#ffffff",
-                    "size": "medium"
-                },
-                "start": start_time,
-                "length": duration,
-                "position": "center"
-            })
+    clips_text.append({
+        "asset": {
+            "type": "title",
+            "text": texts[i],
+            "style": "subtitle",
+            "color": "#ffffff",
+            "size": "medium"
+        },
+        "start": start_time,
+        "length": duration,
+        "position": "center"
+    })
 
         start_time += duration
 
