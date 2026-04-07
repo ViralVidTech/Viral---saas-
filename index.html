@@ -1231,13 +1231,14 @@ const voicePreview = document.getElementById('voicePreview');
 body: JSON.stringify({ text1, text2, text3, text4, video_url: window._pexelsVideoUrl || '', video_url2: window._pexelsVideoUrl2 || '', video_url3: window._pexelsVideoUrl3 || '', video_url4: window._pexelsVideoUrl4 || '', music_url: window._musicUrl || '' })
         });
         const data = await res.json();
-        if (data[0]?.url) {
-          videoStatus.innerHTML = `Video ready: <a href="${data[0].url}" target="_blank" style="color:var(--cyan);">Download here</a>`;
+       if (data.render_id) {
+          window._shotstack_render_id = data.render_id;
+          videoStatus.textContent = 'Video is being rendered. Click "Check Video" in 30 seconds.';
           videoStatus.className = 'status success';
-          addActivity('Video created', `A new video was generated via Creatomate.`);
+          addActivity('Video created', `A new video is being rendered via Shotstack.`);
         } else {
-          videoStatus.textContent = 'Video is being rendered. Check Creatomate dashboard.';
-          videoStatus.className = 'status success';
+          videoStatus.textContent = 'Error creating video.';
+          videoStatus.className = 'status error';
         }
       } catch (e) {
         videoStatus.textContent = 'Error creating video. Check your API URL.';
