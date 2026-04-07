@@ -1202,9 +1202,53 @@ const voicePreview = document.getElementById('voicePreview');
       addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
     }
    async function generateVoice() {
-      videoStatus.textContent = 'Voice feature coming soon.';
-      videoStatus.className = 'status';
+  const apiUrl = normalizeApiUrl(apiUrlInput.value);
+  const text = scriptOutput.value.trim();
+
+  if (!apiUrl) {
+    videoStatus.textContent = "Enter API URL";
+    videoStatus.className = "status error";
+    return;
+  }
+
+  if (!text) {
+    videoStatus.textContent = "Generate script first";
+    videoStatus.className = "status error";
+    return;
+  }
+
+  videoStatus.textContent = "Generating voice...";
+  videoStatus.className = "status";
+
+  try {
+    const res = await fetch(`${apiUrl}/generate-audio`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: text,
+        languageCode: "en-US",
+        voiceName: videoVoice.value
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.audio_url) {
+      window._generatedVoiceUrl = data.audio_url;
+      voicePreview.src = data.audio_url;
+
+      videoStatus.textContent = "Voice generated ✔";
+      videoStatus.className = "status success";
+    } else {
+      videoStatus.textContent = "Voice failed";
+      videoStatus.className = "status error";
     }
+
+  } catch (e) {
+    videoStatus.textContent = "Error generating voice";
+    videoStatus.className = "status error";
+  }
+}
     const savedApiUrl = localStorage.getItem('viral_api_url');
     if (savedApiUrl) apiUrlInput.value = savedApiUrl;
     apiUrlInput.addEventListener('input', () => localStorage.setItem('viral_api_url', apiUrlInput.value.trim()));
@@ -1222,13 +1266,20 @@ const voicePreview = document.getElementById('voicePreview');
       const text2 = scriptLines[1] || 'Problem here';
       const text3 = scriptLines[2] || 'Solution here';
       const text4 = scriptLines[3] || 'CTA here';
-      videoStatus.textContent = 'Sending to Creatomate...';
+      videoStatus.textContent = 'Sending to Shotstack...';
       videoStatus.className = 'status';
       try {
         const res = await fetch(`${apiUrl}/create-video`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ text1, text2, text3, text4, video_url: window._pexelsVideoUrl || '', video_url2: window._pexelsVideoUrl2 || '', video_url3: window._pexelsVideoUrl3 || '', video_url4: window._pexelsVideoUrl4 || '' })
+body: JSON.stringify({
+  text1, text2, text3, text4,
+  video_url: window._pexelsVideoUrl || '',
+  video_url2: window._pexelsVideoUrl2 || '',
+  video_url3: window._pexelsVideoUrl3 || '',
+  video_url4: window._pexelsVideoUrl4 || '',
+  audio_url: window._generatedVoiceUrl || ''
+})
         });
         const data = await res.json();
        if (data.render_id) {
