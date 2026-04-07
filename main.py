@@ -27,7 +27,6 @@ class VideoRequest(BaseModel):
     video_url2: str = ""
     video_url3: str = ""
     video_url4: str = ""
-    music_url: str = ""
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
@@ -116,16 +115,6 @@ CTA: [one call to action sentence]"""
             elif files:
                 video_urls[i] = files[0]["link"]
 
-    mixkit_music = {
-        "motivation": "https://assets.mixkit.co/music/preview/mixkit-life-is-a-dream-837.mp3",
-        "business": "https://assets.mixkit.co/music/preview/mixkit-business-motivation-169.mp3",
-        "money": "https://assets.mixkit.co/music/preview/mixkit-achieving-878.mp3",
-        "education": "https://assets.mixkit.co/music/preview/mixkit-a-very-happy-christmas-897.mp3",
-        "ai": "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3",
-    }
-    default_music = "https://assets.mixkit.co/music/preview/mixkit-life-is-a-dream-837.mp3"
-    music_url = mixkit_music.get(niche.lower(), default_music)
-
     return {
         "titles": titles,
         "script": script,
@@ -133,35 +122,62 @@ CTA: [one call to action sentence]"""
         "video_url2": video_urls[1],
         "video_url3": video_urls[2],
         "video_url4": video_urls[3],
-        "music_url": music_url
     }
 
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
-    api_key = os.getenv("CREATOMATE_API_KEY")
-    template_id = os.getenv("CREATOMATE_TEMPLATE_ID")
-    if not api_key or not template_id:
-        return {"error": "Missing API key or template ID"}
-    async with httpx.AsyncClient(timeout=30) as client:
+    shotstack_key = os.getenv("SHOTSTACK_API_KEY")
+    if not shotstack_key:
+        return {"error": "Clé Shotstack manquante"}
+
+    clips = []
+    texts = [req.text1, req.text2, req.text3, req.text4]
+    videos = [req.video_url, req.video_url2, req.video_url3, req.video_url4]
+    start_time = 0
+
+    for i in range(4):
+        duration = 5
+        if videos[i]:
+            clips.append({
+                "asset": {"type": "video", "src": videos[i]},
+                "start": start_time,
+                "length": duration,
+                "fit": "cover"
+            })
+        clips.append({
+            "asset": {
+                "type": "title",
+                "text": texts[i],
+                "style": "bold",
+                "color": "#ffffff",
+                "size": "medium"
+            },
+            "start": start_time,
+            "length": duration
+        })
+        start_time += duration
+
+    async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(
-            "https://api.creatomate.com/v1/renders",
+            "https://api.shotstack.io/v1/render",
             headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
+                "x-api-key": shotstack_key,
+                "Content-Type": "application/json"
             },
             json={
-                "template_id": template_id,
-                "modifications": {
-                    "Text-1.text": req.text1,
-                    "Text-2.text": req.text2,
-                    "Text-3.text": req.text3,
-                    "Text-4.text": req.text4,
-                    "Background-1.source": req.video_url,
-                    "Background-2.source": req.video_url2,
-                    "Background-3.source": req.video_url3,
-                    "Background-4.source": req.video_url4,
-                    
+                "timeline": {
+                    "tracks": [
+                        {"clips": [c for c in clips if c["asset"]["type"] == "video"]},
+                        {"clips": [c for c in clips if c["asset"]["type"] == "title"]}
+                    ]
+                },
+                "output": {
+                    "format": "mp4",
+                    "resolution": "hd",
+                    "aspectRatio": "9:16"
                 }
             }
         )
-        return response.json()
+        data = response.json()
+        render_id = data.get("response", {}).get("id", "")
+        return {"render_id": render_id, "message": "Video is being rendered. Check back in 30 seconds."}
