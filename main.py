@@ -41,7 +41,7 @@ async def generate(req: GenerateRequest):
 
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
-            "https://api.anthropic.com/v1/messages",
+            "https://api.shotstack.io/stage/render",
             headers={
                 "x-api-key": anthropic_key,
                 "anthropic-version": "2023-06-01",
