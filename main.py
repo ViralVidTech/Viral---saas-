@@ -292,6 +292,8 @@ async def generate_audio(req: TTSRequest):
     except Exception as e:
         return {"error": f"Erreur TTS: {str(e)}"}
 
+
+# SHOTSTACK: CREATE VIDEO
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
     if not SHOTSTACK_API_KEY:
@@ -332,7 +334,6 @@ async def create_video(req: VideoRequest):
         tracks.append({
             "clips": [
                 {
-                    "alias": "speech",
                     "asset": {
                         "type": "audio",
                         "src": req.audio_url
@@ -347,23 +348,14 @@ async def create_video(req: VideoRequest):
             "clips": [
                 {
                     "asset": {
-                        "type": "caption",
-                        "src": "alias://speech",
-                        "font": {
-                            "color": "#ffffff",
-                            "size": 24,
-                            "stroke": "#000000",
-                            "strokeWidth": 1
-                        },
-                        "background": {
-                            "color": "#000000",
-                            "opacity": 0.45,
-                            "padding": 18,
-                            "borderRadius": 12
-                        }
+                        "type": "title",
+                        "text": f"{req.text1}\n\n{req.text2}\n\n{req.text3}\n\n{req.text4}".strip(),
+                        "style": "subtitle",
+                        "color": "#ffffff",
+                        "size": "small"
                     },
                     "start": 0,
-                    "length": "end",
+                    "length": start_time,
                     "position": "bottom"
                 }
             ]
@@ -372,129 +364,6 @@ async def create_video(req: VideoRequest):
     timeline = {
         "tracks": tracks
     }
-
-    if req.music_url.strip():
-        timeline["soundtrack"] = {
-            "src": req.music_url,
-            "volume": 0.12
-        }
-
-    payload = {
-        "timeline": timeline,
-        "output": {
-            "format": "mp4",
-            "aspectRatio": "9:16",
-            "resolution": "sd"
-        }
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                "https://api.shotstack.io/edit/stage/render",
-                headers={
-                    "x-api-key": SHOTSTACK_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json=payload
-            )
-
-        print("========== SHOTSTACK DEBUG START ==========")
-        print("SHOTSTACK STATUS =", response.status_code)
-        print("SHOTSTACK BODY =", response.text)
-        print("SHOTSTACK AUDIO URL =", req.audio_url)
-        print("SHOTSTACK MUSIC URL =", req.music_url)
-        print("SHOTSTACK VIDEO URLS =", video_urls)
-        print("SHOTSTACK PAYLOAD =", payload)
-        print("========== SHOTSTACK DEBUG END ==========")
-
-        try:
-            data = response.json()
-        except Exception:
-            data = {"raw_text": response.text}
-
-        if response.status_code not in [200, 201]:
-            return {
-                "error": "Shotstack a refusé le rendu",
-                "details": data
-            }
-
-        render_id = data.get("response", {}).get("id")
-        if not render_id:
-            return {
-                "error": "Shotstack n'a pas renvoyé d'id",
-                "details": data
-            }
-
-        return {
-            "success": True,
-            "render_id": render_id,
-            "message": "Vidéo envoyée à Shotstack. Vérifie ensuite le statut."
-        }
-
-    except Exception as e:
-        return {"error": f"Erreur Shotstack: {str(e)}"}
-# SHOTSTACK: CREATE VIDEO
-@app.post("/create-video")
-async def create_video(req: VideoRequest):
-    if not SHOTSTACK_API_KEY:
-        return {"error": "SHOTSTACK_API_KEY manquante"}
-
-    video_urls = [req.video_url, req.video_url2, req.video_url3, req.video_url4]
-
-    clips_video = []
-    start_time = 0
-
-    for i in range(4):
-        duration = 5
-
-        if video_urls[i]:
-            clips_video.append({
-                "asset": {
-                    "type": "video",
-                    "src": video_urls[i],
-                    "volume": 0
-                },
-                "start": start_time,
-                "length": duration,
-                "fit": "cover"
-            })
-
-        start_time += duration
-
-    if not clips_video:
-        return {"error": "Aucune vidéo n'a été fournie"}
-
-    timeline = {
-        "tracks": [
-            {
-                "clips": clips_video
-            }
-        ]
-    }
-
-    if req.audio_url.strip():
-        timeline["tracks"].append({
-    "clips": [
-        {
-            "asset": {
-                "type": "caption",
-                "src": "alias://speech",
-                "font": {
-                    "color": "#ffffff",
-                    "size": 24
-                },
-                "background": {
-                    "color": "#000000",
-                    "opacity": 0.45
-                }
-            },
-            "start": 0,
-            "length": start_time,
-            "position": "bottom"
-        }
-    ]
-})
 
     if req.music_url.strip():
         timeline["soundtrack"] = {
@@ -590,6 +459,7 @@ async def render_status(render_id: str):
             "status": info.get("status"),
             "url": info.get("url"),
             "id": info.get("id"),
+            "error": info.get("error")
         }
 
     except Exception as e:
