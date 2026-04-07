@@ -1287,60 +1287,322 @@
     }
   }
 
-  async function createVideo() {
-    const apiUrl = normalizeApiUrl(apiUrlInput.value);
-    const scriptLines = scriptOutput.value.split('\n\n').filter(t => t.trim() !== '');
-    const text1 = scriptLines[0] || nicheInput.value.trim() || 'Hook here';
-    const text2 = scriptLines[1] || 'Problem here';
-    const text3 = scriptLines[2] || 'Solution here';
-    const text4 = scriptLines[3] || 'CTA here';
+ async function createVideo() {
+  const apiUrl = normalizeApiUrl(apiUrlInput.value);
+  const scriptLines = scriptOutput.value.split('\n\n').filter(t => t.trim() !== '');
+  const text1 = scriptLines[0] || nicheInput.value.trim() || 'Hook here';
+  const text2 = scriptLines[1] || 'Problem here';
+  const text3 = scriptLines[2] || 'Solution here';
+  const text4 = scriptLines[3] || 'CTA here';
 
-    if (!apiUrl) {
-      setVideoStatus('Enter API URL first.', 'error');
+  if (!apiUrl) {
+    setVideoStatus('Enter API URL first.', 'error');
+    return;
+  }
+
+  if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4) {
+    setVideoStatus('Generate content first so the source videos are available.', 'error');
+    return;
+  }
+
+  setVideoStatus('Sending to Shotstack...', 'ready');
+
+  try {
+    const res = await fetch(`${apiUrl}/create-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text1,
+        text2,
+        text3,
+        text4,
+        video_url: window._pexelsVideoUrl || '',
+        video_url2: window._pexelsVideoUrl2 || '',
+        video_url3: window._pexelsVideoUrl3 || '',
+        video_url4: window._pexelsVideoUrl4 || '',
+        audio_url: window._generatedVoiceUrl || ''
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      console.error('VIDEO ERROR:', data);
+      setVideoStatus(`Video error: ${data.error || 'unknown error'}`, 'error');
       return;
     }
 
-    if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4) {
-      setVideoStatus('Generate content first so the source videos are available.', 'error');
+    if (!data.render_id) {
+      console.error('VIDEO ERROR:', data);
+      setVideoStatus('Video error: no render ID returned.', 'error');
       return;
     }
 
-    setVideoStatus('Sending to Shotstack...', 'ready');
+    const renderId = data.render_id;
+    window._shotstack_render_id = renderId;
+    setVideoStatus(`Video sent to Shotstack. Render ID: ${renderId}`, 'success');
+    addActivity('Video created', 'A new video is being rendered via Shotstack.');
 
-    try {
-      const res = await fetch(`${apiUrl}/create-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text1,
-          text2,
-          text3,
-          text4,
-          video_url: window._pexelsVideoUrl || '',
-          video_url2: window._pexelsVideoUrl2 || '',
-          video_url3: window._pexelsVideoUrl3 || '',
-          video_url4: window._pexelsVideoUrl4 || '',
-          audio_url: window._generatedVoiceUrl || ''
-        })
-      });
+    let tries = 0;
+    const maxTries = 40;
 
-      const data = await res.json();
+    const interval = setInterval(async () => {
+      tries++;
 
-      if (!res.ok || data.error) {
-        console.error('VIDEO ERROR:', data);
-        setVideoStatus(`Video error: ${data.error || 'unknown error'}`, 'error');
-        return;
+      try {
+        const statusRes = await fetch(`${apiUrl}/render-status/${renderId}`);
+        const statusData = await statusRes.json();
+
+        if (!statusRes.ok || statusData.error) {
+          clearInterval(interval);
+          console.error('STATUS ERROR:', statusData);
+          setVideoStatus(`Status error: ${statusData.error || 'unknown error'}`, 'error');
+          return;
+        }
+
+        if (statusData.status === 'done' && statusData.url) {
+          clearInterval(interval);
+          videoStatus.innerHTML = `Video ready: <a href="${statusData.url}" target="_blank" style="color:var(--cyan);">Download here</a>`;
+          videoStatus.className = 'status success';
+          addActivity('Video ready', 'Your rendered video is ready to download.');
+          return;
+        }
+
+        if (statusData.status === 'failed') {
+          clearInterval(interval);
+          setVideoStatus('Video rendering failed.', 'error');
+          return;
+        }
+
+        if (tries >= maxTries) {
+          clearInterval(interval);
+          setVideoStatus('Still rendering. Check again in a moment.', 'ready');
+          return;
+        }
+
+        setVideoStatus(`Rendering... (${statusData.status || 'waiting'})`, 'ready');
+      } catch (e) {
+        clearInterval(interval);
+        console.error('STATUS FETCH ERROR:', e);
+        setVideoStatus(`Status check failed: ${e.message}`, 'error');
       }
+    }, 5000);
 
-      if (!data.render_id) {
-        console.error('VIDEO ERROR:', data);
-        setVideoStatus('Video error: no render ID returned.', 'error');
-        return;
+  } catch (e) {
+    console.error('VIDEO FETCH ERROR:', e);
+    setVideoStatus(`Video error: ${e.message}`, 'error');
+  }
+}async function createVideo() {
+  const apiUrl = normalizeApiUrl(apiUrlInput.value);
+  const scriptLines = scriptOutput.value.split('\n\n').filter(t => t.trim() !== '');
+  const text1 = scriptLines[0] || nicheInput.value.trim() || 'Hook here';
+  const text2 = scriptLines[1] || 'Problem here';
+  const text3 = scriptLines[2] || 'Solution here';
+  const text4 = scriptLines[3] || 'CTA here';
+
+  if (!apiUrl) {
+    setVideoStatus('Enter API URL first.', 'error');
+    return;
+  }
+
+  if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4) {
+    setVideoStatus('Generate content first so the source videos are available.', 'error');
+    return;
+  }
+
+  setVideoStatus('Sending to Shotstack...', 'ready');
+
+  try {
+    const res = await fetch(`${apiUrl}/create-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text1,
+        text2,
+        text3,
+        text4,
+        video_url: window._pexelsVideoUrl || '',
+        video_url2: window._pexelsVideoUrl2 || '',
+        video_url3: window._pexelsVideoUrl3 || '',
+        video_url4: window._pexelsVideoUrl4 || '',
+        audio_url: window._generatedVoiceUrl || ''
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      console.error('VIDEO ERROR:', data);
+      setVideoStatus(`Video error: ${data.error || 'unknown error'}`, 'error');
+      return;
+    }
+
+    if (!data.render_id) {
+      console.error('VIDEO ERROR:', data);
+      setVideoStatus('Video error: no render ID returned.', 'error');
+      return;
+    }
+
+    const renderId = data.render_id;
+    window._shotstack_render_id = renderId;
+    setVideoStatus(`Video sent to Shotstack. Render ID: ${renderId}`, 'success');
+    addActivity('Video created', 'A new video is being rendered via Shotstack.');
+
+    let tries = 0;
+    const maxTries = 40;
+
+    const interval = setInterval(async () => {
+      tries++;
+
+      try {
+        const statusRes = await fetch(`${apiUrl}/render-status/${renderId}`);
+        const statusData = await statusRes.json();
+
+        if (!statusRes.ok || statusData.error) {
+          clearInterval(interval);
+          console.error('STATUS ERROR:', statusData);
+          setVideoStatus(`Status error: ${statusData.error || 'unknown error'}`, 'error');
+          return;
+        }
+
+        if (statusData.status === 'done' && statusData.url) {
+          clearInterval(interval);
+          videoStatus.innerHTML = `Video ready: <a href="${statusData.url}" target="_blank" style="color:var(--cyan);">Download here</a>`;
+          videoStatus.className = 'status success';
+          addActivity('Video ready', 'Your rendered video is ready to download.');
+          return;
+        }
+
+        if (statusData.status === 'failed') {
+          clearInterval(interval);
+          setVideoStatus('Video rendering failed.', 'error');
+          return;
+        }
+
+        if (tries >= maxTries) {
+          clearInterval(interval);
+          setVideoStatus('Still rendering. Check again in a moment.', 'ready');
+          return;
+        }
+
+        setVideoStatus(`Rendering... (${statusData.status || 'waiting'})`, 'ready');
+      } catch (e) {
+        clearInterval(interval);
+        console.error('STATUS FETCH ERROR:', e);
+        setVideoStatus(`Status check failed: ${e.message}`, 'error');
       }
+    }, 5000);
 
-      window._shotstack_render_id = data.render_id;
-      setVideoStatus(`Video sent to Shotstack. Render ID: ${data.render_id}`, 'success');
-      addActivity('Video created', 'A new video is being rendered via Shotstack.');
+  } catch (e) {
+    console.error('VIDEO FETCH ERROR:', e);
+    setVideoStatus(`Video error: ${e.message}`, 'error');
+  }
+}async function createVideo() {
+  const apiUrl = normalizeApiUrl(apiUrlInput.value);
+  const scriptLines = scriptOutput.value.split('\n\n').filter(t => t.trim() !== '');
+  const text1 = scriptLines[0] || nicheInput.value.trim() || 'Hook here';
+  const text2 = scriptLines[1] || 'Problem here';
+  const text3 = scriptLines[2] || 'Solution here';
+  const text4 = scriptLines[3] || 'CTA here';
+
+  if (!apiUrl) {
+    setVideoStatus('Enter API URL first.', 'error');
+    return;
+  }
+
+  if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4) {
+    setVideoStatus('Generate content first so the source videos are available.', 'error');
+    return;
+  }
+
+  setVideoStatus('Sending to Shotstack...', 'ready');
+
+  try {
+    const res = await fetch(`${apiUrl}/create-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text1,
+        text2,
+        text3,
+        text4,
+        video_url: window._pexelsVideoUrl || '',
+        video_url2: window._pexelsVideoUrl2 || '',
+        video_url3: window._pexelsVideoUrl3 || '',
+        video_url4: window._pexelsVideoUrl4 || '',
+        audio_url: window._generatedVoiceUrl || ''
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      console.error('VIDEO ERROR:', data);
+      setVideoStatus(`Video error: ${data.error || 'unknown error'}`, 'error');
+      return;
+    }
+
+    if (!data.render_id) {
+      console.error('VIDEO ERROR:', data);
+      setVideoStatus('Video error: no render ID returned.', 'error');
+      return;
+    }
+
+    const renderId = data.render_id;
+    window._shotstack_render_id = renderId;
+    setVideoStatus(`Video sent to Shotstack. Render ID: ${renderId}`, 'success');
+    addActivity('Video created', 'A new video is being rendered via Shotstack.');
+
+    let tries = 0;
+    const maxTries = 40;
+
+    const interval = setInterval(async () => {
+      tries++;
+
+      try {
+        const statusRes = await fetch(`${apiUrl}/render-status/${renderId}`);
+        const statusData = await statusRes.json();
+
+        if (!statusRes.ok || statusData.error) {
+          clearInterval(interval);
+          console.error('STATUS ERROR:', statusData);
+          setVideoStatus(`Status error: ${statusData.error || 'unknown error'}`, 'error');
+          return;
+        }
+
+        if (statusData.status === 'done' && statusData.url) {
+          clearInterval(interval);
+          videoStatus.innerHTML = `Video ready: <a href="${statusData.url}" target="_blank" style="color:var(--cyan);">Download here</a>`;
+          videoStatus.className = 'status success';
+          addActivity('Video ready', 'Your rendered video is ready to download.');
+          return;
+        }
+
+        if (statusData.status === 'failed') {
+          clearInterval(interval);
+          setVideoStatus('Video rendering failed.', 'error');
+          return;
+        }
+
+        if (tries >= maxTries) {
+          clearInterval(interval);
+          setVideoStatus('Still rendering. Check again in a moment.', 'ready');
+          return;
+        }
+
+        setVideoStatus(`Rendering... (${statusData.status || 'waiting'})`, 'ready');
+      } catch (e) {
+        clearInterval(interval);
+        console.error('STATUS FETCH ERROR:', e);
+        setVideoStatus(`Status check failed: ${e.message}`, 'error');
+      }
+    }, 5000);
+
+  } catch (e) {
+    console.error('VIDEO FETCH ERROR:', e);
+    setVideoStatus(`Video error: ${e.message}`, 'error');
+  }
+}
     } catch (e) {
       console.error('VIDEO FETCH ERROR:', e);
       setVideoStatus(`Video error: ${e.message}`, 'error');
