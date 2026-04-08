@@ -284,7 +284,7 @@ async def generate_audio(req: TTSRequest):
         return {"error": f"Erreur TTS: {str(e)}"}
 
 # SHOTSTACK: CREATE VIDEO
- @app.post("/create-video")
+@app.post("/create-video")
 async def create_video(req: VideoRequest):
     if not SHOTSTACK_API_KEY:
         return {"error": "SHOTSTACK_API_KEY manquante"}
