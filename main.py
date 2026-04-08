@@ -285,14 +285,16 @@ async def generate_audio(req: TTSRequest):
 
 
 # SHOTSTACK: CREATE VIDEO
-@app.post("/create-video")
+ @app.post("/create-video")
 async def create_video(req: VideoRequest):
     if not SHOTSTACK_API_KEY:
         return {"error": "SHOTSTACK_API_KEY manquante"}
 
     video_urls = [req.video_url, req.video_url2, req.video_url3, req.video_url4]
+    subtitle_texts = [req.text1, req.text2, req.text3, req.text4]
 
     clips_video = []
+    clips_subtitles = []
     start_time = 0
 
     for i in range(4):
@@ -308,6 +310,21 @@ async def create_video(req: VideoRequest):
                 "start": start_time,
                 "length": duration,
                 "fit": "cover"
+            })
+
+        if subtitle_texts[i].strip():
+            clips_subtitles.append({
+                "asset": {
+                    "type": "title",
+                    "text": subtitle_texts[i],
+                    "style": "subtitle",
+                    "color": "#ffffff",
+                    "size": "small",
+                    "background": "#000000"
+                },
+                "start": start_time,
+                "length": duration,
+                "position": "bottom"
             })
 
         start_time += duration
@@ -335,24 +352,9 @@ async def create_video(req: VideoRequest):
             ]
         })
 
-    subtitle_text = f"{req.text1}\n\n{req.text2}\n\n{req.text3}\n\n{req.text4}".strip()
-
-    if subtitle_text:
+    if clips_subtitles:
         tracks.append({
-            "clips": [
-                {
-                    "asset": {
-                        "type": "title",
-                        "text": subtitle_text,
-                        "style": "subtitle",
-                        "color": "#ffffff",
-                        "size": "small"
-                    },
-                    "start": 0,
-                    "length": start_time,
-                    "position": "bottom"
-                }
-            ]
+            "clips": clips_subtitles
         })
 
     timeline = {
@@ -391,6 +393,7 @@ async def create_video(req: VideoRequest):
         print("SHOTSTACK AUDIO URL =", req.audio_url)
         print("SHOTSTACK MUSIC URL =", req.music_url)
         print("SHOTSTACK VIDEO URLS =", video_urls)
+        print("SHOTSTACK SUBTITLE TEXTS =", subtitle_texts)
         print("SHOTSTACK PAYLOAD =", payload)
         print("========== SHOTSTACK DEBUG END ==========")
 
