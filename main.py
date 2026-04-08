@@ -283,7 +283,6 @@ async def generate_audio(req: TTSRequest):
     except Exception as e:
         return {"error": f"Erreur TTS: {str(e)}"}
 
-
 # SHOTSTACK: CREATE VIDEO
  @app.post("/create-video")
 async def create_video(req: VideoRequest):
