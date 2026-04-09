@@ -331,11 +331,16 @@ async def create_video(req: VideoRequest):
     if not clips_video:
         return {"error": "Aucune vidéo n'a été fournie"}
 
-    tracks = [
-        {
-            "clips": clips_video
-        }
-    ]
+        tracks = []
+
+    if clips_subtitles:
+        tracks.append({
+            "clips": clips_subtitles
+        })
+
+    tracks.append({
+        "clips": clips_video
+    })
 
     if req.audio_url.strip():
         tracks.append({
@@ -349,11 +354,6 @@ async def create_video(req: VideoRequest):
                     "length": start_time
                 }
             ]
-        })
-
-    if clips_subtitles:
-        tracks.append({
-            "clips": clips_subtitles
         })
 
     timeline = {
