@@ -116,7 +116,7 @@ Important rules:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-sonnet-4-6",
+                    "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 700,
                     "messages": [
                         {
@@ -302,10 +302,10 @@ async def create_video(req: VideoRequest):
         ]
 
         subtitle_texts = [
-            req.text1 or "",
-            req.text2 or "",
-            req.text3 or "",
-            req.text4 or "",
+            (req.text1 or "").strip()[:90],
+            (req.text2 or "").strip()[:90],
+            (req.text3 or "").strip()[:90],
+            (req.text4 or "").strip()[:90],
         ]
 
         clips_video = []
@@ -327,27 +327,20 @@ async def create_video(req: VideoRequest):
                     "fit": "cover"
                 })
 
-                        if subtitle_texts[i].strip():
-                clips_subtitles.append({
-                    "asset": {
-                        "type": "title",
-                        "text": subtitle_texts[i].strip(),
-                        "style": "subtitle",
-                        "color": "#ffffff",
-                        "size": "small",
-                        "background": "#000000"
-                    },
-                    "start": start_time,
-                    "length": duration,
-                    "position": "bottom"
-                })
-                        subtitle_texts = [
-            req.text1 or "",
-            req.text2 or "",
-            req.text3 or "",
-            req.text4 or "",
-        ]
-        subtitle_texts = [text.strip()[:90] for text in subtitle_texts]
+                if subtitle_texts[i]:
+                    clips_subtitles.append({
+                        "asset": {
+                            "type": "title",
+                            "text": subtitle_texts[i],
+                            "style": "subtitle",
+                            "color": "#ffffff",
+                            "size": "small",
+                            "background": "#000000"
+                        },
+                        "start": start_time,
+                        "length": duration,
+                        "position": "bottom"
+                    })
 
             start_time += duration
 
@@ -358,11 +351,6 @@ async def create_video(req: VideoRequest):
             )
 
         tracks = []
-
-        if clips_subtitles:
-            tracks.append({
-                "clips": clips_subtitles
-            })
 
         tracks.append({
             "clips": clips_video
@@ -380,6 +368,11 @@ async def create_video(req: VideoRequest):
                         "length": start_time
                     }
                 ]
+            })
+
+        if clips_subtitles:
+            tracks.append({
+                "clips": clips_subtitles
             })
 
         timeline = {
