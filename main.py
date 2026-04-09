@@ -302,10 +302,10 @@ async def create_video(req: VideoRequest):
         ]
 
         subtitle_texts = [
-            (req.text1 or "").strip()[:90],
-            (req.text2 or "").strip()[:90],
-            (req.text3 or "").strip()[:90],
-            (req.text4 or "").strip()[:90],
+            (req.text1 or "").strip()[:120],
+            (req.text2 or "").strip()[:120],
+            (req.text3 or "").strip()[:120],
+            (req.text4 or "").strip()[:120],
         ]
 
         clips_video = []
@@ -328,22 +328,37 @@ async def create_video(req: VideoRequest):
                 })
 
                 if subtitle_texts[i]:
-                    # CORRECT: position et offset sont sur l'ASSET, pas sur le clip
+                    # Utilisation du type "html" pour contrôler précisément
+                    # la largeur du conteneur et la taille de la police.
+                    # width=340 = légèrement moins large que la vidéo SD 9:16 (405px)
+                    # pour éviter que le texte soit coupé sur les bords.
+                    # font-size: 14px = petits caractères lisibles.
+                    # word-wrap: break-word = le texte revient à la ligne automatiquement.
                     clips_subtitles.append({
                         "asset": {
-                            "type": "title",
-                            "text": subtitle_texts[i],
-                            "style": "subtitle",
-                            "color": "#ffffff",
-                            "size": "small",
-                            "background": "#000000",
-                            "position": "bottom",
-                            "offset": {
-                                "y": -0.1
-                            }
+                            "type": "html",
+                            "html": f"<p>{subtitle_texts[i]}</p>",
+                            "css": (
+                                "p { "
+                                "font-family: 'Arial'; "
+                                "font-size: 14px; "
+                                "color: #ffffff; "
+                                "text-align: center; "
+                                "word-wrap: break-word; "
+                                "margin: 0; "
+                                "padding: 4px 8px; "
+                                "}"
+                            ),
+                            "width": 340,
+                            "height": 80,
+                            "background": "#77000000"
                         },
                         "start": start_time,
-                        "length": duration
+                        "length": duration,
+                        "position": "bottom",
+                        "offset": {
+                            "y": 0.05
+                        }
                     })
 
             start_time += duration
