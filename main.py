@@ -328,6 +328,22 @@ async def create_video(req: VideoRequest):
                 })
 
                         if subtitle_texts[i].strip():
+                        for i in range(4):
+            duration = 5
+
+            if video_urls[i].strip():
+                clips_video.append({
+                    "asset": {
+                        "type": "video",
+                        "src": video_urls[i].strip(),
+                        "volume": 0
+                    },
+                    "start": start_time,
+                    "length": duration,
+                    "fit": "cover"
+                })
+
+            if subtitle_texts[i].strip():
                 clips_subtitles.append({
                     "asset": {
                         "type": "title",
