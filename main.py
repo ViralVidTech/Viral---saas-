@@ -327,26 +327,27 @@ async def create_video(req: VideoRequest):
                     "fit": "cover"
                 })
 
-            if subtitle_texts[i].strip():
+                        if subtitle_texts[i].strip():
                 clips_subtitles.append({
                     "asset": {
                         "type": "title",
                         "text": subtitle_texts[i].strip(),
-                        "style": "minimal",
+                        "style": "subtitle",
                         "color": "#ffffff",
                         "size": "small",
-                        "background": "rgba(0,0,0,0.72)",
-                        "padding": 0.02,
-                        "width": 0.82,
-                        "align": "center"
+                        "background": "#000000"
                     },
                     "start": start_time,
                     "length": duration,
-                    "position": "bottom",
-                    "offset": {
-                        "y": 0.80
-                    }
+                    "position": "bottom"
                 })
+                        subtitle_texts = [
+            req.text1 or "",
+            req.text2 or "",
+            req.text3 or "",
+            req.text4 or "",
+        ]
+        subtitle_texts = [text.strip()[:90] for text in subtitle_texts]
 
             start_time += duration
 
