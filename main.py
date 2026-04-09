@@ -324,22 +324,16 @@ async def create_video(req: VideoRequest):
             if subtitle_texts[i]:
                 subtitle_clips.append({
                     "asset": {
-                        "type": "html",
-                        "html": f"<p>{subtitle_texts[i]}</p>",
-                        "css": SUBTITLE_CSS,
-                        "width": SUBTITLE_WIDTH,
-                        "height": SUBTITLE_HEIGHT,
-                        "background": "#99000000"
-                    },
-                    "start": clip_start,
-                    "length": SEGMENT_DURATION - SUBTITLE_GAP,
-                    "position": "bottom",
-                    "offset": {
-                        "x": 0,
-                        "y": 0.06
-                    }
-                })
-
+                        "type": "title",
+                        "text": subtitle_texts[i],
+        "style": "minimal",
+        "color": "#ffffff",
+        "size": "small"
+    },
+    "start": clip_start,
+    "length": SEGMENT_DURATION - 0.2,
+    "position": "bottom"
+})
         if not clips_video:
             return JSONResponse(status_code=400, content={"error": "Aucune vidéo n'a été fournie"})
 
