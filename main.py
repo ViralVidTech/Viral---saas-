@@ -6,6 +6,9 @@ import os
 import uuid
 import base64
 import httpx
+import subprocess
+import shutil
+from pathlib import Path
 
 app = FastAPI()
 
@@ -17,14 +20,18 @@ app.add_middleware(
 )
 
 # CONFIG
-SHOTSTACK_API_KEY = os.getenv("SHOTSTACK_API_KEY", "")
 GOOGLE_TTS_API_KEY = os.getenv("GOOGLE_TTS_API_KEY", "")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
 AUDIO_DIR = "audio"
+VIDEO_DIR = "videos"
+WORK_DIR = "work"
+
 os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(VIDEO_DIR, exist_ok=True)
+os.makedirs(WORK_DIR, exist_ok=True)
 
 
 # MODELS
@@ -53,6 +60,64 @@ class VideoRequest(BaseModel):
     music_url: str = ""
 
 
+# ── UTILITAIRES FFMPEG ──────────────────────────────────────────────────────
+
+def ffmpeg_exists():
+    return shutil.which("ffmpeg") is not None
+
+
+def run_cmd(cmd):
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Commande échouée:\n{' '.join(cmd)}"
+            f"\n\nSTDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
+        )
+    return result
+
+
+async def download_file(url: str, dest_path: str):
+    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        with open(dest_path, "wb") as f:
+            f.write(response.content)
+
+
+def srt_timestamp(seconds: float) -> str:
+    ms = int(round(seconds * 1000))
+    h = ms // 3600000
+    ms %= 3600000
+    m = ms // 60000
+    ms %= 60000
+    s = ms // 1000
+    ms %= 1000
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
+    entries = []
+    idx = 1
+    for i, text in enumerate(subtitle_texts):
+        clean = " ".join((text or "").strip().split())
+        if not clean:
+            continue
+        start = i * segment_duration
+        end = start + segment_duration - 0.15
+        entries.append(
+            f"{idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{clean}\n"
+        )
+        idx += 1
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(entries))
+
+
+def escape_srt_path(path_str: str) -> str:
+    return path_str.replace("\\", "\\\\").replace(":", "\\:")
+
+
+# ── ROUTES ──────────────────────────────────────────────────────────────────
+
 # HOME
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
@@ -63,7 +128,25 @@ async def serve_ui():
     return "<h1>API is running</h1>"
 
 
-# GENERATE SCRIPT + FETCH PEXELS VIDEOS
+# SERVIR LES FICHIERS AUDIO
+@app.get("/audio/{filename}")
+async def serve_audio(filename: str):
+    file_path = os.path.join(AUDIO_DIR, filename)
+    if not os.path.exists(file_path):
+        return {"error": "Audio file not found"}
+    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
+
+
+# SERVIR LES VIDÉOS GÉNÉRÉES
+@app.get("/video/{filename}")
+async def serve_video(filename: str):
+    file_path = os.path.join(VIDEO_DIR, filename)
+    if not os.path.exists(file_path):
+        return {"error": "Video file not found"}
+    return FileResponse(file_path, media_type="video/mp4", filename=filename)
+
+
+# GÉNÉRER SCRIPT + VIDÉOS PEXELS
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     niche = req.niche.strip() or "general topic"
@@ -170,7 +253,7 @@ Important rules:
                 cta = clean.split(":", 1)[1].strip()
 
         script_parts = [hook, problem, solution, cta]
-        script = "\n\n".join([part for part in script_parts if part])
+        script = "\n\n".join([p for p in script_parts if p])
 
         video_urls = ["", "", "", ""]
 
@@ -206,15 +289,6 @@ Important rules:
 
     except Exception as e:
         return {"error": f"Erreur Claude: {str(e)}"}
-
-
-# SERVE AUDIO FILES
-@app.get("/audio/{filename}")
-async def serve_audio(filename: str):
-    file_path = os.path.join(AUDIO_DIR, filename)
-    if not os.path.exists(file_path):
-        return {"error": "Audio file not found"}
-    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
 
 
 # GOOGLE TTS
@@ -253,18 +327,17 @@ async def generate_audio(req: TTSRequest):
         return {"error": f"Erreur TTS: {str(e)}"}
 
 
-# SHOTSTACK: CREATE VIDEO
-# SHOTSTACK: CREATE VIDEO
+# FFMPEG: CRÉER LA VIDÉO FINALE
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
     try:
-        if not SHOTSTACK_API_KEY:
-            return JSONResponse(status_code=400, content={"error": "SHOTSTACK_API_KEY manquante"})
+        if not PUBLIC_BASE_URL:
+            return JSONResponse(status_code=400, content={"error": "PUBLIC_BASE_URL manquante"})
 
-        def clean_text(value: str, max_len: int = 110) -> str:
-            text = (value or "").strip()
-            text = " ".join(text.split())
-            return text[:max_len]
+        if not ffmpeg_exists():
+            return JSONResponse(status_code=500, content={
+                "error": "FFmpeg n'est pas installé sur le serveur"
+            })
 
         video_urls = [
             (req.video_url or "").strip(),
@@ -272,278 +345,158 @@ async def create_video(req: VideoRequest):
             (req.video_url3 or "").strip(),
             (req.video_url4 or "").strip(),
         ]
-
         subtitle_texts = [
-            clean_text(req.text1),
-            clean_text(req.text2),
-            clean_text(req.text3),
-            clean_text(req.text4),
+            (req.text1 or "").strip()[:140],
+            (req.text2 or "").strip()[:140],
+            (req.text3 or "").strip()[:140],
+            (req.text4 or "").strip()[:140],
         ]
 
-        clips_video = []
-        subtitle_clips = []
-
-        SEGMENT_DURATION = 5
-        SUBTITLE_GAP = 0.15
-        total_duration = 20
-
-        SUBTITLE_WIDTH = 360
-        SUBTITLE_HEIGHT = 120
-
-        SUBTITLE_CSS = """
-        p {
-            font-family: Arial, sans-serif;
-            font-size: 22px;
-            font-weight: 700;
-            color: #ffffff;
-            text-align: center;
-            margin: 0;
-            padding: 10px 14px;
-            line-height: 1.25;
-            word-break: break-word;
-            overflow-wrap: break-word;
-            white-space: normal;
-        }
-        """.strip()
-
-        for i in range(4):
-            clip_start = i * SEGMENT_DURATION
-
-            if video_urls[i]:
-                clips_video.append({
-                    "asset": {
-                        "type": "video",
-                        "src": video_urls[i],
-                        "volume": 0
-                    },
-                    "start": clip_start,
-                    "length": SEGMENT_DURATION,
-                    "fit": "cover"
-                })
-
-            if subtitle_texts[i]:
-                subtitle_clips.append({
-                    "asset": {
-                        "type": "title",
-                        "text": subtitle_texts[i],
-        "style": "minimal",
-        "color": "#ffffff",
-        "size": "small"
-    },
-    "start": clip_start,
-    "length": SEGMENT_DURATION - 0.2,
-    "position": "bottom"
-})
-        if not clips_video:
+        valid_video_urls = [u for u in video_urls if u]
+        if not valid_video_urls:
             return JSONResponse(status_code=400, content={"error": "Aucune vidéo n'a été fournie"})
 
-        tracks = []
+        segment_duration = 5
+        total_duration = len(valid_video_urls) * segment_duration
 
-        # Sous-titres au-dessus
-        if subtitle_clips:
-            tracks.append({
-                "clips": subtitle_clips
-            })
+        job_id = uuid.uuid4().hex
+        job_dir = os.path.join(WORK_DIR, job_id)
+        os.makedirs(job_dir, exist_ok=True)
 
-        # Voix
-        if (req.audio_url or "").strip():
-            tracks.append({
-                "clips": [{
-                    "asset": {
-                        "type": "audio",
-                        "src": req.audio_url.strip()
-                    },
-                    "start": 0,
-                    "length": total_duration
-                }]
-            })
+        # 1) Télécharger les vidéos
+        raw_video_paths = []
+        for i, url in enumerate(valid_video_urls):
+            raw_path = os.path.join(job_dir, f"raw_{i}.mp4")
+            await download_file(url, raw_path)
+            raw_video_paths.append(raw_path)
 
-        # Vidéo au fond
-        tracks.append({
-            "clips": clips_video
-        })
+        # 2) Normaliser chaque vidéo : 405×720, 5 sec, 30 fps, sans audio
+        norm_video_paths = []
+        for i, raw_path in enumerate(raw_video_paths):
+            norm_path = os.path.join(job_dir, f"seg_{i}.mp4")
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", raw_path,
+                "-t", str(segment_duration),
+                "-vf", "scale=405:720:force_original_aspect_ratio=increase,crop=405:720,fps=30,format=yuv420p",
+                "-an",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                norm_path
+            ])
+            norm_video_paths.append(norm_path)
 
-        timeline = {"tracks": tracks}
+        # 3) Concaténer les segments
+        concat_list_path = os.path.join(job_dir, "concat.txt")
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            for path in norm_video_paths:
+                f.write(f"file '{Path(path).as_posix()}'\n")
 
-        # Musique de fond
-        if (req.music_url or "").strip():
-            timeline["soundtrack"] = {
-                "src": req.music_url.strip(),
-                "volume": 0.12
-            }
+        stitched_path = os.path.join(job_dir, "stitched.mp4")
+        run_cmd([
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", concat_list_path,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-pix_fmt", "yuv420p", "-an",
+            stitched_path
+        ])
 
-        payload = {
-            "timeline": timeline,
-            "output": {
-                "format": "mp4",
-                "aspectRatio": "9:16",
-                "resolution": "sd"
-            }
-        }
+        # 4) Préparer l'audio (voix + musique optionnelle)
+        final_audio_path = None
+        voice_url = (req.audio_url or "").strip()
+        music_url = (req.music_url or "").strip()
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                "https://api.shotstack.io/edit/stage/render",
-                headers={
-                    "x-api-key": SHOTSTACK_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json=payload
-            )
+        if voice_url:
+            voice_path = os.path.join(job_dir, "voice.mp3")
+            await download_file(voice_url, voice_path)
 
-        print("========== SHOTSTACK DEBUG START ==========")
-        print("SHOTSTACK STATUS =", response.status_code)
-        print("SHOTSTACK BODY =", response.text)
-        print("SHOTSTACK SUBTITLE TEXTS =", subtitle_texts)
-        print("SHOTSTACK PAYLOAD =", payload)
-        print("========== SHOTSTACK DEBUG END ==========")
+            if music_url:
+                music_path = os.path.join(job_dir, "music.mp3")
+                await download_file(music_url, music_path)
+                mixed_path = os.path.join(job_dir, "mixed.m4a")
+                run_cmd([
+                    "ffmpeg", "-y",
+                    "-i", voice_path,
+                    "-stream_loop", "-1", "-i", music_path,
+                    "-filter_complex",
+                    f"[1:a]volume=0.12,atrim=0:{total_duration}[bg];"
+                    f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+                    "-map", "[aout]",
+                    "-c:a", "aac", "-b:a", "192k",
+                    mixed_path
+                ])
+                final_audio_path = mixed_path
+            else:
+                voice_aac_path = os.path.join(job_dir, "voice_only.m4a")
+                run_cmd([
+                    "ffmpeg", "-y",
+                    "-i", voice_path,
+                    "-t", str(total_duration),
+                    "-c:a", "aac", "-b:a", "192k",
+                    voice_aac_path
+                ])
+                final_audio_path = voice_aac_path
 
-        try:
-            data = response.json()
-        except Exception:
-            return JSONResponse(status_code=500, content={
-                "error": "Réponse Shotstack non JSON",
-                "raw_response": response.text
-            })
+        # 5) Générer le fichier SRT (sous-titres synchronisés)
+        srt_path = os.path.join(job_dir, "subtitles.srt")
+        write_srt(subtitle_texts[:len(valid_video_urls)], segment_duration, srt_path)
 
-        if response.status_code not in [200, 201]:
-            return JSONResponse(status_code=400, content={
-                "error": "Shotstack a refusé le rendu",
-                "details": data
-            })
+        # 6) Rendu final avec sous-titres brûlés via FFmpeg
+        output_filename = f"{job_id}.mp4"
+        output_path = os.path.join(VIDEO_DIR, output_filename)
 
-        render_id = data.get("response", {}).get("id")
-        if not render_id:
-            return JSONResponse(status_code=500, content={
-                "error": "Shotstack n'a pas renvoyé d'id",
-                "details": data
-            })
+        srt_escaped = escape_srt_path(os.path.abspath(srt_path))
+        subtitle_filter = (
+            f"subtitles='{srt_escaped}':"
+            "force_style='Alignment=2,MarginV=28,"
+            "FontName=Arial,FontSize=17,Bold=1,"
+            "PrimaryColour=&H00FFFFFF,"
+            "OutlineColour=&H00000000,"
+            "BorderStyle=1,Outline=2,Shadow=0'"
+        )
 
-        return JSONResponse(status_code=200, content={
-            "success": True,
-            "render_id": render_id,
-            "message": "Vidéo envoyée à Shotstack. Vérifie ensuite le statut."
-        })
+        if final_audio_path:
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", stitched_path,
+                "-i", final_audio_path,
+                "-vf", subtitle_filter,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "192k",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                "-shortest",
+                output_path
+            ])
+        else:
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", stitched_path,
+                "-vf", subtitle_filter,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                output_path
+            ])
 
-    except Exception as e:
-        print("CREATE VIDEO INTERNAL ERROR =", str(e))
-        return JSONResponse(status_code=500, content={"error": f"Erreur interne create-video: {str(e)}"})
-
-        # STRUCTURE DES TRACKS — ordre Shotstack (premier = dessus) :
-        # Track 0 : sous-titres (1 seul track, 4 clips séquentiels sans chevauchement)
-        # Track 1 : audio voix
-        # Track 2 : vidéo background (tout en bas)
-        tracks = []
-
-        # Track sous-titres — UN SEUL track avec tous les clips dedans
-        if clips_subtitles:
-            tracks.append({"clips": clips_subtitles})
-
-        # Track audio voix
-        if (req.audio_url or "").strip():
-            tracks.append({
-                "clips": [{
-                    "asset": {"type": "audio", "src": req.audio_url.strip()},
-                    "start": 0,
-                    "length": total_duration
-                }]
-            })
-
-        # Track vidéo — tout en bas
-        tracks.append({"clips": clips_video})
-
-        timeline = {"tracks": tracks}
-
-        if (req.music_url or "").strip():
-            timeline["soundtrack"] = {
-                "src": req.music_url.strip(),
-                "volume": 0.12
-            }
-
-        payload = {
-            "timeline": timeline,
-            "output": {
-                "format": "mp4",
-                "aspectRatio": "9:16",
-                "resolution": "sd"
-            }
-        }
-
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                "https://api.shotstack.io/edit/stage/render",
-                headers={
-                    "x-api-key": SHOTSTACK_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json=payload
-            )
-
-        print("========== SHOTSTACK DEBUG START ==========")
-        print("SHOTSTACK STATUS =", response.status_code)
-        print("SHOTSTACK BODY =", response.text)
-        print("SOUS-TITRES TIMINGS:")
-        for i, c in enumerate(clips_subtitles):
-            print(f"  clip{i+1}: start={c['start']} length={c['length']} fin={c['start']+c['length']}")
-        print("SHOTSTACK PAYLOAD =", payload)
-        print("========== SHOTSTACK DEBUG END ==========")
-
-        try:
-            data = response.json()
-        except Exception:
-            return JSONResponse(status_code=500, content={
-                "error": "Réponse Shotstack non JSON",
-                "raw_response": response.text
-            })
-
-        if response.status_code not in [200, 201]:
-            return JSONResponse(status_code=400, content={
-                "error": "Shotstack a refusé le rendu",
-                "details": data
-            })
-
-        render_id = data.get("response", {}).get("id")
-        if not render_id:
-            return JSONResponse(status_code=500, content={
-                "error": "Shotstack n'a pas renvoyé d'id",
-                "details": data
-            })
+        video_url = f"{PUBLIC_BASE_URL}/video/{output_filename}"
 
         return JSONResponse(status_code=200, content={
             "success": True,
-            "render_id": render_id,
-            "message": "Vidéo envoyée à Shotstack. Vérifie ensuite le statut."
+            "video_url": video_url,
+            "message": "Vidéo générée avec FFmpeg"
         })
 
+    except httpx.HTTPError as e:
+        return JSONResponse(status_code=500, content={
+            "error": f"Erreur téléchargement: {str(e)}"
+        })
+    except RuntimeError as e:
+        return JSONResponse(status_code=500, content={
+            "error": f"Erreur FFmpeg: {str(e)}"
+        })
     except Exception as e:
-        print("CREATE VIDEO INTERNAL ERROR =", str(e))
-        return JSONResponse(status_code=500, content={"error": f"Erreur interne create-video: {str(e)}"})
-
-
-# SHOTSTACK: CHECK STATUS
-@app.get("/render-status/{render_id}")
-async def render_status(render_id: str):
-    if not SHOTSTACK_API_KEY:
-        return {"error": "SHOTSTACK_API_KEY manquante"}
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.get(
-                f"https://api.shotstack.io/edit/stage/render/{render_id}",
-                headers={
-                    "x-api-key": SHOTSTACK_API_KEY,
-                    "Content-Type": "application/json"
-                }
-            )
-        data = response.json()
-        if response.status_code != 200:
-            return {"error": "Impossible de lire le statut Shotstack", "details": data}
-        info = data.get("response", {})
-        return {
-            "success": True,
-            "status": info.get("status"),
-            "url": info.get("url"),
-            "id": info.get("id"),
-            "error": info.get("error")
-        }
-    except Exception as e:
-        return {"error": f"Erreur statut Shotstack: {str(e)}"}
+        return JSONResponse(status_code=500, content={
+            "error": f"Erreur create-video: {str(e)}"
+        })
