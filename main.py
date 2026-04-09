@@ -254,93 +254,186 @@ async def generate_audio(req: TTSRequest):
 
 
 # SHOTSTACK: CREATE VIDEO
+# SHOTSTACK: CREATE VIDEO
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
     try:
         if not SHOTSTACK_API_KEY:
             return JSONResponse(status_code=400, content={"error": "SHOTSTACK_API_KEY manquante"})
 
+        def clean_text(value: str, max_len: int = 110) -> str:
+            text = (value or "").strip()
+            text = " ".join(text.split())
+            return text[:max_len]
+
         video_urls = [
-            req.video_url or "",
-            req.video_url2 or "",
-            req.video_url3 or "",
-            req.video_url4 or "",
+            (req.video_url or "").strip(),
+            (req.video_url2 or "").strip(),
+            (req.video_url3 or "").strip(),
+            (req.video_url4 or "").strip(),
         ]
 
         subtitle_texts = [
-            (req.text1 or "").strip()[:80],
-            (req.text2 or "").strip()[:80],
-            (req.text3 or "").strip()[:80],
-            (req.text4 or "").strip()[:80],
+            clean_text(req.text1),
+            clean_text(req.text2),
+            clean_text(req.text3),
+            clean_text(req.text4),
         ]
 
-        # Chaque clip dure exactement 5 secondes
-        # start: 0, 5, 10, 15 — fixes et calculés proprement
-        CLIP_DURATION = 5
-
         clips_video = []
+        subtitle_clips = []
 
-        # UN SEUL TRACK de sous-titres avec les 4 clips dedans
-        # Les clips sont séquentiels et ne se chevauchent PAS:
-        #   clip1: start=0,  length=4.5  → finit à 4.5s
-        #   clip2: start=5,  length=4.5  → finit à 9.5s
-        #   clip3: start=10, length=4.5  → finit à 14.5s
-        #   clip4: start=15, length=4.5  → finit à 19.5s
-        # Chaque clip commence APRÈS la fin du précédent → zéro chevauchement
-        clips_subtitles = []
+        SEGMENT_DURATION = 5
+        SUBTITLE_GAP = 0.15
+        total_duration = 20
+
+        SUBTITLE_WIDTH = 360
+        SUBTITLE_HEIGHT = 120
+
+        SUBTITLE_CSS = """
+        p {
+            font-family: Arial, sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffffff;
+            text-align: center;
+            margin: 0;
+            padding: 10px 14px;
+            line-height: 1.25;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            white-space: normal;
+        }
+        """.strip()
 
         for i in range(4):
-            clip_start  = i * CLIP_DURATION          # 0, 5, 10, 15
-            clip_length = CLIP_DURATION - 0.5         # 4.5 — finit 0.5s avant le suivant
+            clip_start = i * SEGMENT_DURATION
 
-            if video_urls[i].strip():
+            if video_urls[i]:
                 clips_video.append({
                     "asset": {
                         "type": "video",
-                        "src": video_urls[i].strip(),
+                        "src": video_urls[i],
                         "volume": 0
                     },
                     "start": clip_start,
-                    "length": CLIP_DURATION,
+                    "length": SEGMENT_DURATION,
                     "fit": "cover"
                 })
 
             if subtitle_texts[i]:
-                clips_subtitles.append({
+                subtitle_clips.append({
                     "asset": {
                         "type": "html",
                         "html": f"<p>{subtitle_texts[i]}</p>",
-                        "css": (
-                            "p {"
-                            "font-family: Arial, sans-serif;"
-                            "font-size: 28px;"
-                            "font-weight: bold;"
-                            "color: #ffffff;"
-                            "text-align: center;"
-                            "word-wrap: break-word;"
-                            "margin: 0;"
-                            "padding: 10px 14px;"
-                            "line-height: 1.4;"
-                            "}"
-                        ),
-                        # width 380px = toute la largeur de la vidéo SD (405px) minus marges
-                        # height 180px = assez pour 3 lignes de texte 28px sans jamais couper
-                        "width": 380,
-                        "height": 180,
-                        "background": "#CC000000"
+                        "css": SUBTITLE_CSS,
+                        "width": SUBTITLE_WIDTH,
+                        "height": SUBTITLE_HEIGHT,
+                        "background": "#99000000"
                     },
-                    # start et length sur le CLIP — synchronisés exactement avec la vidéo
                     "start": clip_start,
-                    "length": clip_length,
-                    # position et offset sur le CLIP — pas dans l'asset
+                    "length": SEGMENT_DURATION - SUBTITLE_GAP,
                     "position": "bottom",
-                    "offset": {"x": 0, "y": 0.05}
+                    "offset": {
+                        "x": 0,
+                        "y": 0.06
+                    }
                 })
-
-        total_duration = 4 * CLIP_DURATION  # 20 secondes
 
         if not clips_video:
             return JSONResponse(status_code=400, content={"error": "Aucune vidéo n'a été fournie"})
+
+        tracks = []
+
+        # Sous-titres au-dessus
+        if subtitle_clips:
+            tracks.append({
+                "clips": subtitle_clips
+            })
+
+        # Voix
+        if (req.audio_url or "").strip():
+            tracks.append({
+                "clips": [{
+                    "asset": {
+                        "type": "audio",
+                        "src": req.audio_url.strip()
+                    },
+                    "start": 0,
+                    "length": total_duration
+                }]
+            })
+
+        # Vidéo au fond
+        tracks.append({
+            "clips": clips_video
+        })
+
+        timeline = {"tracks": tracks}
+
+        # Musique de fond
+        if (req.music_url or "").strip():
+            timeline["soundtrack"] = {
+                "src": req.music_url.strip(),
+                "volume": 0.12
+            }
+
+        payload = {
+            "timeline": timeline,
+            "output": {
+                "format": "mp4",
+                "aspectRatio": "9:16",
+                "resolution": "sd"
+            }
+        }
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                "https://api.shotstack.io/edit/stage/render",
+                headers={
+                    "x-api-key": SHOTSTACK_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                json=payload
+            )
+
+        print("========== SHOTSTACK DEBUG START ==========")
+        print("SHOTSTACK STATUS =", response.status_code)
+        print("SHOTSTACK BODY =", response.text)
+        print("SHOTSTACK SUBTITLE TEXTS =", subtitle_texts)
+        print("SHOTSTACK PAYLOAD =", payload)
+        print("========== SHOTSTACK DEBUG END ==========")
+
+        try:
+            data = response.json()
+        except Exception:
+            return JSONResponse(status_code=500, content={
+                "error": "Réponse Shotstack non JSON",
+                "raw_response": response.text
+            })
+
+        if response.status_code not in [200, 201]:
+            return JSONResponse(status_code=400, content={
+                "error": "Shotstack a refusé le rendu",
+                "details": data
+            })
+
+        render_id = data.get("response", {}).get("id")
+        if not render_id:
+            return JSONResponse(status_code=500, content={
+                "error": "Shotstack n'a pas renvoyé d'id",
+                "details": data
+            })
+
+        return JSONResponse(status_code=200, content={
+            "success": True,
+            "render_id": render_id,
+            "message": "Vidéo envoyée à Shotstack. Vérifie ensuite le statut."
+        })
+
+    except Exception as e:
+        print("CREATE VIDEO INTERNAL ERROR =", str(e))
+        return JSONResponse(status_code=500, content={"error": f"Erreur interne create-video: {str(e)}"})
 
         # STRUCTURE DES TRACKS — ordre Shotstack (premier = dessus) :
         # Track 0 : sous-titres (1 seul track, 4 clips séquentiels sans chevauchement)
