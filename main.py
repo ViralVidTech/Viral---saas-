@@ -350,11 +350,16 @@ async def create_video(req: VideoRequest):
                 content={"error": "Aucune vidéo n'a été fournie"}
             )
 
+        # ORDRE CORRECT SHOTSTACK:
+        # tracks[0] = couche du DESSUS (sous-titres → visible par-dessus la vidéo)
+        # tracks[1] = audio
+        # tracks[-1] = couche du DESSOUS (vidéo → background)
         tracks = []
 
-        tracks.append({
-            "clips": clips_video
-        })
+        if clips_subtitles:
+            tracks.append({
+                "clips": clips_subtitles
+            })
 
         if (req.audio_url or "").strip():
             tracks.append({
@@ -370,10 +375,10 @@ async def create_video(req: VideoRequest):
                 ]
             })
 
-        if clips_subtitles:
-            tracks.append({
-                "clips": clips_subtitles
-            })
+        # Vidéo toujours en DERNIER = couche du dessous (background)
+        tracks.append({
+            "clips": clips_video
+        })
 
         timeline = {
             "tracks": tracks
