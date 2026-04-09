@@ -327,27 +327,26 @@ async def create_video(req: VideoRequest):
                     "fit": "cover"
                 })
 
-            if subtitle_texts[i].strip():
-                clips_subtitles.append(if subtitle_texts[i].strip():
-    clips_subtitles.append({
-        "asset": {
-            "type": "title",
-            "text": subtitle_texts[i].strip(),
-            "style": "minimal",
-            "color": "#ffffff",
-            "size": "small",
-            "background": "rgba(0,0,0,0.72)",
-            "padding": 0.02,
-            "width": 0.82,
-            "align": "center"
-        },
-        "start": start_time,
-        "length": duration,
-        "position": "bottom",
-        "offset": {
-            "y": 0.80
-        }
-    }))
+                        if subtitle_texts[i].strip():
+                clips_subtitles.append({
+                    "asset": {
+                        "type": "title",
+                        "text": subtitle_texts[i].strip(),
+                        "style": "minimal",
+                        "color": "#ffffff",
+                        "size": "small",
+                        "background": "rgba(0,0,0,0.72)",
+                        "padding": 0.02,
+                        "width": 0.82,
+                        "align": "center"
+                    },
+                    "start": start_time,
+                    "length": duration,
+                    "position": "bottom",
+                    "offset": {
+                        "y": 0.80
+                    }
+                })
 
             start_time += duration
 
