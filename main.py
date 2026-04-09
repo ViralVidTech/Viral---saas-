@@ -328,12 +328,6 @@ async def create_video(req: VideoRequest):
                 })
 
                 if subtitle_texts[i]:
-                    # Utilisation du type "html" pour contrôler précisément
-                    # la largeur du conteneur et la taille de la police.
-                    # width=340 = légèrement moins large que la vidéo SD 9:16 (405px)
-                    # pour éviter que le texte soit coupé sur les bords.
-                    # font-size: 14px = petits caractères lisibles.
-                    # word-wrap: break-word = le texte revient à la ligne automatiquement.
                     clips_subtitles.append({
                         "asset": {
                             "type": "html",
@@ -341,17 +335,19 @@ async def create_video(req: VideoRequest):
                             "css": (
                                 "p { "
                                 "font-family: 'Arial'; "
-                                "font-size: 14px; "
+                                "font-size: 19px; "
+                                "font-weight: bold; "
                                 "color: #ffffff; "
                                 "text-align: center; "
                                 "word-wrap: break-word; "
                                 "margin: 0; "
-                                "padding: 4px 8px; "
+                                "padding: 6px 10px; "
+                                "line-height: 1.4; "
                                 "}"
                             ),
-                            "width": 340,
-                            "height": 80,
-                            "background": "#77000000"
+                            "width": 360,
+                            "height": 110,
+                            "background": "#BB000000"
                         },
                         "start": start_time,
                         "length": duration,
