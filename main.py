@@ -330,6 +330,7 @@ async def generate_audio(req: TTSRequest):
 # FFMPEG: CRÉER LA VIDÉO FINALE
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
+    job_dir = None
     try:
         if not PUBLIC_BASE_URL:
             return JSONResponse(status_code=400, content={"error": "PUBLIC_BASE_URL manquante"})
@@ -381,6 +382,7 @@ async def create_video(req: VideoRequest):
                 "-vf", "scale=405:720:force_original_aspect_ratio=increase,crop=405:720,fps=30,format=yuv420p",
                 "-an",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-r", "30",
                 norm_path
             ])
             norm_video_paths.append(norm_path)
@@ -397,6 +399,7 @@ async def create_video(req: VideoRequest):
             "-f", "concat", "-safe", "0",
             "-i", concat_list_path,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-r", "30",
             "-pix_fmt", "yuv420p", "-an",
             stitched_path
         ])
@@ -437,11 +440,11 @@ async def create_video(req: VideoRequest):
                 ])
                 final_audio_path = voice_aac_path
 
-        # 5) Générer le fichier SRT (sous-titres synchronisés)
+        # 5) Générer le fichier SRT (sous-titres synchronisés avec la vidéo)
         srt_path = os.path.join(job_dir, "subtitles.srt")
         write_srt(subtitle_texts[:len(valid_video_urls)], segment_duration, srt_path)
 
-        # 6) Rendu final avec sous-titres brûlés via FFmpeg
+        # 6) Rendu final : sous-titres brûlés, framerate forcé à 30
         output_filename = f"{job_id}.mp4"
         output_path = os.path.join(VIDEO_DIR, output_filename)
 
@@ -463,6 +466,7 @@ async def create_video(req: VideoRequest):
                 "-vf", subtitle_filter,
                 "-map", "0:v:0", "-map", "1:a:0",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-r", "30",                  # framerate final forcé à 30
                 "-c:a", "aac", "-b:a", "192k",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
@@ -475,10 +479,14 @@ async def create_video(req: VideoRequest):
                 "-i", stitched_path,
                 "-vf", subtitle_filter,
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-r", "30",                  # framerate final forcé à 30
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 output_path
             ])
+
+        # Nettoyage du dossier temporaire de travail
+        shutil.rmtree(job_dir, ignore_errors=True)
 
         video_url = f"{PUBLIC_BASE_URL}/video/{output_filename}"
 
@@ -489,14 +497,17 @@ async def create_video(req: VideoRequest):
         })
 
     except httpx.HTTPError as e:
+        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
         return JSONResponse(status_code=500, content={
             "error": f"Erreur téléchargement: {str(e)}"
         })
     except RuntimeError as e:
+        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
         return JSONResponse(status_code=500, content={
             "error": f"Erreur FFmpeg: {str(e)}"
         })
     except Exception as e:
+        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
         return JSONResponse(status_code=500, content={
             "error": f"Erreur create-video: {str(e)}"
         })
