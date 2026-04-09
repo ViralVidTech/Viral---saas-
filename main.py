@@ -283,7 +283,7 @@ async def generate_audio(req: TTSRequest):
     except Exception as e:
         return {"error": f"Erreur TTS: {str(e)}"}
 
-# SHOTSTACK: CREATE VIDEO
+
 # SHOTSTACK: CREATE VIDEO
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
@@ -313,22 +313,6 @@ async def create_video(req: VideoRequest):
         start_time = 0
 
         for i in range(4):
-            duration = 5
-
-            if video_urls[i].strip():
-                clips_video.append({
-                    "asset": {
-                        "type": "video",
-                        "src": video_urls[i].strip(),
-                        "volume": 0
-                    },
-                    "start": start_time,
-                    "length": duration,
-                    "fit": "cover"
-                })
-
-                        if subtitle_texts[i].strip():
-                        for i in range(4):
             duration = 5
 
             if video_urls[i].strip():
@@ -481,6 +465,8 @@ async def create_video(req: VideoRequest):
             status_code=500,
             content={"error": f"Erreur interne create-video: {str(e)}"}
         )
+
+
 # SHOTSTACK: CHECK STATUS
 @app.get("/render-status/{render_id}")
 async def render_status(render_id: str):
