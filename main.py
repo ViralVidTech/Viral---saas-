@@ -6,7 +6,6 @@ import os
 import uuid
 import base64
 import httpx
-import textwrap
 
 app = FastAPI()
 
@@ -268,31 +267,43 @@ async def create_video(req: VideoRequest):
             req.video_url4 or "",
         ]
 
-        # Coupe chaque texte à 40 caractères max et ajoute des sauts de ligne
-        # pour que le titre asset natif de Shotstack puisse l'afficher proprement
-        raw_texts = [
-            (req.text1 or "").strip(),
-            (req.text2 or "").strip(),
-            (req.text3 or "").strip(),
-            (req.text4 or "").strip(),
+        subtitle_texts = [
+            (req.text1 or "").strip()[:80],
+            (req.text2 or "").strip()[:80],
+            (req.text3 or "").strip()[:80],
+            (req.text4 or "").strip()[:80],
         ]
-        subtitle_texts = []
-        for t in raw_texts:
-            # Coupe à 60 chars max puis insère \n tous les 30 chars
-            t = t[:60]
-            wrapped = textwrap.fill(t, width=30)
-            subtitle_texts.append(wrapped)
 
         clips_video = []
 
-        # 4 tracks séparés — un par sous-titre
-        # Chaque track contient UN SEUL clip avec start et length précis
-        # => Shotstack ne peut pas confondre les timings
+        # VIDEO RESOLUTION SD 9:16 = 405 x 720 pixels
+        # width: 380 = presque toute la largeur avec 12px de marge de chaque côté
+        # height: 160 = assez grand pour 3 lignes de texte à 26px
+        SUBTITLE_WIDTH = 380
+        SUBTITLE_HEIGHT = 160
+        SUBTITLE_CSS = (
+            "p { "
+            "font-family: 'Arial'; "
+            "font-size: 26px; "
+            "font-weight: bold; "
+            "color: #ffffff; "
+            "text-align: center; "
+            "word-wrap: break-word; "
+            "overflow-wrap: break-word; "
+            "white-space: normal; "
+            "margin: 0; "
+            "padding: 10px 12px; "
+            "line-height: 1.4; "
+            "}"
+        )
+
+        # UN TRACK PAR SOUS-TITRE avec start/length précis fixes
+        # chaque track = 1 clip = 1 sous-titre = apparaît seulement pendant ses 5 secondes
         subtitle_tracks = []
 
         for i in range(4):
-            clip_start = i * 5        # 0, 5, 10, 15 — fixe, pas de variable dérivante
-            clip_length = 4.8         # finit avant le suivant, pas de jointure ambiguë
+            clip_start = i * 5   # 0, 5, 10, 15 — calculé fixe
+            clip_length = 4.8    # finit 0.2s avant le suivant
 
             if video_urls[i].strip():
                 clips_video.append({
@@ -306,24 +317,26 @@ async def create_video(req: VideoRequest):
                     "fit": "cover"
                 })
 
-            if subtitle_texts[i].strip():
-                # Asset "title" natif Shotstack avec style "subtitle"
-                # position et offset sur le CLIP (pas dans l'asset)
+            if subtitle_texts[i]:
                 subtitle_tracks.append({
                     "clips": [
                         {
                             "asset": {
-                                "type": "title",
-                                "text": subtitle_texts[i],
-                                "style": "subtitle",
-                                "color": "#ffffff",
-                                "size": "medium",
-                                "background": "#000000"
+                                # type html avec width explicite = texte jamais coupé
+                                "type": "html",
+                                "html": f"<p>{subtitle_texts[i]}</p>",
+                                "css": SUBTITLE_CSS,
+                                "width": SUBTITLE_WIDTH,
+                                "height": SUBTITLE_HEIGHT,
+                                "background": "#CC000000"
                             },
+                            # position et offset sur le CLIP (pas dans l'asset)
+                            # position "bottomCenter" n'existe pas — on utilise "bottom"
+                            # offset y positif = remonte depuis le bas
                             "start": clip_start,
                             "length": clip_length,
                             "position": "bottom",
-                            "offset": {"y": 0.08}
+                            "offset": {"x": 0, "y": 0.08}
                         }
                     ]
                 })
@@ -333,10 +346,12 @@ async def create_video(req: VideoRequest):
         if not clips_video:
             return JSONResponse(status_code=400, content={"error": "Aucune vidéo n'a été fournie"})
 
-        # ORDRE: sous-titres (dessus) → audio → vidéo (dessous)
+        # ORDRE SHOTSTACK (premier = dessus, dernier = dessous) :
+        # 1. Chaque sous-titre dans son track isolé (dessus)
+        # 2. Audio
+        # 3. Vidéo (tout en bas = background)
         tracks = []
 
-        # Chaque sous-titre a son propre track isolé
         for st in subtitle_tracks:
             tracks.append(st)
 
@@ -349,7 +364,6 @@ async def create_video(req: VideoRequest):
                 }]
             })
 
-        # Vidéo tout en bas
         tracks.append({"clips": clips_video})
 
         timeline = {"tracks": tracks}
