@@ -308,17 +308,34 @@ async def create_video(req: VideoRequest):
             (req.text4 or "").strip()[:120],
         ]
 
+        # CSS commun pour tous les sous-titres
+        SUBTITLE_CSS = (
+            "p { "
+            "font-family: 'Arial'; "
+            "font-size: 26px; "
+            "font-weight: bold; "
+            "color: #ffffff; "
+            "text-align: center; "
+            "word-wrap: break-word; "
+            "margin: 0; "
+            "padding: 10px 14px; "
+            "line-height: 1.5; "
+            "}"
+        )
+
         clips_video = []
+
+        # Un seul tableau de clips sous-titres — chacun avec start/length précis
+        # qui correspondent EXACTEMENT à leur clip vidéo
+        # Shotstack affiche chaque clip uniquement pendant sa fenêtre de temps
         clips_subtitles = []
 
-        # Chaque sous-titre est sur son propre track séparé
-        # pour éviter toute superposition — 1 track = 1 sous-titre
-        tracks_subtitles = []
-
-        start_time = 0
-        duration = 5
-
+        # Calcul des start times: clip 1 = 0s, clip 2 = 5s, clip 3 = 10s, clip 4 = 15s
+        # Chaque clip dure exactement 5 secondes
+        # IMPORTANT: length = 4.9 au lieu de 5 pour éviter tout chevauchement à la jointure
         for i in range(4):
+            clip_start = i * 5        # 0, 5, 10, 15
+            clip_length = 4.9         # légèrement moins que 5 pour éviter tout overlap
 
             if video_urls[i].strip():
                 clips_video.append({
@@ -327,50 +344,30 @@ async def create_video(req: VideoRequest):
                         "src": video_urls[i].strip(),
                         "volume": 0
                     },
-                    "start": start_time,
-                    "length": duration,
+                    "start": clip_start,
+                    "length": 5,
                     "fit": "cover"
                 })
 
                 if subtitle_texts[i]:
-                    # Chaque sous-titre = son propre track isolé
-                    # start et length précis = apparaît UNIQUEMENT pendant son clip vidéo
-                    tracks_subtitles.append({
-                        "clips": [
-                            {
-                                "asset": {
-                                    "type": "html",
-                                    "html": f"<p>{subtitle_texts[i]}</p>",
-                                    "css": (
-                                        "p { "
-                                        "font-family: 'Arial'; "
-                                        "font-size: 22px; "
-                                        "font-weight: bold; "
-                                        "color: #ffffff; "
-                                        "text-align: center; "
-                                        "word-wrap: break-word; "
-                                        "margin: 0; "
-                                        "padding: 8px 12px; "
-                                        "line-height: 1.5; "
-                                        "}"
-                                    ),
-                                    "width": 360,
-                                    "height": 140,
-                                    "background": "#CC000000"
-                                },
-                                "start": start_time,
-                                "length": duration,
-                                "position": "bottom",
-                                "offset": {
-                                    "y": 0.05
-                                }
-                            }
-                        ]
+                    clips_subtitles.append({
+                        "asset": {
+                            "type": "html",
+                            "html": f"<p>{subtitle_texts[i]}</p>",
+                            "css": SUBTITLE_CSS,
+                            "width": 360,
+                            "height": 160,
+                            "background": "#CC000000"
+                        },
+                        "start": clip_start,
+                        "length": clip_length,
+                        "position": "bottom",
+                        "offset": {
+                            "y": 0.05
+                        }
                     })
 
-            start_time += duration
-
-        total_duration = start_time
+        total_duration = 20  # 4 clips x 5 secondes
 
         if not clips_video:
             return JSONResponse(
@@ -379,16 +376,14 @@ async def create_video(req: VideoRequest):
             )
 
         # ORDRE CORRECT SHOTSTACK:
-        # 1. Un track par sous-titre (dessus — chacun isolé, pas de superposition)
-        # 2. Track audio
-        # 3. Track vidéo (tout en bas = background)
+        # tracks[0] = sous-titres (dessus)
+        # tracks[1] = audio
+        # tracks[-1] = vidéo (dessous = background)
         tracks = []
 
-        # Ajoute chaque sous-titre comme track séparé
-        for st in tracks_subtitles:
-            tracks.append(st)
+        if clips_subtitles:
+            tracks.append({"clips": clips_subtitles})
 
-        # Track audio
         if (req.audio_url or "").strip():
             tracks.append({
                 "clips": [
@@ -403,14 +398,9 @@ async def create_video(req: VideoRequest):
                 ]
             })
 
-        # Track vidéo toujours EN DERNIER = couche du dessous
-        tracks.append({
-            "clips": clips_video
-        })
+        tracks.append({"clips": clips_video})
 
-        timeline = {
-            "tracks": tracks
-        }
+        timeline = {"tracks": tracks}
 
         if (req.music_url or "").strip():
             timeline["soundtrack"] = {
