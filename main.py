@@ -328,6 +328,7 @@ async def create_video(req: VideoRequest):
                 })
 
                 if subtitle_texts[i]:
+                    # CORRECT: position et offset sont sur l'ASSET, pas sur le clip
                     clips_subtitles.append({
                         "asset": {
                             "type": "title",
@@ -335,11 +336,14 @@ async def create_video(req: VideoRequest):
                             "style": "subtitle",
                             "color": "#ffffff",
                             "size": "small",
-                            "background": "#000000"
+                            "background": "#000000",
+                            "position": "bottom",
+                            "offset": {
+                                "y": -0.1
+                            }
                         },
                         "start": start_time,
-                        "length": duration,
-                        "position": "bottom"
+                        "length": duration
                     })
 
             start_time += duration
