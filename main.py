@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -284,98 +284,116 @@ async def generate_audio(req: TTSRequest):
         return {"error": f"Erreur TTS: {str(e)}"}
 
 # SHOTSTACK: CREATE VIDEO
+# SHOTSTACK: CREATE VIDEO
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
-    if not SHOTSTACK_API_KEY:
-        return {"error": "SHOTSTACK_API_KEY manquante"}
+    try:
+        if not SHOTSTACK_API_KEY:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "SHOTSTACK_API_KEY manquante"}
+            )
 
-    video_urls = [req.video_url, req.video_url2, req.video_url3, req.video_url4]
-    subtitle_texts = [req.text1, req.text2, req.text3, req.text4]
+        video_urls = [
+            req.video_url or "",
+            req.video_url2 or "",
+            req.video_url3 or "",
+            req.video_url4 or "",
+        ]
 
-    clips_video = []
-    clips_subtitles = []
-    start_time = 0
+        subtitle_texts = [
+            req.text1 or "",
+            req.text2 or "",
+            req.text3 or "",
+            req.text4 or "",
+        ]
 
-    for i in range(4):
-        duration = 5
+        clips_video = []
+        clips_subtitles = []
+        start_time = 0
 
-        if video_urls[i]:
-            clips_video.append({
-                "asset": {
-                    "type": "video",
-                    "src": video_urls[i],
-                    "volume": 0
-                },
-                "start": start_time,
-                "length": duration,
-                "fit": "cover"
-            })
+        for i in range(4):
+            duration = 5
 
-        if subtitle_texts[i].strip():
-            clips_subtitles.append({
-                "asset": {
-                    "type": "title",
-                    "text": subtitle_texts[i],
-                    "style": "subtitle",
-                    "color": "#ffffff",
-                    "size": "small",
-                    "background": "#000000"
-                },
-                "start": start_time,
-                "length": duration,
-                "position": "bottom"
-            })
+            if video_urls[i].strip():
+                clips_video.append({
+                    "asset": {
+                        "type": "video",
+                        "src": video_urls[i].strip(),
+                        "volume": 0
+                    },
+                    "start": start_time,
+                    "length": duration,
+                    "fit": "cover"
+                })
 
-        start_time += duration
+            if subtitle_texts[i].strip():
+                clips_subtitles.append({
+                    "asset": {
+                        "type": "title",
+                        "text": subtitle_texts[i].strip(),
+                        "style": "subtitle",
+                        "color": "#ffffff",
+                        "size": "small",
+                        "background": "#000000"
+                    },
+                    "start": start_time,
+                    "length": duration,
+                    "position": "bottom"
+                })
 
-    if not clips_video:
-        return {"error": "Aucune vidéo n'a été fournie"}
+            start_time += duration
+
+        if not clips_video:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Aucune vidéo n'a été fournie"}
+            )
 
         tracks = []
 
-    if clips_subtitles:
+        if clips_subtitles:
+            tracks.append({
+                "clips": clips_subtitles
+            })
+
         tracks.append({
-            "clips": clips_subtitles
+            "clips": clips_video
         })
 
-    tracks.append({
-        "clips": clips_video
-    })
+        if (req.audio_url or "").strip():
+            tracks.append({
+                "clips": [
+                    {
+                        "asset": {
+                            "type": "audio",
+                            "src": req.audio_url.strip()
+                        },
+                        "start": 0,
+                        "length": start_time
+                    }
+                ]
+            })
 
-    if req.audio_url.strip():
-        tracks.append({
-            "clips": [
-                {
-                    "asset": {
-                        "type": "audio",
-                        "src": req.audio_url
-                    },
-                    "start": 0,
-                    "length": start_time
-                }
-            ]
-        })
-
-    timeline = {
-        "tracks": tracks
-    }
-
-    if req.music_url.strip():
-        timeline["soundtrack"] = {
-            "src": req.music_url,
-            "volume": 0.12
+        timeline = {
+            "tracks": tracks
         }
 
-    payload = {
-        "timeline": timeline,
-        "output": {
-            "format": "mp4",
-            "aspectRatio": "9:16",
-            "resolution": "sd"
-        }
-    }
+        if (req.music_url or "").strip():
+            timeline["soundtrack"] = {
+                "src": req.music_url.strip(),
+                "volume": 0.12
+            }
 
-    try:
+        payload = {
+            "timeline": timeline,
+            "output": {
+                "format": "mp4",
+                "aspectRatio": "9:16",
+                "resolution": "sd"
+            }
+        }
+
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 "https://api.shotstack.io/edit/stage/render",
@@ -399,31 +417,48 @@ async def create_video(req: VideoRequest):
         try:
             data = response.json()
         except Exception:
-            data = {"raw_text": response.text}
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": "Réponse Shotstack non JSON",
+                    "raw_response": response.text
+                }
+            )
 
         if response.status_code not in [200, 201]:
-            return {
-                "error": "Shotstack a refusé le rendu",
-                "details": data
-            }
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "Shotstack a refusé le rendu",
+                    "details": data
+                }
+            )
 
         render_id = data.get("response", {}).get("id")
         if not render_id:
-            return {
-                "error": "Shotstack n'a pas renvoyé d'id",
-                "details": data
-            }
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": "Shotstack n'a pas renvoyé d'id",
+                    "details": data
+                }
+            )
 
-        return {
-            "success": True,
-            "render_id": render_id,
-            "message": "Vidéo envoyée à Shotstack. Vérifie ensuite le statut."
-        }
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "render_id": render_id,
+                "message": "Vidéo envoyée à Shotstack. Vérifie ensuite le statut."
+            }
+        )
 
     except Exception as e:
-        return {"error": f"Erreur Shotstack: {str(e)}"}
-
-
+        print("CREATE VIDEO INTERNAL ERROR =", str(e))
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Erreur interne create-video: {str(e)}"}
+        )
 # SHOTSTACK: CHECK STATUS
 @app.get("/render-status/{render_id}")
 async def render_status(render_id: str):
