@@ -310,10 +310,15 @@ async def create_video(req: VideoRequest):
 
         clips_video = []
         clips_subtitles = []
+
+        # Chaque sous-titre est sur son propre track séparé
+        # pour éviter toute superposition — 1 track = 1 sous-titre
+        tracks_subtitles = []
+
         start_time = 0
+        duration = 5
 
         for i in range(4):
-            duration = 5
 
             if video_urls[i].strip():
                 clips_video.append({
@@ -328,36 +333,44 @@ async def create_video(req: VideoRequest):
                 })
 
                 if subtitle_texts[i]:
-                    clips_subtitles.append({
-                        "asset": {
-                            "type": "html",
-                            "html": f"<p>{subtitle_texts[i]}</p>",
-                            "css": (
-                                "p { "
-                                "font-family: 'Arial'; "
-                                "font-size: 19px; "
-                                "font-weight: bold; "
-                                "color: #ffffff; "
-                                "text-align: center; "
-                                "word-wrap: break-word; "
-                                "margin: 0; "
-                                "padding: 6px 10px; "
-                                "line-height: 1.4; "
-                                "}"
-                            ),
-                            "width": 360,
-                            "height": 110,
-                            "background": "#BB000000"
-                        },
-                        "start": start_time,
-                        "length": duration,
-                        "position": "bottom",
-                        "offset": {
-                            "y": 0.05
-                        }
+                    # Chaque sous-titre = son propre track isolé
+                    # start et length précis = apparaît UNIQUEMENT pendant son clip vidéo
+                    tracks_subtitles.append({
+                        "clips": [
+                            {
+                                "asset": {
+                                    "type": "html",
+                                    "html": f"<p>{subtitle_texts[i]}</p>",
+                                    "css": (
+                                        "p { "
+                                        "font-family: 'Arial'; "
+                                        "font-size: 22px; "
+                                        "font-weight: bold; "
+                                        "color: #ffffff; "
+                                        "text-align: center; "
+                                        "word-wrap: break-word; "
+                                        "margin: 0; "
+                                        "padding: 8px 12px; "
+                                        "line-height: 1.5; "
+                                        "}"
+                                    ),
+                                    "width": 360,
+                                    "height": 140,
+                                    "background": "#CC000000"
+                                },
+                                "start": start_time,
+                                "length": duration,
+                                "position": "bottom",
+                                "offset": {
+                                    "y": 0.05
+                                }
+                            }
+                        ]
                     })
 
             start_time += duration
+
+        total_duration = start_time
 
         if not clips_video:
             return JSONResponse(
@@ -366,16 +379,16 @@ async def create_video(req: VideoRequest):
             )
 
         # ORDRE CORRECT SHOTSTACK:
-        # tracks[0] = couche du DESSUS (sous-titres → visible par-dessus la vidéo)
-        # tracks[1] = audio
-        # tracks[-1] = couche du DESSOUS (vidéo → background)
+        # 1. Un track par sous-titre (dessus — chacun isolé, pas de superposition)
+        # 2. Track audio
+        # 3. Track vidéo (tout en bas = background)
         tracks = []
 
-        if clips_subtitles:
-            tracks.append({
-                "clips": clips_subtitles
-            })
+        # Ajoute chaque sous-titre comme track séparé
+        for st in tracks_subtitles:
+            tracks.append(st)
 
+        # Track audio
         if (req.audio_url or "").strip():
             tracks.append({
                 "clips": [
@@ -385,12 +398,12 @@ async def create_video(req: VideoRequest):
                             "src": req.audio_url.strip()
                         },
                         "start": 0,
-                        "length": start_time
+                        "length": total_duration
                     }
                 ]
             })
 
-        # Vidéo toujours en DERNIER = couche du dessous (background)
+        # Track vidéo toujours EN DERNIER = couche du dessous
         tracks.append({
             "clips": clips_video
         })
