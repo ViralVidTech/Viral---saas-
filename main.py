@@ -105,18 +105,42 @@ def srt_timestamp(seconds: float) -> str:
 
 
 def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
+    """
+    Découpe chaque scène en blocs de 5 mots maximum.
+    Chaque bloc s'affiche pendant sa portion de temps dans la scène.
+    Résultat : sous-titres style TikTok, courts et rythmés.
+    """
     entries = []
     idx = 1
+    WORDS_PER_BLOCK = 5  # nombre de mots par sous-titre affiché
+
     for i, text in enumerate(subtitle_texts):
         clean = " ".join((text or "").strip().split())
         if not clean:
             continue
-        start = i * segment_duration
-        end = start + segment_duration - 0.15
-        entries.append(
-            f"{idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{clean}\n"
-        )
-        idx += 1
+
+        scene_start = i * segment_duration
+        words = clean.split()
+
+        # Découper les mots en blocs de WORDS_PER_BLOCK
+        blocks = []
+        for j in range(0, len(words), WORDS_PER_BLOCK):
+            blocks.append(" ".join(words[j:j + WORDS_PER_BLOCK]))
+
+        if not blocks:
+            continue
+
+        # Durée de chaque bloc = durée de la scène / nombre de blocs
+        block_duration = segment_duration / len(blocks)
+
+        for b, block_text in enumerate(blocks):
+            start = scene_start + b * block_duration
+            end = start + block_duration - 0.08
+            entries.append(
+                f"{idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
+            )
+            idx += 1
+
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(entries))
 
@@ -481,31 +505,33 @@ async def create_video(req: VideoRequest):
         job_dir = os.path.join(WORK_DIR, job_id)
         os.makedirs(job_dir, exist_ok=True)
 
-        # 1) Télécharger la voix EN PREMIER pour mesurer sa durée réelle
-        # C'est la voix qui dicte la durée de la vidéo, pas la durée choisie
         voice_url = (req.audio_url or "").strip()
         music_url = (req.music_url or "").strip()
+
+        # ── ÉTAPE 1 : Télécharger la voix et mesurer sa durée réelle
+        # La durée de la voix est la SEULE référence pour toute la vidéo.
+        # Elle prime sur la durée choisie dans l'interface.
         voice_path = None
-        real_total_duration = total_duration  # fallback si pas de voix
+        real_total_duration = float(total_duration)  # fallback sans voix
 
         if voice_url:
             voice_path = os.path.join(job_dir, "voice.mp3")
             await download_file(voice_url, voice_path)
             measured = get_audio_duration(voice_path)
-            if measured > 0:
+            if measured > 1.0:
                 real_total_duration = measured
 
-        # Recalculer la durée de chaque segment selon la durée RÉELLE de la voix
+        # Durée de chaque segment vidéo = durée voix / nb scènes
         real_segment_duration = real_total_duration / nb_scenes
 
-        # 2) Télécharger les vidéos
+        # ── ÉTAPE 2 : Télécharger les vidéos sources
         raw_video_paths = []
         for i, url in enumerate(valid_video_urls):
             raw_path = os.path.join(job_dir, f"raw_{i}.mp4")
             await download_file(url, raw_path)
             raw_video_paths.append(raw_path)
 
-        # 3) Normaliser chaque vidéo selon la durée RÉELLE par segment
+        # ── ÉTAPE 3 : Normaliser chaque segment à la bonne durée
         norm_video_paths = []
         for i, raw_path in enumerate(raw_video_paths):
             norm_path = os.path.join(job_dir, f"seg_{i}.mp4")
@@ -521,14 +547,15 @@ async def create_video(req: VideoRequest):
             ])
             norm_video_paths.append(norm_path)
 
-        # 3) Concaténer les segments
+        # ── ÉTAPE 4 : Concaténer les segments
         concat_list_path = os.path.join(job_dir, "concat.txt")
         with open(concat_list_path, "w", encoding="utf-8") as f:
             for path in norm_video_paths:
                 abs_path = os.path.abspath(path)
                 f.write(f"file '{abs_path}'\n")
 
-        stitched_path = os.path.join(job_dir, "stitched.mp4")
+        # Vidéo concaténée brute (durée théorique = real_total_duration)
+        stitched_raw_path = os.path.join(job_dir, "stitched_raw.mp4")
         run_cmd([
             "ffmpeg", "-y",
             "-f", "concat", "-safe", "0",
@@ -536,14 +563,41 @@ async def create_video(req: VideoRequest):
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
             "-r", "30",
             "-pix_fmt", "yuv420p", "-an",
-            stitched_path
+            stitched_raw_path
         ])
 
-        # 4) Préparer l'audio (voix déjà téléchargée à l'étape 1)
+        # ── ÉTAPE 5 : Vérifier la durée réelle de la vidéo concaténée
+        # Si elle est plus courte que la voix (à cause d'arrondi ou de vidéos
+        # sources trop courtes), on boucle la vidéo pour combler le manque.
+        stitched_duration = get_audio_duration(stitched_raw_path)
+        stitched_path = os.path.join(job_dir, "stitched.mp4")
+
+        if stitched_duration < real_total_duration - 0.5:
+            # La vidéo est plus courte que la voix → on la boucle
+            run_cmd([
+                "ffmpeg", "-y",
+                "-stream_loop", "-1",
+                "-i", stitched_raw_path,
+                "-t", str(real_total_duration),
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-r", "30",
+                "-pix_fmt", "yuv420p", "-an",
+                stitched_path
+            ])
+        else:
+            # La vidéo est assez longue → on la coupe exactement
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", stitched_raw_path,
+                "-t", str(real_total_duration),
+                "-c:v", "copy", "-an",
+                stitched_path
+            ])
+
+        # ── ÉTAPE 6 : Préparer l'audio final (voix + musique optionnelle)
         final_audio_path = None
 
         if voice_url and voice_path:
-
             if music_url:
                 music_path = os.path.join(job_dir, "music.mp3")
                 await download_file(music_url, music_path)
@@ -561,39 +615,26 @@ async def create_video(req: VideoRequest):
                 ])
                 final_audio_path = mixed_path
             else:
-                voice_aac_path = os.path.join(job_dir, "voice_only.m4a")
-                run_cmd([
-                    "ffmpeg", "-y",
-                    "-i", voice_path,
-                    "-t", str(real_total_duration),
-                    "-c:a", "aac", "-b:a", "192k",
-                    voice_aac_path
-                ])
-                final_audio_path = voice_aac_path
+                # Pas de musique → on garde la voix telle quelle sans la couper
+                final_audio_path = voice_path
 
-        # 5) Générer le fichier SRT synchronisé avec la durée RÉELLE de la voix
-        # Si on a une voix, on mesure sa durée exacte et on divise par le nombre
-        # de sous-titres pour que chaque texte apparaisse au bon moment.
-        # Si pas de voix, on utilise les 5 secondes fixes par segment.
+        # ── ÉTAPE 7 : SRT synchronisé sur la durée réelle de la voix
         srt_path = os.path.join(job_dir, "subtitles.srt")
-        nb_subtitles = len([t for t in subtitle_texts[:len(valid_video_urls)] if t.strip()])
+        nb_subtitles = len([t for t in subtitle_texts if t.strip()])
+        srt_segment_duration = (
+            real_total_duration / nb_subtitles if nb_subtitles > 0
+            else real_segment_duration
+        )
+        write_srt(subtitle_texts, srt_segment_duration, srt_path)
 
-        # Durée par sous-titre = durée réelle totale / nombre de sous-titres
-        if nb_subtitles > 0:
-            srt_segment_duration = real_total_duration / nb_subtitles
-        else:
-            srt_segment_duration = real_segment_duration
-
-        write_srt(subtitle_texts[:len(valid_video_urls)], srt_segment_duration, srt_path)
-
-        # 6) Rendu final : sous-titres brûlés, framerate forcé à 30
+        # ── ÉTAPE 8 : Rendu final avec sous-titres brûlés
         output_filename = f"{job_id}.mp4"
         output_path = os.path.join(VIDEO_DIR, output_filename)
 
         srt_escaped = escape_srt_path(os.path.abspath(srt_path))
         subtitle_filter = (
             f"subtitles='{srt_escaped}':"
-            "force_style='Alignment=2,MarginV=40,"
+            "force_style='Alignment=2,MarginV=80,"
             "FontName=Arial,FontSize=14,Bold=1,"
             "PrimaryColour=&H00FFFFFF,"
             "OutlineColour=&H00000000,"
@@ -610,11 +651,11 @@ async def create_video(req: VideoRequest):
                 "-vf", subtitle_filter,
                 "-map", "0:v:0", "-map", "1:a:0",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-r", "30",                  # framerate final forcé à 30
+                "-r", "30",
                 "-c:a", "aac", "-b:a", "192k",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
-                "-shortest",
+                # PAS de -shortest : la vidéo dure exactement comme la voix
                 output_path
             ])
         else:
@@ -623,7 +664,7 @@ async def create_video(req: VideoRequest):
                 "-i", stitched_path,
                 "-vf", subtitle_filter,
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-r", "30",                  # framerate final forcé à 30
+                "-r", "30",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 output_path
