@@ -8,7 +8,6 @@ import base64
 import httpx
 import subprocess
 import shutil
-from pathlib import Path
 
 app = FastAPI()
 
@@ -391,7 +390,8 @@ async def create_video(req: VideoRequest):
         concat_list_path = os.path.join(job_dir, "concat.txt")
         with open(concat_list_path, "w", encoding="utf-8") as f:
             for path in norm_video_paths:
-                f.write(f"file '{Path(path).as_posix()}'\n")
+                abs_path = os.path.abspath(path)
+                f.write(f"file '{abs_path}'\n")
 
         stitched_path = os.path.join(job_dir, "stitched.mp4")
         run_cmd([
