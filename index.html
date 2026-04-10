@@ -845,7 +845,7 @@
     setStatus(t.statusGenerating, 'ready');
 
     try {
-      const res  = await fetch(`${apiUrl}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche, langue: outputLang }) });
+      const res  = await fetch(`${apiUrl}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche, langue: outputLang, duration: parseInt(document.getElementById('videoDuration').value) || 30 }) });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
 
@@ -853,10 +853,23 @@
       (data.titles || []).forEach(title => { const li = document.createElement('li'); li.textContent = title; titlesList.appendChild(li); });
       scriptOutput.value = data.script || '';
 
+      // Stocker les URLs vidéo Pexels
       window._pexelsVideoUrl  = data.video_url  || '';
       window._pexelsVideoUrl2 = data.video_url2 || '';
       window._pexelsVideoUrl3 = data.video_url3 || '';
       window._pexelsVideoUrl4 = data.video_url4 || '';
+
+      // Stocker chaque scène individuellement pour les sous-titres
+      window._scene1 = data.scene1 || '';
+      window._scene2 = data.scene2 || '';
+      window._scene3 = data.scene3 || '';
+      window._scene4 = data.scene4 || '';
+      window._scene5 = data.scene5 || '';
+      window._scene6 = data.scene6 || '';
+      window._scene7 = data.scene7 || '';
+      window._scene8 = data.scene8 || '';
+      window._nb_scenes = data.nb_scenes || 4;
+      window._duration  = data.duration  || 30;
 
       setStatus(t.statusSuccess, 'success');
       const s = getState(); s.scripts += 1; s.revenue += 19; s.topNiche = niche; s.growth = Math.min(99, s.growth + 7); saveState(s); updateDashboard();
@@ -971,38 +984,47 @@
   // ── CREATE VIDEO (FFmpeg — retourne video_url directement) ──
   async function createVideo() {
     const apiUrl = normalizeApiUrl(apiUrlInput.value);
+    const chosenDuration = parseInt(document.getElementById('videoDuration').value) || 30;
+    const chosenMusicUrl = document.getElementById('musicSelect')?.value || '';
 
     if (!apiUrl) { setVideoStatus('Enter API URL first.', 'error'); return; }
     if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4) {
       setVideoStatus('Generate content first so source videos are available.', 'error'); return;
     }
 
-    // Découpe le script en 4 parties pour les sous-titres
-    const scriptLines = scriptOutput.value.split('\n\n').filter(t => t.trim() !== '');
-    const text1 = scriptLines[0] || nicheInput.value.trim() || 'Hook here';
-    const text2 = scriptLines[1] || 'Problem here';
-    const text3 = scriptLines[2] || 'Solution here';
-    const text4 = scriptLines[3] || 'CTA here';
-    const chosenMusicUrl = document.getElementById('musicSelect')?.value || '';
-
-    setVideoStatus('Sending to FFmpeg renderer... this may take 30–60 seconds.', 'ready');
+    setVideoStatus(`Sending to FFmpeg renderer... this may take ${chosenDuration * 2} seconds.`, 'ready');
     createVideoBtn.disabled = true;
 
     // Masquer le bloc vidéo précédent pendant le rendu
     videoDownloadBlock.classList.remove('show');
+
+    // Utiliser les scènes stockées après /generate (une par phrase prononcée)
+    const text1 = window._scene1 || '';
+    const text2 = window._scene2 || '';
+    const text3 = window._scene3 || '';
+    const text4 = window._scene4 || '';
+    const text5 = window._scene5 || '';
+    const text6 = window._scene6 || '';
+    const text7 = window._scene7 || '';
+    const text8 = window._scene8 || '';
 
     try {
       const res  = await fetch(`${apiUrl}/create-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text1, text2, text3, text4,
+          text1, text2, text3, text4, text5, text6, text7, text8,
           video_url:  window._pexelsVideoUrl  || '',
           video_url2: window._pexelsVideoUrl2 || '',
           video_url3: window._pexelsVideoUrl3 || '',
           video_url4: window._pexelsVideoUrl4 || '',
+          video_url5: '',
+          video_url6: '',
+          video_url7: '',
+          video_url8: '',
           audio_url:  window._generatedVoiceUrl || '',
-          music_url:  chosenMusicUrl
+          music_url:  chosenMusicUrl,
+          duration:   chosenDuration
         })
       });
 
