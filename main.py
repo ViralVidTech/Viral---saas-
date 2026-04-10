@@ -658,9 +658,9 @@ async def create_video(req: VideoRequest):
         #                pour que MarginV soit interprété correctement
         subtitle_filter = (
             f"subtitles='{srt_escaped}':"
-            "force_style='Alignment=2,MarginV=30,"
+            "force_style='Alignment=2,MarginV=55,"
             "PlayResX=405,PlayResY=720,"
-            "FontName=Arial,FontSize=18,Bold=1,"
+            "FontName=Arial,FontSize=24,Bold=1,"
             "PrimaryColour=&H00FFFFFF,"
             "OutlineColour=&H00000000,"
             "BorderStyle=3,Outline=2,Shadow=0,"
