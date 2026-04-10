@@ -481,21 +481,38 @@ async def create_video(req: VideoRequest):
         job_dir = os.path.join(WORK_DIR, job_id)
         os.makedirs(job_dir, exist_ok=True)
 
-        # 1) Télécharger les vidéos
+        # 1) Télécharger la voix EN PREMIER pour mesurer sa durée réelle
+        # C'est la voix qui dicte la durée de la vidéo, pas la durée choisie
+        voice_url = (req.audio_url or "").strip()
+        music_url = (req.music_url or "").strip()
+        voice_path = None
+        real_total_duration = total_duration  # fallback si pas de voix
+
+        if voice_url:
+            voice_path = os.path.join(job_dir, "voice.mp3")
+            await download_file(voice_url, voice_path)
+            measured = get_audio_duration(voice_path)
+            if measured > 0:
+                real_total_duration = measured
+
+        # Recalculer la durée de chaque segment selon la durée RÉELLE de la voix
+        real_segment_duration = real_total_duration / nb_scenes
+
+        # 2) Télécharger les vidéos
         raw_video_paths = []
         for i, url in enumerate(valid_video_urls):
             raw_path = os.path.join(job_dir, f"raw_{i}.mp4")
             await download_file(url, raw_path)
             raw_video_paths.append(raw_path)
 
-        # 2) Normaliser chaque vidéo : 405×720, 5 sec, 30 fps, sans audio
+        # 3) Normaliser chaque vidéo selon la durée RÉELLE par segment
         norm_video_paths = []
         for i, raw_path in enumerate(raw_video_paths):
             norm_path = os.path.join(job_dir, f"seg_{i}.mp4")
             run_cmd([
                 "ffmpeg", "-y",
                 "-i", raw_path,
-                "-t", str(segment_duration),
+                "-t", str(real_segment_duration),
                 "-vf", "scale=405:720:force_original_aspect_ratio=increase,crop=405:720,fps=30,format=yuv420p",
                 "-an",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
@@ -522,14 +539,10 @@ async def create_video(req: VideoRequest):
             stitched_path
         ])
 
-        # 4) Préparer l'audio (voix + musique optionnelle)
+        # 4) Préparer l'audio (voix déjà téléchargée à l'étape 1)
         final_audio_path = None
-        voice_url = (req.audio_url or "").strip()
-        music_url = (req.music_url or "").strip()
 
-        if voice_url:
-            voice_path = os.path.join(job_dir, "voice.mp3")
-            await download_file(voice_url, voice_path)
+        if voice_url and voice_path:
 
             if music_url:
                 music_path = os.path.join(job_dir, "music.mp3")
@@ -540,7 +553,7 @@ async def create_video(req: VideoRequest):
                     "-i", voice_path,
                     "-stream_loop", "-1", "-i", music_path,
                     "-filter_complex",
-                    f"[1:a]volume=0.12,atrim=0:{total_duration}[bg];"
+                    f"[1:a]volume=0.12,atrim=0:{real_total_duration}[bg];"
                     f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]",
                     "-map", "[aout]",
                     "-c:a", "aac", "-b:a", "192k",
@@ -552,7 +565,7 @@ async def create_video(req: VideoRequest):
                 run_cmd([
                     "ffmpeg", "-y",
                     "-i", voice_path,
-                    "-t", str(total_duration),
+                    "-t", str(real_total_duration),
                     "-c:a", "aac", "-b:a", "192k",
                     voice_aac_path
                 ])
@@ -565,14 +578,11 @@ async def create_video(req: VideoRequest):
         srt_path = os.path.join(job_dir, "subtitles.srt")
         nb_subtitles = len([t for t in subtitle_texts[:len(valid_video_urls)] if t.strip()])
 
-        if voice_url and nb_subtitles > 0:
-            voice_duration = get_audio_duration(os.path.join(job_dir, "voice.mp3"))
-            if voice_duration > 0:
-                srt_segment_duration = voice_duration / nb_subtitles
-            else:
-                srt_segment_duration = segment_duration
+        # Durée par sous-titre = durée réelle totale / nombre de sous-titres
+        if nb_subtitles > 0:
+            srt_segment_duration = real_total_duration / nb_subtitles
         else:
-            srt_segment_duration = segment_duration
+            srt_segment_duration = real_segment_duration
 
         write_srt(subtitle_texts[:len(valid_video_urls)], srt_segment_duration, srt_path)
 
@@ -583,11 +593,13 @@ async def create_video(req: VideoRequest):
         srt_escaped = escape_srt_path(os.path.abspath(srt_path))
         subtitle_filter = (
             f"subtitles='{srt_escaped}':"
-            "force_style='Alignment=2,MarginV=28,"
-            "FontName=Arial,FontSize=17,Bold=1,"
+            "force_style='Alignment=2,MarginV=40,"
+            "FontName=Arial,FontSize=14,Bold=1,"
             "PrimaryColour=&H00FFFFFF,"
             "OutlineColour=&H00000000,"
-            "BorderStyle=1,Outline=2,Shadow=0'"
+            "BorderStyle=3,Outline=1,Shadow=0,"
+            "BackColour=&H99000000,"
+            "WrapStyle=0'"
         )
 
         if final_audio_path:
