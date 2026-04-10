@@ -114,6 +114,23 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
 def escape_srt_path(path_str: str) -> str:
     return path_str.replace("\\", "\\\\").replace(":", "\\:")
 
+def get_audio_duration(audio_path: str) -> float:
+    """Mesure la durée réelle d'un fichier audio en secondes via ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                audio_path
+            ],
+            capture_output=True, text=True
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return 0.0
+
+
 
 # ── ROUTES ──────────────────────────────────────────────────────────────────
 
@@ -440,9 +457,23 @@ async def create_video(req: VideoRequest):
                 ])
                 final_audio_path = voice_aac_path
 
-        # 5) Générer le fichier SRT (sous-titres synchronisés avec la vidéo)
+        # 5) Générer le fichier SRT synchronisé avec la durée RÉELLE de la voix
+        # Si on a une voix, on mesure sa durée exacte et on divise par le nombre
+        # de sous-titres pour que chaque texte apparaisse au bon moment.
+        # Si pas de voix, on utilise les 5 secondes fixes par segment.
         srt_path = os.path.join(job_dir, "subtitles.srt")
-        write_srt(subtitle_texts[:len(valid_video_urls)], segment_duration, srt_path)
+        nb_subtitles = len([t for t in subtitle_texts[:len(valid_video_urls)] if t.strip()])
+
+        if voice_url and nb_subtitles > 0:
+            voice_duration = get_audio_duration(os.path.join(job_dir, "voice.mp3"))
+            if voice_duration > 0:
+                srt_segment_duration = voice_duration / nb_subtitles
+            else:
+                srt_segment_duration = segment_duration
+        else:
+            srt_segment_duration = segment_duration
+
+        write_srt(subtitle_texts[:len(valid_video_urls)], srt_segment_duration, srt_path)
 
         # 6) Rendu final : sous-titres brûlés, framerate forcé à 30
         output_filename = f"{job_id}.mp4"
