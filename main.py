@@ -190,73 +190,71 @@ async def generate(req: GenerateRequest):
     }
     target_language = lang_map.get(lang, "English")
 
-    # Adapter le nombre de scènes et la longueur des phrases selon la durée
-    # 30 sec = 4 scènes, phrases courtes (max 15 mots)
-    # 45 sec = 6 scènes, phrases moyennes (max 20 mots)
-    # 60 sec = 8 scènes, phrases longues (max 25 mots)
+    # Adapter le nombre de scènes selon la durée choisie
     if duration == 60:
         nb_scenes = 8
-        max_words = 25
-        scene_structure = """HOOK: [phrase d'accroche percutante - max 25 mots]
+        seconds_per_scene = 7
+        scene_structure = """HOOK: [accroche choc qui arrête le scroll - 2 phrases complètes et développées]
 
-CONTEXT: [phrase de contexte qui installe le sujet - max 25 mots]
+CONTEXT: [contexte qui pose le sujet et crée de la curiosité - 2 phrases complètes]
 
-PROBLEM: [description du problème principal - max 25 mots]
+PROBLEM: [décris le problème en détail, avec émotion - 2 phrases complètes]
 
-AGITATION: [phrase qui amplifie le problème, rend urgent - max 25 mots]
+AGITATION: [amplifie la douleur du problème, rends-le urgent - 2 phrases complètes]
 
-SOLUTION: [présentation de la solution principale - max 25 mots]
+SOLUTION: [présente la solution clairement et en détail - 2 phrases complètes]
 
-PROOF: [preuve ou exemple concret qui valide la solution - max 25 mots]
+PROOF: [donne une preuve concrète, un chiffre, un exemple réel - 2 phrases complètes]
 
-BENEFIT: [bénéfice principal que l'utilisateur va obtenir - max 25 mots]
+BENEFIT: [décris le bénéfice concret que l'audience va obtenir - 2 phrases complètes]
 
-CTA: [appel à l'action fort et direct - max 25 mots]"""
+CTA: [appel à l'action direct et motivant - 2 phrases complètes]"""
     elif duration == 45:
         nb_scenes = 6
-        max_words = 20
-        scene_structure = """HOOK: [phrase d'accroche percutante - max 20 mots]
+        seconds_per_scene = 7
+        scene_structure = """HOOK: [accroche choc qui arrête le scroll - 2 phrases complètes et développées]
 
-CONTEXT: [phrase de contexte qui installe le sujet - max 20 mots]
+CONTEXT: [contexte qui pose le sujet - 2 phrases complètes]
 
-PROBLEM: [description du problème principal - max 20 mots]
+PROBLEM: [décris le problème avec émotion - 2 phrases complètes]
 
-SOLUTION: [présentation de la solution principale - max 20 mots]
+SOLUTION: [présente la solution en détail - 2 phrases complètes]
 
-PROOF: [preuve ou exemple concret - max 20 mots]
+PROOF: [preuve concrète ou exemple réel - 2 phrases complètes]
 
-CTA: [appel à l'action fort et direct - max 20 mots]"""
+CTA: [appel à l'action direct - 2 phrases complètes]"""
     else:  # 30 secondes
         nb_scenes = 4
-        max_words = 15
-        scene_structure = """HOOK: [phrase d'accroche percutante - max 15 mots]
+        seconds_per_scene = 7
+        scene_structure = """HOOK: [accroche choc - 2 phrases complètes et développées]
 
-PROBLEM: [description du problème - max 15 mots]
+PROBLEM: [problème avec émotion - 2 phrases complètes]
 
-SOLUTION: [présentation de la solution - max 15 mots]
+SOLUTION: [solution en détail - 2 phrases complètes]
 
-CTA: [appel à l'action - max 15 mots]"""
+CTA: [appel à l'action - 2 phrases complètes]"""
 
     prompt = f"""
-Create viral short-form video content about "{niche}" in {target_language}.
-The video will be {duration} seconds long with {nb_scenes} scenes.
+Tu es un expert en création de contenu viral pour les réseaux sociaux.
+Crée un script vidéo complet de {duration} secondes sur le sujet : "{niche}".
+Le script doit être en {target_language}.
+La vidéo a {nb_scenes} scènes. Chaque scène dure environ {seconds_per_scene} secondes à l'oral.
 
-Return exactly in this format:
+RÈGLES IMPORTANTES :
+- Chaque scène doit contenir EXACTEMENT 2 phrases complètes et bien développées
+- Chaque phrase doit faire entre 15 et 25 mots
+- Le ton doit être naturel, conversationnel, persuasif
+- Le contenu doit être réel, informatif, pas générique
+- Écris tout en {target_language}
+
+Retourne EXACTEMENT dans ce format, sans rien ajouter d'autre :
 
 TITLES:
-1. [title 1]
-2. [title 2]
-3. [title 3]
+1. [titre accrocheur 1]
+2. [titre accrocheur 2]
+3. [titre accrocheur 3]
 
 {scene_structure}
-
-Important rules:
-- Write everything in {target_language}
-- Each sentence must be complete, natural, and persuasive
-- Each sentence must be read aloud in approximately {duration // nb_scenes} seconds
-- Do not add explanations or comments
-- Do not add markdown
-- Do not add anything outside the required format
 """.strip()
 
     try:
@@ -270,7 +268,7 @@ Important rules:
                 },
                 json={
                     "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 700,
+                    "max_tokens": 2000,
                     "messages": [{"role": "user", "content": prompt}]
                 }
             )
@@ -322,19 +320,20 @@ Important rules:
         script_parts = [scenes[key] for key in scene_keys if scenes[key]]
         script = "\n\n".join(script_parts)
 
-        video_urls = ["", "", "", ""]
+        video_urls = ["", "", "", "", "", "", "", ""]
 
         if PEXELS_API_KEY:
             try:
+                # Récupérer jusqu'à 8 vidéos depuis Pexels
                 async with httpx.AsyncClient(timeout=30) as client:
                     pexels_response = await client.get(
                         "https://api.pexels.com/videos/search",
-                        params={"query": niche, "per_page": 4},
+                        params={"query": niche, "per_page": 8},
                         headers={"Authorization": PEXELS_API_KEY},
                     )
                 pexels_data = pexels_response.json()
                 videos = pexels_data.get("videos", [])
-                for i, video in enumerate(videos[:4]):
+                for i, video in enumerate(videos[:8]):
                     files = video.get("video_files", [])
                     hd_files = [f for f in files if f.get("quality") == "hd"]
                     if hd_files:
@@ -360,10 +359,14 @@ Important rules:
             "scene8": scene_list[7] if len(scene_list) > 7 else "",
             "nb_scenes": len(scene_list),
             "duration": duration,
-            "video_url": video_urls[0],
+            "video_url":  video_urls[0],
             "video_url2": video_urls[1],
             "video_url3": video_urls[2],
             "video_url4": video_urls[3],
+            "video_url5": video_urls[4],
+            "video_url6": video_urls[5],
+            "video_url7": video_urls[6],
+            "video_url8": video_urls[7],
             "raw_claude_text": text
         }
 
