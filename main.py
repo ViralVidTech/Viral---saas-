@@ -134,8 +134,11 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
         block_duration = segment_duration / len(blocks)
 
         for b, block_text in enumerate(blocks):
-            start = scene_start + b * block_duration
-            end = start + block_duration - 0.08
+            # Avancer chaque sous-titre de 0.4s pour qu'il apparaisse
+            # légèrement avant la prononciation et paraisse synchronisé
+            OFFSET = 0.4
+            start = max(0.0, scene_start + b * block_duration - OFFSET)
+            end   = max(start + 0.1, start + block_duration - 0.08)
             entries.append(
                 f"{idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
             )
@@ -634,7 +637,7 @@ async def create_video(req: VideoRequest):
         srt_escaped = escape_srt_path(os.path.abspath(srt_path))
         subtitle_filter = (
             f"subtitles='{srt_escaped}':"
-            "force_style='Alignment=2,MarginV=80,"
+            "force_style='Alignment=2,MarginV=160,"
             "FontName=Arial,FontSize=14,Bold=1,"
             "PrimaryColour=&H00FFFFFF,"
             "OutlineColour=&H00000000,"
