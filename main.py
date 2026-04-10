@@ -106,43 +106,60 @@ def srt_timestamp(seconds: float) -> str:
 
 def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
     """
-    Découpe chaque scène en blocs de 5 mots maximum.
-    Chaque bloc s'affiche pendant sa portion de temps dans la scène.
-    Résultat : sous-titres style TikTok, courts et rythmés.
+    Génère des sous-titres synchronisés en calculant la durée par mot.
+    
+    Méthode :
+    - On compte le nombre total de mots dans tous les textes
+    - On calcule : durée_par_mot = durée_totale / nb_total_mots
+    - Chaque bloc de 5 mots dure donc : 5 × durée_par_mot
+    - Les sous-titres suivent le rythme réel de la voix
     """
+    WORDS_PER_BLOCK = 5
+
+    # Collecter tous les mots de toutes les scènes
+    all_texts = []
+    for text in subtitle_texts:
+        clean = " ".join((text or "").strip().split())
+        if clean:
+            all_texts.append(clean)
+
+    if not all_texts:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("")
+        return
+
+    # Compter le total de mots
+    total_words = sum(len(t.split()) for t in all_texts)
+    total_duration = len(all_texts) * segment_duration
+
+    # Durée par mot = durée totale / nombre total de mots
+    if total_words > 0:
+        seconds_per_word = total_duration / total_words
+    else:
+        seconds_per_word = 0.35  # fallback : 0.35s par mot
+
     entries = []
     idx = 1
-    WORDS_PER_BLOCK = 5  # nombre de mots par sous-titre affiché
+    current_time = 0.0
 
-    for i, text in enumerate(subtitle_texts):
-        clean = " ".join((text or "").strip().split())
-        if not clean:
-            continue
+    for text in all_texts:
+        words = text.split()
 
-        scene_start = i * segment_duration
-        words = clean.split()
-
-        # Découper les mots en blocs de WORDS_PER_BLOCK
-        blocks = []
+        # Découper en blocs de WORDS_PER_BLOCK mots
         for j in range(0, len(words), WORDS_PER_BLOCK):
-            blocks.append(" ".join(words[j:j + WORDS_PER_BLOCK]))
+            block = words[j:j + WORDS_PER_BLOCK]
+            block_text = " ".join(block)
+            block_word_count = len(block)
 
-        if not blocks:
-            continue
+            start = current_time
+            duration = block_word_count * seconds_per_word
+            end = start + duration - 0.05  # petit écart pour éviter chevauchement
 
-        # Durée de chaque bloc = durée de la scène / nombre de blocs
-        block_duration = segment_duration / len(blocks)
-
-        for b, block_text in enumerate(blocks):
-            # Avancer chaque sous-titre de 0.4s pour qu'il apparaisse
-            # légèrement avant la prononciation et paraisse synchronisé
-            OFFSET = 0.4
-            start = max(0.0, scene_start + b * block_duration - OFFSET)
-            end   = max(start + 0.1, start + block_duration - 0.08)
             entries.append(
                 f"{idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
             )
             idx += 1
+            current_time += duration
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(entries))
@@ -635,15 +652,19 @@ async def create_video(req: VideoRequest):
         output_path = os.path.join(VIDEO_DIR, output_filename)
 
         srt_escaped = escape_srt_path(os.path.abspath(srt_path))
+        # Alignment=2  = centré horizontalement, ancrage en BAS du texte
+        # MarginV=30   = 30px depuis le bas — valeur petite et stable
+        # PlayResY=720 = dit à FFmpeg que la vidéo fait 720px de haut
+        #                pour que MarginV soit interprété correctement
         subtitle_filter = (
             f"subtitles='{srt_escaped}':"
-            "force_style='Alignment=2,MarginV=160,"
-            "FontName=Arial,FontSize=14,Bold=1,"
+            "force_style='Alignment=2,MarginV=30,"
+            "PlayResX=405,PlayResY=720,"
+            "FontName=Arial,FontSize=18,Bold=1,"
             "PrimaryColour=&H00FFFFFF,"
             "OutlineColour=&H00000000,"
-            "BorderStyle=3,Outline=1,Shadow=0,"
-            "BackColour=&H99000000,"
-            "WrapStyle=0'"
+            "BorderStyle=3,Outline=2,Shadow=0,"
+            "BackColour=&H99000000'"
         )
 
         if final_audio_path:
