@@ -37,6 +37,7 @@ os.makedirs(WORK_DIR, exist_ok=True)
 class GenerateRequest(BaseModel):
     niche: str
     langue: str = "en"
+    duration: int = 30  # durée choisie : 30, 45 ou 60 secondes
 
 
 class TTSRequest(BaseModel):
@@ -51,12 +52,21 @@ class VideoRequest(BaseModel):
     text2: str = ""
     text3: str = ""
     text4: str = ""
+    text5: str = ""
+    text6: str = ""
+    text7: str = ""
+    text8: str = ""
     video_url: str = ""
     video_url2: str = ""
     video_url3: str = ""
     video_url4: str = ""
+    video_url5: str = ""
+    video_url6: str = ""
+    video_url7: str = ""
+    video_url8: str = ""
     audio_url: str = ""
     music_url: str = ""
+    duration: int = 30  # 30, 45 ou 60 secondes
 
 
 # ── UTILITAIRES FFMPEG ──────────────────────────────────────────────────────
@@ -167,6 +177,7 @@ async def serve_video(filename: str):
 async def generate(req: GenerateRequest):
     niche = req.niche.strip() or "general topic"
     lang = (req.langue or "en").lower()
+    duration = req.duration if req.duration in [30, 45, 60] else 30
 
     if not ANTHROPIC_API_KEY:
         return {"error": "ANTHROPIC_API_KEY manquante"}
@@ -179,8 +190,56 @@ async def generate(req: GenerateRequest):
     }
     target_language = lang_map.get(lang, "English")
 
+    # Adapter le nombre de scènes et la longueur des phrases selon la durée
+    # 30 sec = 4 scènes, phrases courtes (max 15 mots)
+    # 45 sec = 6 scènes, phrases moyennes (max 20 mots)
+    # 60 sec = 8 scènes, phrases longues (max 25 mots)
+    if duration == 60:
+        nb_scenes = 8
+        max_words = 25
+        scene_structure = """HOOK: [phrase d'accroche percutante - max 25 mots]
+
+CONTEXT: [phrase de contexte qui installe le sujet - max 25 mots]
+
+PROBLEM: [description du problème principal - max 25 mots]
+
+AGITATION: [phrase qui amplifie le problème, rend urgent - max 25 mots]
+
+SOLUTION: [présentation de la solution principale - max 25 mots]
+
+PROOF: [preuve ou exemple concret qui valide la solution - max 25 mots]
+
+BENEFIT: [bénéfice principal que l'utilisateur va obtenir - max 25 mots]
+
+CTA: [appel à l'action fort et direct - max 25 mots]"""
+    elif duration == 45:
+        nb_scenes = 6
+        max_words = 20
+        scene_structure = """HOOK: [phrase d'accroche percutante - max 20 mots]
+
+CONTEXT: [phrase de contexte qui installe le sujet - max 20 mots]
+
+PROBLEM: [description du problème principal - max 20 mots]
+
+SOLUTION: [présentation de la solution principale - max 20 mots]
+
+PROOF: [preuve ou exemple concret - max 20 mots]
+
+CTA: [appel à l'action fort et direct - max 20 mots]"""
+    else:  # 30 secondes
+        nb_scenes = 4
+        max_words = 15
+        scene_structure = """HOOK: [phrase d'accroche percutante - max 15 mots]
+
+PROBLEM: [description du problème - max 15 mots]
+
+SOLUTION: [présentation de la solution - max 15 mots]
+
+CTA: [appel à l'action - max 15 mots]"""
+
     prompt = f"""
 Create viral short-form video content about "{niche}" in {target_language}.
+The video will be {duration} seconds long with {nb_scenes} scenes.
 
 Return exactly in this format:
 
@@ -189,18 +248,13 @@ TITLES:
 2. [title 2]
 3. [title 3]
 
-HOOK: [one punchy sentence - max 8 words]
-
-PROBLEM: [one sentence - max 8 words]
-
-SOLUTION: [one sentence - max 8 words]
-
-CTA: [one call to action - max 8 words]
+{scene_structure}
 
 Important rules:
 - Write everything in {target_language}
-- Keep it natural, persuasive, and social-media ready
-- Do not add explanations
+- Each sentence must be complete, natural, and persuasive
+- Each sentence must be read aloud in approximately {duration // nb_scenes} seconds
+- Do not add explanations or comments
 - Do not add markdown
 - Do not add anything outside the required format
 """.strip()
@@ -246,10 +300,9 @@ Important rules:
 
         lines = text.split("\n")
         titles = []
-        hook = ""
-        problem = ""
-        solution = ""
-        cta = ""
+        # Toutes les scènes possibles selon la durée
+        scene_keys = ["HOOK", "CONTEXT", "PROBLEM", "AGITATION", "SOLUTION", "PROOF", "BENEFIT", "CTA"]
+        scenes = {key: "" for key in scene_keys}
 
         for line in lines:
             clean = line.strip()
@@ -259,17 +312,15 @@ Important rules:
                 titles.append(clean[2:].strip())
             elif clean.startswith("3."):
                 titles.append(clean[2:].strip())
-            elif clean.upper().startswith("HOOK:"):
-                hook = clean.split(":", 1)[1].strip()
-            elif clean.upper().startswith("PROBLEM:"):
-                problem = clean.split(":", 1)[1].strip()
-            elif clean.upper().startswith("SOLUTION:"):
-                solution = clean.split(":", 1)[1].strip()
-            elif clean.upper().startswith("CTA:"):
-                cta = clean.split(":", 1)[1].strip()
+            else:
+                for key in scene_keys:
+                    if clean.upper().startswith(f"{key}:"):
+                        scenes[key] = clean.split(":", 1)[1].strip()
+                        break
 
-        script_parts = [hook, problem, solution, cta]
-        script = "\n\n".join([p for p in script_parts if p])
+        # Construire le script dans l'ordre naturel, en ignorant les scènes vides
+        script_parts = [scenes[key] for key in scene_keys if scenes[key]]
+        script = "\n\n".join(script_parts)
 
         video_urls = ["", "", "", ""]
 
@@ -293,9 +344,22 @@ Important rules:
             except Exception:
                 pass
 
+        # Retourner chaque scène séparément pour les sous-titres
+        scene_list = [scenes[key] for key in scene_keys if scenes[key]]
+
         return {
             "titles": titles,
             "script": script,
+            "scene1": scene_list[0] if len(scene_list) > 0 else "",
+            "scene2": scene_list[1] if len(scene_list) > 1 else "",
+            "scene3": scene_list[2] if len(scene_list) > 2 else "",
+            "scene4": scene_list[3] if len(scene_list) > 3 else "",
+            "scene5": scene_list[4] if len(scene_list) > 4 else "",
+            "scene6": scene_list[5] if len(scene_list) > 5 else "",
+            "scene7": scene_list[6] if len(scene_list) > 6 else "",
+            "scene8": scene_list[7] if len(scene_list) > 7 else "",
+            "nb_scenes": len(scene_list),
+            "duration": duration,
             "video_url": video_urls[0],
             "video_url2": video_urls[1],
             "video_url3": video_urls[2],
@@ -356,25 +420,59 @@ async def create_video(req: VideoRequest):
                 "error": "FFmpeg n'est pas installé sur le serveur"
             })
 
-        video_urls = [
+        # Durée choisie par l'utilisateur
+        chosen_duration = req.duration if req.duration in [30, 45, 60] else 30
+
+        # Nombre de scènes selon la durée
+        # 30 sec → 4 scènes, 45 sec → 6 scènes, 60 sec → 8 scènes
+        if chosen_duration == 60:
+            nb_scenes = 8
+        elif chosen_duration == 45:
+            nb_scenes = 6
+        else:
+            nb_scenes = 4
+
+        # Récupérer toutes les URLs vidéo disponibles (jusqu'à 8)
+        all_video_urls = [
             (req.video_url or "").strip(),
             (req.video_url2 or "").strip(),
             (req.video_url3 or "").strip(),
             (req.video_url4 or "").strip(),
-        ]
-        subtitle_texts = [
-            (req.text1 or "").strip()[:140],
-            (req.text2 or "").strip()[:140],
-            (req.text3 or "").strip()[:140],
-            (req.text4 or "").strip()[:140],
+            (req.video_url5 or "").strip(),
+            (req.video_url6 or "").strip(),
+            (req.video_url7 or "").strip(),
+            (req.video_url8 or "").strip(),
         ]
 
-        valid_video_urls = [u for u in video_urls if u]
-        if not valid_video_urls:
+        # Récupérer tous les textes de sous-titres (jusqu'à 8)
+        all_subtitle_texts = [
+            (req.text1 or "").strip()[:200],
+            (req.text2 or "").strip()[:200],
+            (req.text3 or "").strip()[:200],
+            (req.text4 or "").strip()[:200],
+            (req.text5 or "").strip()[:200],
+            (req.text6 or "").strip()[:200],
+            (req.text7 or "").strip()[:200],
+            (req.text8 or "").strip()[:200],
+        ]
+
+        # Garder seulement les URLs valides, limiter au nombre de scènes voulu
+        valid_video_urls_raw = [u for u in all_video_urls if u]
+        if not valid_video_urls_raw:
             return JSONResponse(status_code=400, content={"error": "Aucune vidéo n'a été fournie"})
 
-        segment_duration = 5
-        total_duration = len(valid_video_urls) * segment_duration
+        # Si on a moins de vidéos que de scènes, on recycle les vidéos disponibles
+        video_urls = []
+        subtitle_texts = []
+        for i in range(nb_scenes):
+            video_urls.append(valid_video_urls_raw[i % len(valid_video_urls_raw)])
+            subtitle_texts.append(all_subtitle_texts[i] if i < len(all_subtitle_texts) else "")
+
+        valid_video_urls = video_urls
+
+        # Durée de chaque segment = durée totale / nombre de scènes
+        segment_duration = chosen_duration / nb_scenes
+        total_duration = chosen_duration
 
         job_id = uuid.uuid4().hex
         job_dir = os.path.join(WORK_DIR, job_id)
