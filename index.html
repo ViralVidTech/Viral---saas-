@@ -853,11 +853,15 @@
       (data.titles || []).forEach(title => { const li = document.createElement('li'); li.textContent = title; titlesList.appendChild(li); });
       scriptOutput.value = data.script || '';
 
-      // Stocker les URLs vidéo Pexels
+      // Stocker les 8 URLs vidéo Pexels
       window._pexelsVideoUrl  = data.video_url  || '';
       window._pexelsVideoUrl2 = data.video_url2 || '';
       window._pexelsVideoUrl3 = data.video_url3 || '';
       window._pexelsVideoUrl4 = data.video_url4 || '';
+      window._pexelsVideoUrl5 = data.video_url5 || '';
+      window._pexelsVideoUrl6 = data.video_url6 || '';
+      window._pexelsVideoUrl7 = data.video_url7 || '';
+      window._pexelsVideoUrl8 = data.video_url8 || '';
 
       // Stocker chaque scène individuellement pour les sous-titres
       window._scene1 = data.scene1 || '';
@@ -1018,10 +1022,10 @@
           video_url2: window._pexelsVideoUrl2 || '',
           video_url3: window._pexelsVideoUrl3 || '',
           video_url4: window._pexelsVideoUrl4 || '',
-          video_url5: '',
-          video_url6: '',
-          video_url7: '',
-          video_url8: '',
+          video_url5: window._pexelsVideoUrl5 || '',
+          video_url6: window._pexelsVideoUrl6 || '',
+          video_url7: window._pexelsVideoUrl7 || '',
+          video_url8: window._pexelsVideoUrl8 || '',
           audio_url:  window._generatedVoiceUrl || '',
           music_url:  chosenMusicUrl,
           duration:   chosenDuration
