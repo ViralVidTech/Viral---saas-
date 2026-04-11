@@ -146,7 +146,7 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
 
     # Avancer tous les sous-titres de 0.5s pour compenser
     # le délai naturel entre l'estimation et la prononciation réelle
-    ADVANCE = 0.8
+    ADVANCE = 0.5
 
     for text in all_texts:
         words = text.split()
