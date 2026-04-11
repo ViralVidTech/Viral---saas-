@@ -1,1256 +1,1069 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ViralVidTech</title>
-  <style>
-    :root {
-      --gold: #c9a646;
-      --gold-strong: #b88f28;
-      --emerald: #00d084;
-      --emerald-dark: #00b36f;
-      --cyan: #00a3ff;
-      --text: #ffffff;
-      --muted: #d8d8d8;
-      --panel: rgba(0, 0, 0, 0.68);
-      --panel-2: rgba(8, 8, 8, 0.6);
-      --border: rgba(255,255,255,0.08);
-      --radius: 20px;
-      --shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 0 20px rgba(255,255,255,0.02);
-      --danger: #ff7b7b;
-      --success: #8ef0c6;
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import os
+import uuid
+import base64
+import json
+import httpx
+import subprocess
+import shutil
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# CONFIG
+GOOGLE_TTS_API_KEY = os.getenv("GOOGLE_TTS_API_KEY", "")
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
+PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+
+AUDIO_DIR = "audio"
+VIDEO_DIR = "videos"
+WORK_DIR = "work"
+
+os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(VIDEO_DIR, exist_ok=True)
+os.makedirs(WORK_DIR, exist_ok=True)
+
+
+# MODELS
+class GenerateRequest(BaseModel):
+    niche: str
+    langue: str = "en"
+    duration: int = 30  # durée choisie : 30, 45 ou 60 secondes
+
+
+class TTSRequest(BaseModel):
+    text: str
+    languageCode: str = "en-US"
+    voiceName: str = "en-US-Chirp3-HD-Achernar"
+    speakingRate: float = 1.0
+
+
+class VideoRequest(BaseModel):
+    text1: str = ""
+    text2: str = ""
+    text3: str = ""
+    text4: str = ""
+    text5: str = ""
+    text6: str = ""
+    text7: str = ""
+    text8: str = ""
+    # 5 vidéos par scène × 8 scènes = 40 URLs vidéo
+    video_url: str = ""
+    video_url2: str = ""
+    video_url3: str = ""
+    video_url4: str = ""
+    video_url5: str = ""
+    video_url6: str = ""
+    video_url7: str = ""
+    video_url8: str = ""
+    video_url9: str = ""
+    video_url10: str = ""
+    video_url11: str = ""
+    video_url12: str = ""
+    video_url13: str = ""
+    video_url14: str = ""
+    video_url15: str = ""
+    video_url16: str = ""
+    video_url17: str = ""
+    video_url18: str = ""
+    video_url19: str = ""
+    video_url20: str = ""
+    video_url21: str = ""
+    video_url22: str = ""
+    video_url23: str = ""
+    video_url24: str = ""
+    video_url25: str = ""
+    video_url26: str = ""
+    video_url27: str = ""
+    video_url28: str = ""
+    video_url29: str = ""
+    video_url30: str = ""
+    video_url31: str = ""
+    video_url32: str = ""
+    video_url33: str = ""
+    video_url34: str = ""
+    video_url35: str = ""
+    video_url36: str = ""
+    video_url37: str = ""
+    video_url38: str = ""
+    video_url39: str = ""
+    video_url40: str = ""
+    audio_url: str = ""
+    sync_url: str = ""
+    music_url: str = ""
+    duration: int = 30
+
+
+# ── UTILITAIRES FFMPEG ──────────────────────────────────────────────────────
+
+def ffmpeg_exists():
+    return shutil.which("ffmpeg") is not None
+
+
+def run_cmd(cmd):
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Commande échouée:\n{' '.join(cmd)}"
+            f"\n\nSTDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
+        )
+    return result
+
+
+async def download_file(url: str, dest_path: str):
+    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        with open(dest_path, "wb") as f:
+            f.write(response.content)
+
+
+def srt_timestamp(seconds: float) -> str:
+    ms = int(round(seconds * 1000))
+    h = ms // 3600000
+    ms %= 3600000
+    m = ms // 60000
+    ms %= 60000
+    s = ms // 1000
+    ms %= 1000
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
+    """
+    Génère des sous-titres synchronisés en calculant la durée par mot.
+    
+    Méthode :
+    - On compte le nombre total de mots dans tous les textes
+    - On calcule : durée_par_mot = durée_totale / nb_total_mots
+    - Chaque bloc de 5 mots dure donc : 5 × durée_par_mot
+    - Les sous-titres suivent le rythme réel de la voix
+    """
+    WORDS_PER_BLOCK = 5
+
+    # Collecter tous les mots de toutes les scènes
+    all_texts = []
+    for text in subtitle_texts:
+        clean = " ".join((text or "").strip().split())
+        if clean:
+            all_texts.append(clean)
+
+    if not all_texts:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("")
+        return
+
+    # Compter le total de mots
+    total_words = sum(len(t.split()) for t in all_texts)
+    total_duration = len(all_texts) * segment_duration
+
+    # Durée par mot = durée totale / nombre total de mots
+    if total_words > 0:
+        seconds_per_word = total_duration / total_words
+    else:
+        seconds_per_word = 0.35  # fallback : 0.35s par mot
+
+    entries = []
+    idx = 1
+    current_time = 0.0
+
+    # Avancer tous les sous-titres de 0.5s pour compenser
+    # le délai naturel entre l'estimation et la prononciation réelle
+    ADVANCE = 0.6
+
+    for text in all_texts:
+        words = text.split()
+
+        # Découper en blocs de WORDS_PER_BLOCK mots
+        for j in range(0, len(words), WORDS_PER_BLOCK):
+            block = words[j:j + WORDS_PER_BLOCK]
+            block_text = " ".join(block)
+            block_word_count = len(block)
+
+            duration = block_word_count * seconds_per_word
+            start = max(0.0, current_time - ADVANCE)
+            end   = max(start + 0.1, start + duration - 0.05)
+
+            entries.append(
+                f"{idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
+            )
+            idx += 1
+            current_time += duration
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(entries))
+
+
+def escape_srt_path(path_str: str) -> str:
+    return path_str.replace("\\", "\\\\").replace(":", "\\:")
+
+def get_audio_duration(audio_path: str) -> float:
+    """Mesure la durée réelle d'un fichier audio en secondes via ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                audio_path
+            ],
+            capture_output=True, text=True
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return 0.0
+
+
+
+# ── ROUTES ──────────────────────────────────────────────────────────────────
+
+# HOME
+@app.get("/", response_class=HTMLResponse)
+async def serve_ui():
+    html_path = os.path.join(os.path.dirname(__file__), "index.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>API is running</h1>"
+
+
+# SERVIR LES FICHIERS AUDIO
+@app.get("/audio/{filename}")
+async def serve_audio(filename: str):
+    file_path = os.path.join(AUDIO_DIR, filename)
+    if not os.path.exists(file_path):
+        return {"error": "Audio file not found"}
+    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
+
+
+# SERVIR LES VIDÉOS GÉNÉRÉES
+@app.get("/video/{filename}")
+async def serve_video(filename: str):
+    file_path = os.path.join(VIDEO_DIR, filename)
+    if not os.path.exists(file_path):
+        return {"error": "Video file not found"}
+    return FileResponse(file_path, media_type="video/mp4", filename=filename)
+
+
+# GÉNÉRER SCRIPT + VIDÉOS PEXELS
+@app.post("/generate")
+async def generate(req: GenerateRequest):
+    niche = req.niche.strip() or "general topic"
+    lang = (req.langue or "en").lower()
+    duration = req.duration if req.duration in [30, 45, 60] else 30
+
+    if not ANTHROPIC_API_KEY:
+        return {"error": "ANTHROPIC_API_KEY manquante"}
+
+    lang_map = {
+        "en": "English",
+        "fr": "French",
+        "es": "Spanish",
+        "pt": "Portuguese",
+    }
+    target_language = lang_map.get(lang, "English")
+
+    # Adapter le nombre de scènes selon la durée choisie
+    if duration == 60:
+        nb_scenes = 8
+        seconds_per_scene = 7
+        scene_structure = """HOOK: [accroche choc qui arrête le scroll - 2 phrases complètes et développées]
+
+CONTEXT: [contexte qui pose le sujet et crée de la curiosité - 2 phrases complètes]
+
+PROBLEM: [décris le problème en détail, avec émotion - 2 phrases complètes]
+
+AGITATION: [amplifie la douleur du problème, rends-le urgent - 2 phrases complètes]
+
+SOLUTION: [présente la solution clairement et en détail - 2 phrases complètes]
+
+PROOF: [donne une preuve concrète, un chiffre, un exemple réel - 2 phrases complètes]
+
+BENEFIT: [décris le bénéfice concret que l'audience va obtenir - 2 phrases complètes]
+
+CTA: [appel à l'action direct et motivant - 2 phrases complètes]"""
+    elif duration == 45:
+        nb_scenes = 6
+        seconds_per_scene = 7
+        scene_structure = """HOOK: [accroche choc qui arrête le scroll - 2 phrases complètes et développées]
+
+CONTEXT: [contexte qui pose le sujet - 2 phrases complètes]
+
+PROBLEM: [décris le problème avec émotion - 2 phrases complètes]
+
+SOLUTION: [présente la solution en détail - 2 phrases complètes]
+
+PROOF: [preuve concrète ou exemple réel - 2 phrases complètes]
+
+CTA: [appel à l'action direct - 2 phrases complètes]"""
+    else:  # 30 secondes
+        nb_scenes = 4
+        seconds_per_scene = 7
+        scene_structure = """HOOK: [accroche choc - 2 phrases complètes et développées]
+
+PROBLEM: [problème avec émotion - 2 phrases complètes]
+
+SOLUTION: [solution en détail - 2 phrases complètes]
+
+CTA: [appel à l'action - 2 phrases complètes]"""
+
+    prompt = f"""
+Tu es un expert en création de contenu viral pour les réseaux sociaux.
+Crée un script vidéo complet de {duration} secondes sur le sujet : "{niche}".
+Le script doit être en {target_language}.
+La vidéo a {nb_scenes} scènes. Chaque scène dure environ {seconds_per_scene} secondes à l'oral.
+
+RÈGLES IMPORTANTES :
+- Chaque scène doit contenir EXACTEMENT 2 phrases complètes et bien développées
+- Chaque phrase doit faire entre 15 et 25 mots
+- Le ton doit être naturel, conversationnel, persuasif
+- Le contenu doit être réel, informatif, pas générique
+- Écris tout en {target_language}
+
+Retourne EXACTEMENT dans ce format, sans rien ajouter d'autre :
+
+TITLES:
+1. [titre accrocheur 1]
+2. [titre accrocheur 2]
+3. [titre accrocheur 3]
+
+{scene_structure}
+""".strip()
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 2000,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+            )
+
+        data = response.json()
+
+        if response.status_code != 200:
+            message = "Claude API a échoué"
+            if isinstance(data, dict):
+                err = data.get("error")
+                if isinstance(err, dict):
+                    message = err.get("message", message)
+            return {"error": message, "details": data}
+
+        content_blocks = data.get("content", [])
+        if not content_blocks:
+            return {"error": "Claude n'a pas retourné de contenu", "details": data}
+
+        text = ""
+        for block in content_blocks:
+            if block.get("type") == "text":
+                text += block.get("text", "") + "\n"
+
+        text = text.strip()
+        if not text:
+            return {"error": "Claude a retourné un contenu vide", "details": data}
+
+        lines = text.split("\n")
+        titles = []
+        # Toutes les scènes possibles selon la durée
+        scene_keys = ["HOOK", "CONTEXT", "PROBLEM", "AGITATION", "SOLUTION", "PROOF", "BENEFIT", "CTA"]
+        scenes = {key: "" for key in scene_keys}
+
+        for line in lines:
+            clean = line.strip()
+            if clean.startswith("1."):
+                titles.append(clean[2:].strip())
+            elif clean.startswith("2."):
+                titles.append(clean[2:].strip())
+            elif clean.startswith("3."):
+                titles.append(clean[2:].strip())
+            else:
+                for key in scene_keys:
+                    if clean.upper().startswith(f"{key}:"):
+                        scenes[key] = clean.split(":", 1)[1].strip()
+                        break
+
+        # Construire le script dans l'ordre naturel, en ignorant les scènes vides
+        script_parts = [scenes[key] for key in scene_keys if scenes[key]]
+        script = "\n\n".join(script_parts)
+
+        video_urls = ["", "", "", "", "", "", "", ""]
+
+        # Construire les requêtes de recherche pour chaque scène
+        # On prend les 3 premiers mots significatifs de chaque scène
+        # pour trouver des vidéos qui correspondent au contenu
+        def extract_keywords(scene_text: str, fallback: str, scene_key: str = "") -> str:
+            """
+            Extrait les mots-clés les plus visuels d'une scène.
+            Privilégie les noms et adjectifs concrets qui donnent
+            de bonnes images de stock (personnes, lieux, actions).
+            """
+            if not scene_text:
+                return fallback
+            words = scene_text.split()
+            stop_words = {
+                # Français
+                "le","la","les","un","une","des","de","du","et","en","que","qui",
+                "pour","par","sur","dans","avec","est","sont","mais","donc","car",
+                "tout","tous","toute","cette","cela","plus","très","bien","aussi",
+                "comme","même","fait","peut","faut","doit","avoir","être","faire",
+                # Anglais
+                "the","a","an","is","are","you","your","to","of","in","and","or",
+                "it","this","that","we","our","my","not","can","will","all","if",
+                "have","has","been","with","they","their","from","but","when","how"
+            }
+            # Garder uniquement les mots significatifs de plus de 4 caractères
+            keywords = [w.strip(".,!?;:") for w in words
+                       if len(w.strip(".,!?;:")) > 4
+                       and w.lower().strip(".,!?;:") not in stop_words]
+
+            # Ajouter la niche comme contexte pour ancrer la recherche
+            if keywords:
+                # Combiner 2 mots-clés de la scène + la niche
+                query = " ".join(keywords[:2]) + " " + fallback
+                return query.strip()
+            return fallback
+
+        # Préparer une requête par scène — combinaison mots-clés + niche
+        scene_queries = []
+        for key in scene_keys:
+            if scenes[key]:
+                query = extract_keywords(scenes[key], niche, key)
+                scene_queries.append(query)
+
+        # Compléter avec la niche si on n'a pas assez de scènes
+        while len(scene_queries) < 8:
+            scene_queries.append(niche)
+
+        async def fetch_pexels_videos(client, query: str, count: int = 2) -> list:
+            """Cherche plusieurs vidéos Pexels pour une requête donnée."""
+            results = []
+            try:
+                resp = await client.get(
+                    "https://api.pexels.com/videos/search",
+                    params={"query": query, "per_page": count + 4, "orientation": "portrait"},
+                    headers={"Authorization": PEXELS_API_KEY},
+                )
+                data = resp.json()
+                videos = data.get("videos", [])
+                for video in videos:
+                    if len(results) >= count:
+                        break
+                    files = video.get("video_files", [])
+                    hd_files = [f for f in files if f.get("quality") == "hd"]
+                    if hd_files:
+                        results.append(hd_files[0].get("link", ""))
+                    elif files:
+                        results.append(files[0].get("link", ""))
+            except Exception:
+                pass
+            return results
+
+        async def fetch_pixabay_videos(client, query: str, count: int = 2) -> list:
+            """Cherche plusieurs vidéos Pixabay pour une requête donnée."""
+            results = []
+            try:
+                resp = await client.get(
+                    "https://pixabay.com/api/videos/",
+                    params={
+                        "key": PIXABAY_API_KEY,
+                        "q": query,
+                        "per_page": count + 4,
+                        "video_type": "film",
+                    },
+                )
+                data = resp.json()
+                hits = data.get("hits", [])
+                for hit in hits:
+                    if len(results) >= count:
+                        break
+                    videos = hit.get("videos", {})
+                    for quality in ["medium", "small", "large"]:
+                        v = videos.get(quality, {})
+                        url = v.get("url", "")
+                        if url:
+                            results.append(url)
+                            break
+            except Exception:
+                pass
+            return results
+
+        # video_urls : 16 slots — 2 vidéos par scène (slot 0-1 = scène1, 2-3 = scène2...)
+        video_urls = [""] * 40
+
+        if PEXELS_API_KEY or PIXABAY_API_KEY:
+            try:
+                async with httpx.AsyncClient(timeout=45) as client:
+                    for i, query in enumerate(scene_queries[:8]):
+                        slot = i * 5  # chaque scène occupe 5 slots consécutifs
+                        collected = []
+
+                        # 1. Pexels avec mots-clés de la scène
+                        if PEXELS_API_KEY:
+                            collected += await fetch_pexels_videos(client, query, 5)
+
+                        # 2. Pixabay si pas assez
+                        if PIXABAY_API_KEY and len(collected) < 5:
+                            collected += await fetch_pixabay_videos(client, query, 5 - len(collected))
+
+                        # 3. Fallback niche si toujours pas assez
+                        if PEXELS_API_KEY and len(collected) < 5 and query != niche:
+                            collected += await fetch_pexels_videos(client, niche, 5 - len(collected))
+
+                        # Remplir les 5 slots de cette scène
+                        for j in range(5):
+                            if j < len(collected):
+                                video_urls[slot + j] = collected[j]
+                            elif collected:
+                                video_urls[slot + j] = collected[j % len(collected)]
+            except Exception:
+                pass
+
+        # Retourner chaque scène séparément pour les sous-titres
+        scene_list = [scenes[key] for key in scene_keys if scenes[key]]
+
+        return {
+            "titles": titles,
+            "script": script,
+            "scene1": scene_list[0] if len(scene_list) > 0 else "",
+            "scene2": scene_list[1] if len(scene_list) > 1 else "",
+            "scene3": scene_list[2] if len(scene_list) > 2 else "",
+            "scene4": scene_list[3] if len(scene_list) > 3 else "",
+            "scene5": scene_list[4] if len(scene_list) > 4 else "",
+            "scene6": scene_list[5] if len(scene_list) > 5 else "",
+            "scene7": scene_list[6] if len(scene_list) > 6 else "",
+            "scene8": scene_list[7] if len(scene_list) > 7 else "",
+            "nb_scenes": len(scene_list),
+            "duration": duration,
+            "video_url":  video_urls[0],
+            "video_url2":  video_urls[1],
+            "video_url3":  video_urls[2],
+            "video_url4":  video_urls[3],
+            "video_url5":  video_urls[4],
+            "video_url6":  video_urls[5],
+            "video_url7":  video_urls[6],
+            "video_url8":  video_urls[7],
+            "video_url9":  video_urls[8],
+            "video_url10": video_urls[9],
+            "video_url11": video_urls[10],
+            "video_url12": video_urls[11],
+            "video_url13": video_urls[12],
+            "video_url14": video_urls[13],
+            "video_url15": video_urls[14],
+            "video_url16": video_urls[15],
+            "video_url17": video_urls[16],
+            "video_url18": video_urls[17],
+            "video_url19": video_urls[18],
+            "video_url20": video_urls[19],
+            "video_url21": video_urls[20],
+            "video_url22": video_urls[21],
+            "video_url23": video_urls[22],
+            "video_url24": video_urls[23],
+            "video_url25": video_urls[24],
+            "video_url26": video_urls[25],
+            "video_url27": video_urls[26],
+            "video_url28": video_urls[27],
+            "video_url29": video_urls[28],
+            "video_url30": video_urls[29],
+            "video_url31": video_urls[30],
+            "video_url32": video_urls[31],
+            "video_url33": video_urls[32],
+            "video_url34": video_urls[33],
+            "video_url35": video_urls[34],
+            "video_url36": video_urls[35],
+            "video_url37": video_urls[36],
+            "video_url38": video_urls[37],
+            "video_url39": video_urls[38],
+            "video_url40": video_urls[39],
+            "raw_claude_text": text
+        }
+
+    except Exception as e:
+        return {"error": f"Erreur Claude: {str(e)}"}
+
+
+def build_ssml_with_marks(text: str) -> tuple:
+    """
+    Transforme un texte en SSML avec une <mark> devant chaque mot.
+    Retourne (ssml_string, liste_de_mots).
+    Google TTS retournera ensuite le timestamp exact de chaque mark.
+    """
+    words = text.strip().split()
+    parts = []
+    for i, word in enumerate(words):
+        parts.append(f'<mark name="w{i}"/>{word}')
+    ssml = "<speak>" + " ".join(parts) + "</speak>"
+    return ssml, words
+
+
+def build_srt_from_timepoints(words: list, timepoints: list, out_path: str, words_per_block: int = 5):
+    """
+    Construit le fichier SRT à partir des timestamps EXACTS
+    fournis par Google TTS pour chaque mot.
+    """
+    # Construire un dict : index_mot → temps_début (en secondes)
+    mark_times = {}
+    for tp in timepoints:
+        mark_name = tp.get("markName", "")
+        time_seconds = tp.get("timeSeconds", 0.0)
+        if mark_name.startswith("w"):
+            try:
+                idx = int(mark_name[1:])
+                mark_times[idx] = float(time_seconds)
+            except ValueError:
+                pass
+
+    if not mark_times or not words:
+        return False
+
+    # Durée totale estimée = dernier timestamp + durée moyenne par mot
+    last_idx = max(mark_times.keys())
+    if len(mark_times) > 1:
+        avg_word_dur = mark_times[last_idx] / last_idx if last_idx > 0 else 0.35
+    else:
+        avg_word_dur = 0.35
+    estimated_end = mark_times.get(last_idx, 0) + avg_word_dur * words_per_block
+
+    entries = []
+    entry_idx = 1
+
+    for j in range(0, len(words), words_per_block):
+        block_words = words[j:j + words_per_block]
+        block_text = " ".join(block_words)
+
+        # Début du bloc = timestamp du premier mot du bloc
+        start = mark_times.get(j, None)
+        if start is None:
+            continue
+
+        # Fin du bloc = timestamp du premier mot du prochain bloc (ou fin estimée)
+        next_j = j + words_per_block
+        if next_j < len(words) and next_j in mark_times:
+            end = mark_times[next_j] - 0.05
+        else:
+            end = estimated_end - 0.05
+
+        end = max(start + 0.1, end)
+
+        entries.append(
+            f"{entry_idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
+        )
+        entry_idx += 1
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(entries))
+
+    return True
+
+
+# GOOGLE TTS
+@app.post("/generate-audio")
+async def generate_audio(req: TTSRequest):
+    if not GOOGLE_TTS_API_KEY:
+        return {"error": "GOOGLE_TTS_API_KEY manquante"}
+    if not PUBLIC_BASE_URL:
+        return {"error": "PUBLIC_BASE_URL manquante"}
+    if not req.text.strip():
+        return {"error": "Le texte est vide"}
+
+    google_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={GOOGLE_TTS_API_KEY}"
+
+    # Texte simple pour toutes les voix (Chirp3, Neural2, Standard, Wavenet)
+    payload = {
+        "input": {"text": req.text},
+        "voice": {"languageCode": req.languageCode, "name": req.voiceName},
+        "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
     }
 
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at 14% 10%, rgba(229, 201, 122, 0.95), transparent 26%),
-        radial-gradient(circle at 86% 12%, rgba(0, 208, 132, 0.92), transparent 24%),
-        linear-gradient(135deg, var(--gold-strong) 0%, var(--emerald) 100%);
-      color: var(--text);
-      min-height: 100vh;
-      overflow-x: hidden;
-      position: relative;
-    }
-
-    body::after {
-      content: "";
-      position: fixed;
-      top: -180px; left: -180px;
-      width: 620px; height: 620px;
-      background: radial-gradient(circle, rgba(0,208,132,0.24), transparent 60%);
-      filter: blur(120px);
-      z-index: 0; pointer-events: none;
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      bottom: -220px; right: -120px;
-      width: 520px; height: 520px;
-      background: radial-gradient(circle, rgba(201,166,70,0.2), transparent 60%);
-      filter: blur(110px);
-      z-index: 0; pointer-events: none;
-    }
-
-    .app-shell {
-      position: relative; z-index: 1;
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      min-height: 100vh;
-    }
-
-    .sidebar {
-      background: rgba(0,0,0,0.75);
-      backdrop-filter: blur(14px);
-      border-right: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 0 40px rgba(0,0,0,0.4);
-      padding: 28px 20px;
-      display: flex; flex-direction: column; gap: 24px;
-    }
-
-    .brand { display: grid; gap: 8px; }
-    .brand h1 { margin: 0; font-size: 2rem; line-height: 1; letter-spacing: -0.04em; }
-    .brand p  { margin: 0; color: var(--muted); font-size: 0.95rem; }
-
-    .nav-section { display: grid; gap: 10px; }
-    .nav-label {
-      color: rgba(255,255,255,0.58); font-size: 0.78rem;
-      text-transform: uppercase; letter-spacing: 0.14em; padding: 0 10px;
-    }
-
-    .sidebar a {
-      display: block; padding: 12px 14px; border-radius: 12px;
-      color: #E0E0E0; text-decoration: none;
-      transition: all 0.2s ease; border: 1px solid transparent;
-    }
-    .sidebar a:hover, .sidebar a.active {
-      background: linear-gradient(90deg, rgba(0,208,132,0.15), rgba(201,166,70,0.15));
-      transform: translateX(4px); border-color: rgba(255,255,255,0.08);
-    }
-
-    .side-card {
-      margin-top: auto;
-      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
-      border: 1px solid var(--border); border-radius: 18px; padding: 18px;
-      box-shadow: var(--shadow); display: grid; gap: 12px;
-    }
-    .side-card h3, .side-card p { margin: 0; }
-    .side-card p { color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
-
-    button {
-      border: none; border-radius: 12px; padding: 12px 14px;
-      cursor: pointer; font: inherit;
-      transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
-    }
-    button:hover { transform: translateY(-1px); }
-    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-
-    .gold-btn { background: linear-gradient(135deg, var(--gold), var(--gold-strong)); color: #0b0b0b; font-weight: 800; }
-    .primary-btn {
-      background: linear-gradient(135deg, #00D084, #00b36f);
-      color: #000000; font-weight: 800; letter-spacing: 0.5px;
-      box-shadow: 0 10px 25px rgba(0,208,132,0.4), 0 0 15px rgba(0,208,132,0.2);
-    }
-    .primary-btn:hover { transform: translateY(-1px) scale(1.03); }
-    .secondary-btn { background: transparent; color: var(--text); border: 1px solid var(--border); }
-    .auth-btn { background: rgba(0,0,0,0.52); color: var(--text); border: 1px solid var(--border); }
-    .plan-btn { width: 100%; font-weight: 800; background: linear-gradient(135deg, var(--gold), var(--gold-strong)); color: #0a0a0a; }
-
-    .main { padding: 28px; display: grid; gap: 22px; }
-
-    .topbar {
-      display: flex; justify-content: space-between;
-      align-items: center; gap: 16px; flex-wrap: wrap;
-    }
-    .headline { display: grid; gap: 8px; }
-    .headline h2 {
-      margin: 0; font-size: clamp(2rem, 4vw, 3.3rem);
-      line-height: 0.96; letter-spacing: -0.05em; max-width: 11ch;
-    }
-    .headline p { margin: 0; color: var(--muted); max-width: 68ch; font-size: 1rem; }
-
-    .top-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-
-    .badge-pill {
-      background: rgba(0,0,0,0.5); border: 1px solid var(--border);
-      border-radius: 999px; padding: 10px 14px; color: var(--muted);
-      display: inline-flex; align-items: center; gap: 8px;
-    }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 16px rgba(0,208,132,0.7); }
-
-    select, input, textarea {
-      width: 100%; background: rgba(10,10,10,0.55); color: var(--text);
-      border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px;
-      outline: none; transition: border-color 0.18s ease, box-shadow 0.18s ease;
-    }
-    select:focus, input:focus, textarea:focus {
-      border-color: rgba(0,163,255,0.55); box-shadow: 0 0 0 3px rgba(0,163,255,0.12);
-    }
-
-    .lang-switcher {
-      display: flex; align-items: center; gap: 10px;
-      background: rgba(0,0,0,0.48); border: 1px solid var(--border);
-      border-radius: 999px; padding: 10px 14px;
-    }
-    .lang-switcher label { color: var(--muted); font-size: 0.92rem; }
-
-    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-    .panel { background: var(--panel); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; box-shadow: var(--shadow); }
-    .kpi-card { padding: 18px; display: grid; gap: 8px; }
-    .kpi-card span  { color: var(--muted); font-size: 0.92rem; }
-    .kpi-card strong { font-size: 1.55rem; }
-    .kpi-card small  { color: var(--cyan); font-size: 0.85rem; }
-
-    .workspace { display: grid; grid-template-columns: 0.94fr 1.06fr; gap: 22px; }
-    .form-panel, .results-panel, .pricing-panel, .detector-panel { padding: 22px; }
-    .section-title    { margin: 0 0 6px; font-size: 1.25rem; letter-spacing: -0.03em; }
-    .section-subtitle { margin: 0 0 18px; color: var(--muted); font-size: 0.95rem; }
-    .form-grid, .result-block, .activity-feed { display: grid; gap: 14px; }
-    .field  { display: grid; gap: 8px; }
-    .field label { font-size: 0.93rem; }
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
-
-    .status { min-height: 24px; color: var(--muted); font-size: 0.93rem; }
-    .status.error   { color: var(--danger); }
-    .status.success { color: var(--cyan); }
-
-    .result-card, .detector-item, .plan-card {
-      background: var(--panel-2); border: 1px solid var(--border);
-      border-radius: 16px; padding: 18px;
-    }
-    .result-card h3, .detector-item h3, .plan-card h3 { margin: 0 0 12px; font-size: 1.02rem; }
-
-    .titles-list { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
-    .script-box  { min-height: 290px; resize: vertical; line-height: 1.56; }
-    .footer-note { margin-top: 18px; color: var(--muted); font-size: 0.9rem; }
-    .link-accent { color: var(--cyan); }
-
-    .chart-box {
-      height: 190px; border-radius: 18px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-      border: 1px solid var(--border); position: relative; overflow: hidden;
-    }
-    .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-
-    .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    .plan-card.featured {
-      border-color: rgba(0,208,132,0.35); box-shadow: 0 14px 40px rgba(0,208,132,0.14);
-      transform: translateY(-4px);
-    }
-    .plan-price { font-size: 2rem; font-weight: 800; margin-bottom: 12px; }
-    .plan-list  { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 10px; color: var(--muted); }
-
-    .detector-controls {
-      display: grid; grid-template-columns: 1fr 180px 160px auto;
-      gap: 12px; margin-bottom: 18px;
-    }
-    .detector-grid { display: grid; gap: 12px; }
-    .detector-meta { display: flex; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
-    .score-pill {
-      display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 999px; padding: 8px 12px;
-      background: rgba(0,208,132,0.14); color: var(--success);
-      font-weight: 700; border: 1px solid rgba(0,208,132,0.18);
-    }
-
-    /* ── VIDEO DOWNLOAD BLOCK ── */
-    .video-download-block {
-      display: none;
-      background: rgba(0,208,132,0.08);
-      border: 1px solid rgba(0,208,132,0.3);
-      border-radius: 16px;
-      padding: 18px;
-      gap: 14px;
-      flex-direction: column;
-    }
-    .video-download-block.show { display: flex; }
-    .video-download-block video { width: 100%; border-radius: 10px; max-height: 340px; background: #000; }
-    .video-download-block a {
-      display: inline-block;
-      background: linear-gradient(135deg, var(--emerald), var(--emerald-dark));
-      color: #000; font-weight: 800; padding: 12px 20px;
-      border-radius: 12px; text-decoration: none; text-align: center;
-    }
-    .video-download-block a:hover { opacity: 0.88; }
-
-    .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-      display: none; align-items: center; justify-content: center;
-      z-index: 20; padding: 20px;
-    }
-    .modal-overlay.open { display: flex; }
-    .modal {
-      width: min(460px, 100%); background: rgba(0,0,0,0.86);
-      border: 1px solid var(--border); border-radius: 22px;
-      box-shadow: var(--shadow); padding: 24px; display: grid; gap: 14px;
-    }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-    .close-btn { width: 40px; height: 40px; border-radius: 999px; background: transparent; color: var(--text); border: 1px solid var(--border); }
-
-    .user-badge { display: none; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 999px; background: rgba(0,0,0,0.48); border: 1px solid var(--border); }
-    .user-badge.show { display: inline-flex; }
-
-    @media (max-width: 1180px) {
-      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-      .workspace { grid-template-columns: 1fr; }
-      .pricing-grid { grid-template-columns: 1fr; }
-      .detector-controls { grid-template-columns: 1fr 1fr; }
-    }
-    @media (max-width: 980px) {
-      .app-shell { grid-template-columns: 1fr; }
-      .sidebar { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); }
-    }
-    @media (max-width: 720px) {
-      .main { padding: 18px; }
-      .kpi-grid, .mini-grid { grid-template-columns: 1fr; }
-      .detector-controls { grid-template-columns: 1fr; }
-      .headline h2 { max-width: none; }
-    }
-  </style>
-</head>
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <h1>ViralVidTech</h1>
-        <p id="brandSlogan">Turn trends into profitable multilingual content.</p>
-      </div>
-
-      <div class="nav-section">
-        <div class="nav-label" id="navMainLabel">Main</div>
-        <a href="#dashboard" class="active" id="navDashboard">Dashboard</a>
-        <a href="#generator" id="navGenerator">Generator</a>
-        <a href="#detector" id="navAnalytics">Viral Detector</a>
-        <a href="#pricing" id="navLibrary">Pricing</a>
-      </div>
-
-      <div class="nav-section">
-        <div class="nav-label" id="navSystemLabel">System</div>
-        <a href="#overview" id="navBilling">Revenue</a>
-        <a href="#login" id="navSettings">Login</a>
-      </div>
-
-      <div class="side-card">
-        <h3 id="sideCardTitle">Brand promise</h3>
-        <p id="sideCardText">Build faster. Publish smarter. Grow globally with an English-first SaaS your users can switch into their own language.</p>
-        <button class="gold-btn" id="sideCardButton">Upgrade UI</button>
-      </div>
-    </aside>
-
-    <main class="main" id="dashboard">
-      <div class="topbar">
-        <div class="headline">
-          <h2 id="headlineTitle">Generate viral titles and scripts in seconds.</h2>
-          <p id="headlineText">Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.</p>
-        </div>
-        <div class="top-actions">
-          <div class="badge-pill">
-            <span class="dot"></span>
-            <span id="apiStatusLabel">API status</span>
-          </div>
-          <div class="user-badge" id="userBadge">
-            <span>👤</span>
-            <span id="userBadgeText">Guest</span>
-          </div>
-          <button class="auth-btn" id="openLoginBtn">Login</button>
-          <button class="auth-btn" id="logoutBtn" style="display:none;">Logout</button>
-          <div class="lang-switcher">
-            <label for="uiLanguage" id="uiLanguageLabel">Interface language</label>
-            <select id="uiLanguage">
-              <option value="en">English</option>
-              <option value="fr">Français</option>
-              <option value="es">Español</option>
-              <option value="pt">Português</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <section class="kpi-grid">
-        <div class="panel kpi-card">
-          <span id="kpi1Label">Estimated revenue</span>
-          <strong id="kpiRevenue">$0</strong>
-          <small id="kpi1Trend">+18.4% this month</small>
-        </div>
-        <div class="panel kpi-card">
-          <span id="kpi2Label">Generated scripts</span>
-          <strong id="kpiScripts">0</strong>
-          <small id="kpi2Trend">+312 this week</small>
-        </div>
-        <div class="panel kpi-card">
-          <span id="kpi3Label">Viral score alerts</span>
-          <strong id="kpiAlerts">0</strong>
-          <small id="kpi3Trend">8 trending niches</small>
-        </div>
-        <div class="panel kpi-card">
-          <span id="kpi4Label">Active languages</span>
-          <strong id="kpiLanguages">4</strong>
-          <small id="kpi4Trend">English-first experience</small>
-        </div>
-      </section>
-
-      <section class="workspace" id="generator">
-        <div class="panel form-panel">
-          <h2 class="section-title" id="generatorTitle">Content Generator</h2>
-          <p class="section-subtitle" id="generatorSubtitle">Use the live API deployed on Render.</p>
-
-          <div class="form-grid">
-            <div class="field">
-              <label for="apiUrl" id="apiUrlLabel">API base URL</label>
-              <input id="apiUrl" type="text" placeholder="https://your-service.onrender.com" />
-            </div>
-            <div class="field">
-              <label for="niche" id="nicheLabel">Niche</label>
-              <input id="niche" type="text" placeholder="money" />
-            </div>
-            <div class="field">
-              <label for="contentLanguage" id="contentLanguageLabel">Content language</label>
-              <select id="contentLanguage">
-                <option value="en">English</option>
-                <option value="fr">French</option>
-                <option value="es">Spanish</option>
-                <option value="pt">Portuguese</option>
-              </select>
-            </div>
-            <div class="actions">
-              <button class="primary-btn" id="generateBtn">Generate</button>
-              <button class="secondary-btn" id="copyBtn">Copy script</button>
-            </div>
-            <div class="status" id="status"></div>
-          </div>
-
-          <p class="footer-note" id="helpText">Tip: paste your Render URL above, without /docs. Example: <span class="link-accent">https://your-service.onrender.com</span></p>
-        </div>
-
-        <div class="panel results-panel">
-          <h2 class="section-title" id="resultsTitle">Results</h2>
-          <p class="section-subtitle" id="resultsSubtitle">Your generated titles and script will appear here.</p>
-          <div class="result-block">
-            <div class="result-card">
-              <h3 id="titlesHeading">Viral Titles</h3>
-              <ol class="titles-list" id="titlesList"><li>—</li><li>—</li><li>—</li></ol>
-            </div>
-            <div class="result-card">
-              <h3 id="scriptHeading">Script</h3>
-              <textarea id="scriptOutput" class="script-box" readonly placeholder="Your script will appear here..."></textarea>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="workspace" id="overview" style="grid-template-columns: 1.08fr 0.92fr;">
-        <div class="panel results-panel">
-          <h2 class="section-title" id="overviewTitle">Performance Overview</h2>
-          <p class="section-subtitle" id="overviewSubtitle">A premium dashboard preview for revenue, growth, and viral momentum.</p>
-          <div class="result-card" style="min-height: 280px; display: grid; gap: 18px; align-content: start;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-              <h3 id="chartTitle" style="margin:0;">Revenue Trend</h3>
-              <span class="badge-pill"><span id="chartBadge">Live preview</span></span>
-            </div>
-            <div class="chart-box">
-              <div style="position:absolute; inset:0; background: linear-gradient(180deg, transparent 0%, rgba(0,163,255,0.12) 100%);"></div>
-              <svg viewBox="0 0 600 190" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true">
-                <polyline fill="none" stroke="rgba(0,163,255,0.95)" stroke-width="4" points="20,150 95,132 170,140 245,96 320,108 395,68 470,78 545,36" />
-                <polyline fill="none" stroke="rgba(0,208,132,0.82)" stroke-width="3" points="20,160 95,150 170,145 245,134 320,126 395,110 470,94 545,72" />
-              </svg>
-            </div>
-            <div class="mini-grid">
-              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
-                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat1Label">Projected MRR</h3>
-                <strong style="font-size:1.35rem;" id="miniStat1Value">$0</strong>
-              </div>
-              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
-                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat2Label">Top Niche</h3>
-                <strong style="font-size:1.35rem;" id="miniStat2Value">—</strong>
-              </div>
-              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
-                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat3Label">Growth Rate</h3>
-                <strong style="font-size:1.35rem;" id="miniStat3Value">0%</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel results-panel">
-          <h2 class="section-title" id="activityTitle">Recent Activity</h2>
-          <p class="section-subtitle" id="activitySubtitle">A clean SaaS-style feed for the next stage of the product.</p>
-          <div class="activity-feed" id="activityFeed">
-            <div class="result-card">
-              <h3 id="activity1Title">Viral script generated</h3>
-              <p style="margin:0; color:var(--muted);" id="activity1Text">A new script was generated for the finance niche in English.</p>
-            </div>
-            <div class="result-card">
-              <h3 id="activity2Title">Trend alert triggered</h3>
-              <p style="margin:0; color:var(--muted);" id="activity2Text">A high-momentum content opportunity was detected in the AI niche.</p>
-            </div>
-            <div class="result-card">
-              <h3 id="activity3Title">Multilingual mode ready</h3>
-              <p style="margin:0; color:var(--muted);" id="activity3Text">Your interface is prepared for English, French, Spanish, and Portuguese.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel detector-panel" id="detector">
-        <h2 class="section-title" id="detectorTitle">Viral Video Detector</h2>
-        <p class="section-subtitle" id="detectorSubtitle">Scan by keyword, niche, and platform to surface high-potential video ideas.</p>
-        <div class="detector-controls">
-          <input id="detectorKeyword" type="text" placeholder="AI money" />
-          <select id="detectorPlatform">
-            <option value="YouTube Shorts">YouTube Shorts</option>
-            <option value="TikTok">TikTok</option>
-            <option value="Instagram Reels">Instagram Reels</option>
-            <option value="Facebook Reels">Facebook Reels</option>
-          </select>
-          <select id="detectorLanguage">
-            <option value="en">English</option>
-            <option value="fr">French</option>
-            <option value="es">Spanish</option>
-            <option value="pt">Portuguese</option>
-          </select>
-          <button class="primary-btn" id="scanBtn">Scan trends</button>
-        </div>
-        <div class="detector-grid" id="detectorResults"></div>
-      </section>
-
-      <!-- ══════════════════════════════════════════════════════════
-           VIDEO CREATION — pipeline FFmpeg (plus Shotstack)
-           ══════════════════════════════════════════════════════════ -->
-      <section class="panel detector-panel" id="videoCreation">
-        <h2 class="section-title" id="videoTitle">Video Creation</h2>
-        <p class="section-subtitle" id="videoSubtitle">Build 30 to 60 second faceless videos from your script with FFmpeg.</p>
-
-        <div class="workspace" style="grid-template-columns: 0.95fr 1.05fr; gap:18px;">
-          <div class="result-card" style="display:grid; gap:14px;">
-
-            <div class="field">
-              <label for="videoType" id="videoTypeLabel">Video type</label>
-              <select id="videoType">
-                <option value="faceless-business">Faceless Business</option>
-                <option value="faceless-education">Faceless Education</option>
-                <option value="faceless-motivation">Faceless Motivation</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="videoDuration" id="videoDurationLabel">Duration</label>
-              <select id="videoDuration">
-                <option value="30">30 seconds</option>
-                <option value="45">45 seconds</option>
-                <option value="60">60 seconds</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="videoVoice" id="videoVoiceLabel">Voice</label>
-              <select id="videoVoice">
-                <option value="en-US-Neural2-A">Male - American (Neural)</option>
-                <option value="en-US-Neural2-C">Female - American (Neural)</option>
-                <option value="en-US-Neural2-D">Male - Deep American (Neural)</option>
-                <option value="en-US-Neural2-F">Female - Soft American (Neural)</option>
-                <option value="en-GB-Neural2-A">Female - British (Neural)</option>
-                <option value="en-GB-Neural2-B">Male - British (Neural)</option>
-                <option value="fr-FR-Neural2-A">Female - French (Neural)</option>
-                <option value="fr-FR-Neural2-B">Male - French (Neural)</option>
-              </select>
-              <div class="actions">
-                <button class="primary-btn" id="generateVoiceBtn">Generate Voice</button>
-              </div>
-              <div class="field">
-                <label>Voice preview</label>
-                <audio id="voicePreview" controls style="width:100%;"></audio>
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="musicSelect">Background music</label>
-              <select id="musicSelect">
-                <option value="">No music</option>
-                <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option>
-                <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option>
-                <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option>
-                <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3">Music 4</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="subtitleStyle" id="subtitleStyleLabel">Subtitle style</label>
-              <select id="subtitleStyle">
-                <option value="bold-center">Bold Center</option>
-                <option value="bottom-clean">Bottom Clean</option>
-                <option value="highlight-words">Highlight Words</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="templatePack" id="templatePackLabel">Template pack</label>
-              <select id="templatePack">
-                <option value="money">Money / Business</option>
-                <option value="ai">AI / Tech</option>
-                <option value="motivation">Motivation</option>
-              </select>
-            </div>
-
-            <div class="actions">
-              <button class="primary-btn" id="buildVideoPlanBtn">Build Video Plan</button>
-              <button class="primary-btn" id="createVideoBtn" style="background: linear-gradient(135deg, var(--gold), var(--gold-strong)); color:#000;">Create Video</button>
-            </div>
-
-            <div class="status" id="videoStatus"></div>
-          </div>
-
-          <div class="result-card" style="display:grid; gap:14px;">
-            <h3 id="videoWorkflowTitle">Video Workflow Preview</h3>
-
-            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
-              <strong id="videoSpecTitle">Production spec</strong>
-              <p id="videoSpecText" style="margin:8px 0 0; color:var(--muted);">Vertical 9:16 video, 30–60 seconds, faceless structure, FFmpeg rendering pipeline, subtitle-ready.</p>
-            </div>
-
-            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
-              <strong id="scenePlanTitle">Scene plan</strong>
-              <ol id="scenePlanList" class="titles-list">
-                <li>Hook scene</li>
-                <li>Problem / opportunity scene</li>
-                <li>Solution / insight scene</li>
-                <li>CTA scene</li>
-              </ol>
-            </div>
-
-            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
-              <strong id="renderQueueTitle">Render queue</strong>
-              <p id="renderQueueText" style="margin:8px 0 0; color:var(--muted);">FFmpeg renders locally on Render.com — no polling needed. Video URL returned instantly.</p>
-            </div>
-
-            <!-- BLOC TÉLÉCHARGEMENT VIDÉO — affiché seulement quand la vidéo est prête -->
-            <div class="video-download-block" id="videoDownloadBlock">
-              <strong style="color:var(--success);">✅ Video ready!</strong>
-              <video id="videoPlayer" controls playsinline></video>
-              <a id="videoDownloadLink" href="#" download="viralvidtech.mp4">⬇ Download Video</a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel pricing-panel" id="pricing">
-        <h2 class="section-title" id="pricingTitle">Pricing</h2>
-        <p class="section-subtitle" id="pricingSubtitle">Launch with simple plans, then expand as your SaaS grows.</p>
-        <div class="pricing-grid">
-          <div class="plan-card">
-            <h3 id="plan1Name">Starter</h3>
-            <div class="plan-price">$19<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
-            <ul class="plan-list">
-              <li id="plan1f1">50 script generations</li>
-              <li id="plan1f2">Basic viral detector</li>
-              <li id="plan1f3">4 interface languages</li>
-            </ul>
-            <button class="plan-btn" id="plan1Btn">Choose Starter</button>
-          </div>
-          <div class="plan-card featured">
-            <h3 id="plan2Name">Pro</h3>
-            <div class="plan-price">$49<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
-            <ul class="plan-list">
-              <li id="plan2f1">Unlimited scripts</li>
-              <li id="plan2f2">Advanced detector</li>
-              <li id="plan2f3">Priority support</li>
-            </ul>
-            <button class="plan-btn" id="plan2Btn">Choose Pro</button>
-          </div>
-          <div class="plan-card">
-            <h3 id="plan3Name">Business</h3>
-            <div class="plan-price">$99<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
-            <ul class="plan-list">
-              <li id="plan3f1">Team seats</li>
-              <li id="plan3f2">Analytics dashboard</li>
-              <li id="plan3f3">Multiplatform workflow</li>
-            </ul>
-            <button class="plan-btn" id="plan3Btn">Choose Business</button>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <div class="modal-overlay" id="authModal">
-    <div class="modal" id="login">
-      <div class="modal-header">
-        <div>
-          <h2 id="loginTitle" style="margin:0;">User Login</h2>
-          <p id="loginSubtitle" style="margin:6px 0 0; color:var(--muted);">Create a local demo account to unlock the dashboard experience.</p>
-        </div>
-        <button class="close-btn" id="closeModalBtn">✕</button>
-      </div>
-      <div class="field">
-        <label for="authName" id="authNameLabel">Name</label>
-        <input id="authName" type="text" placeholder="John Creator" />
-      </div>
-      <div class="field">
-        <label for="authEmail" id="authEmailLabel">Email</label>
-        <input id="authEmail" type="email" placeholder="john@example.com" />
-      </div>
-      <div class="field">
-        <label for="authPassword" id="authPasswordLabel">Password</label>
-        <input id="authPassword" type="password" placeholder="••••••••" />
-      </div>
-      <div class="actions">
-        <button class="primary-btn" id="loginBtn">Login / Register</button>
-      </div>
-      <div class="status" id="authStatus"></div>
-    </div>
-  </div>
-
-  <script>
-  const translations = {
-    en: {
-      brandSlogan: 'Turn trends into profitable multilingual content.',
-      navMainLabel: 'Main', navDashboard: 'Dashboard', navGenerator: 'Generator', navAnalytics: 'Viral Detector', navLibrary: 'Pricing',
-      navSystemLabel: 'System', navBilling: 'Revenue', navSettings: 'Login',
-      sideCardTitle: 'Brand promise', sideCardText: 'Build faster. Publish smarter. Grow globally with an English-first SaaS your users can switch into their own language.', sideCardButton: 'Upgrade UI',
-      headlineTitle: 'Generate viral titles and scripts in seconds.', headlineText: 'Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.',
-      apiStatusLabel: 'API status', uiLanguageLabel: 'Interface language',
-      kpi1Label: 'Estimated revenue', kpi1Trend: '+18.4% this month', kpi2Label: 'Generated scripts', kpi2Trend: '+312 this week', kpi3Label: 'Viral score alerts', kpi3Trend: 'Live signal count', kpi4Label: 'Active languages', kpi4Trend: 'English-first experience',
-      generatorTitle: 'Content Generator', generatorSubtitle: 'Use the live API deployed on Render.', apiUrlLabel: 'API base URL', nicheLabel: 'Niche', nichePlaceholder: 'money', contentLanguageLabel: 'Content language', generateBtn: 'Generate', copyBtn: 'Copy script',
-      helpPrefix: 'Tip: paste your Render URL above, without /docs. Example: ',
-      resultsTitle: 'Results', resultsSubtitle: 'Your generated titles and script will appear here.', titlesHeading: 'Viral Titles', scriptHeading: 'Script', scriptPlaceholder: 'Your script will appear here...',
-      overviewTitle: 'Performance Overview', overviewSubtitle: 'A premium dashboard preview for revenue, growth, and viral momentum.', chartTitle: 'Revenue Trend', chartBadge: 'Live preview', miniStat1Label: 'Projected MRR', miniStat2Label: 'Top Niche', miniStat3Label: 'Growth Rate',
-      activityTitle: 'Recent Activity', activitySubtitle: 'A clean SaaS-style feed for the next stage of the product.', activity1Title: 'Viral script generated', activity1Text: 'A new script was generated for the finance niche in English.', activity2Title: 'Trend alert triggered', activity2Text: 'A high-momentum content opportunity was detected in the AI niche.', activity3Title: 'Multilingual mode ready', activity3Text: 'Your interface is prepared for English, French, Spanish, and Portuguese.',
-      detectorTitle: 'Viral Video Detector', detectorSubtitle: 'Scan by keyword, niche, and platform to surface high-potential video ideas.', detectorKeywordPlaceholder: 'AI money', scanBtn: 'Scan trends',
-      videoTitle: 'Video Creation', videoSubtitle: 'Build 30 to 60 second faceless videos from your script with FFmpeg.', videoTypeLabel: 'Video type', videoDurationLabel: 'Duration', videoVoiceLabel: 'Voice style', subtitleStyleLabel: 'Subtitle style', templatePackLabel: 'Template pack',
-      buildVideoPlanBtn: 'Build Video Plan', videoWorkflowTitle: 'Video Workflow Preview', videoSpecTitle: 'Production spec',
-      videoSpecText: 'Vertical 9:16 video, 30–60 seconds, faceless structure, FFmpeg rendering pipeline, subtitle-ready.',
-      scenePlanTitle: 'Scene plan', renderQueueTitle: 'Render queue',
-      renderQueueText: 'FFmpeg renders locally on Render.com — no polling needed. Video URL returned instantly.',
-      pricingTitle: 'Pricing', pricingSubtitle: 'Launch with simple plans, then expand as your SaaS grows.',
-      plan1Name: 'Starter', plan1f1: '50 script generations', plan1f2: 'Basic viral detector', plan1f3: '4 interface languages', plan1Btn: 'Choose Starter',
-      plan2Name: 'Pro', plan2f1: 'Unlimited scripts', plan2f2: 'Advanced detector', plan2f3: 'Priority support', plan2Btn: 'Choose Pro',
-      plan3Name: 'Business', plan3f1: 'Team seats', plan3f2: 'Analytics dashboard', plan3f3: 'Multiplatform workflow', plan3Btn: 'Choose Business',
-      loginTitle: 'User Login', loginSubtitle: 'Create a local demo account to unlock the dashboard experience.', authNameLabel: 'Name', authEmailLabel: 'Email', authPasswordLabel: 'Password', loginBtn: 'Login / Register',
-      authMissing: 'Please fill in all login fields.', authSuccess: 'You are now logged in.', authLogout: 'You have been logged out.',
-      statusReady: 'Ready.', statusGenerating: 'Generating content...', statusMissingUrl: 'Please enter your Render API URL.', statusMissingNiche: 'Please enter a niche.', statusSuccess: 'Content generated successfully.', statusCopyEmpty: 'There is no script to copy yet.', statusCopied: 'Script copied.', statusError: 'Something went wrong. Check your API URL and try again.'
-    },
-    fr: {
-      brandSlogan: 'Transformez les tendances en contenu multilingue rentable.',
-      navMainLabel: 'Principal', navDashboard: 'Tableau de bord', navGenerator: 'Générateur', navAnalytics: 'Détecteur viral', navLibrary: 'Tarifs',
-      navSystemLabel: 'Système', navBilling: 'Revenus', navSettings: 'Connexion',
-      sideCardTitle: 'Promesse de marque', sideCardText: 'Construisez plus vite. Publiez plus intelligemment.', sideCardButton: 'Améliorer l\'UI',
-      headlineTitle: 'Generate viral titles and scripts in seconds.', headlineText: 'Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.',
-      apiStatusLabel: 'Statut API', uiLanguageLabel: 'Langue de l\'interface',
-      kpi1Label: 'Revenu estimé', kpi1Trend: '+18,4 % ce mois-ci', kpi2Label: 'Scripts générés', kpi2Trend: '+312 cette semaine', kpi3Label: 'Alertes score viral', kpi3Trend: 'Nombre de signaux en direct', kpi4Label: 'Langues actives', kpi4Trend: 'Expérience d\'abord en anglais',
-      generatorTitle: 'Générateur de contenu', generatorSubtitle: 'Utilisez l\'API en ligne déployée sur Render.', apiUrlLabel: 'URL de base de l\'API', nicheLabel: 'Niche', nichePlaceholder: 'argent', contentLanguageLabel: 'Langue du contenu', generateBtn: 'Générer', copyBtn: 'Copier le script',
-      helpPrefix: 'Conseil : colle ton URL Render ci-dessus, sans /docs. Exemple : ',
-      resultsTitle: 'Résultats', resultsSubtitle: 'Tes titres et ton script générés apparaîtront ici.', titlesHeading: 'Titres viraux', scriptHeading: 'Script', scriptPlaceholder: 'Ton script apparaîtra ici...',
-      overviewTitle: 'Vue d\'ensemble des performances', overviewSubtitle: 'Un aperçu premium du tableau de bord.', chartTitle: 'Tendance des revenus', chartBadge: 'Aperçu en direct', miniStat1Label: 'MRR projeté', miniStat2Label: 'Meilleure niche', miniStat3Label: 'Taux de croissance',
-      activityTitle: 'Activité récente', activitySubtitle: 'Un flux propre de style SaaS.', activity1Title: 'Script viral généré', activity1Text: 'Un nouveau script a été généré pour la niche finance en anglais.', activity2Title: 'Alerte de tendance déclenchée', activity2Text: 'Une opportunité détectée dans la niche IA.', activity3Title: 'Mode multilingue prêt', activity3Text: 'Interface prête pour 4 langues.',
-      detectorTitle: 'Détecteur de vidéos virales', detectorSubtitle: 'Scanne par mot-clé, niche et plateforme.', detectorKeywordPlaceholder: 'IA argent', scanBtn: 'Scanner les tendances',
-      videoTitle: 'Création vidéo', videoSubtitle: 'Construis des vidéos faceless avec FFmpeg.', videoTypeLabel: 'Type de vidéo', videoDurationLabel: 'Durée', videoVoiceLabel: 'Style de voix', subtitleStyleLabel: 'Style de sous-titres', templatePackLabel: 'Pack de template',
-      buildVideoPlanBtn: 'Construire le plan vidéo', videoWorkflowTitle: 'Aperçu du workflow vidéo', videoSpecTitle: 'Spécification de production',
-      videoSpecText: 'Vidéo verticale 9:16, 30–60 secondes, structure faceless, pipeline FFmpeg, sous-titres prêts.',
-      scenePlanTitle: 'Plan des scènes', renderQueueTitle: 'File de rendu',
-      renderQueueText: 'FFmpeg rend localement sur Render.com — pas de polling. URL vidéo retournée instantanément.',
-      pricingTitle: 'Tarifs', pricingSubtitle: 'Lance avec des plans simples, puis élargis ton SaaS.',
-      plan1Name: 'Starter', plan1f1: '50 générations de scripts', plan1f2: 'Détecteur viral basique', plan1f3: '4 langues d\'interface', plan1Btn: 'Choisir Starter',
-      plan2Name: 'Pro', plan2f1: 'Scripts illimités', plan2f2: 'Détecteur avancé', plan2f3: 'Support prioritaire', plan2Btn: 'Choisir Pro',
-      plan3Name: 'Business', plan3f1: 'Comptes équipe', plan3f2: 'Dashboard analytique', plan3f3: 'Workflow multiplateforme', plan3Btn: 'Choisir Business',
-      loginTitle: 'Connexion utilisateur', loginSubtitle: 'Crée un compte local de démonstration.', authNameLabel: 'Nom', authEmailLabel: 'Email', authPasswordLabel: 'Mot de passe', loginBtn: 'Connexion / Inscription',
-      authMissing: 'Merci de remplir tous les champs.', authSuccess: 'Tu es maintenant connecté.', authLogout: 'Tu as été déconnecté.',
-      statusReady: 'Prêt.', statusGenerating: 'Génération en cours...', statusMissingUrl: 'Entre l\'URL de ton API Render.', statusMissingNiche: 'Entre une niche.', statusSuccess: 'Contenu généré avec succès.', statusCopyEmpty: 'Il n\'y a pas encore de script à copier.', statusCopied: 'Script copié.', statusError: 'Une erreur est survenue. Vérifie l\'URL de l\'API.'
-    }
-  };
-
-  const ids = ['brandSlogan','navMainLabel','navDashboard','navGenerator','navAnalytics','navLibrary','navSystemLabel','navBilling','navSettings','sideCardTitle','sideCardText','sideCardButton','headlineTitle','headlineText','apiStatusLabel','uiLanguageLabel','kpi1Label','kpi1Trend','kpi2Label','kpi2Trend','kpi3Label','kpi3Trend','kpi4Label','kpi4Trend','generatorTitle','generatorSubtitle','apiUrlLabel','nicheLabel','contentLanguageLabel','generateBtn','copyBtn','resultsTitle','resultsSubtitle','titlesHeading','scriptHeading','overviewTitle','overviewSubtitle','chartTitle','chartBadge','miniStat1Label','miniStat2Label','miniStat3Label','activityTitle','activitySubtitle','activity1Title','activity1Text','activity2Title','activity2Text','activity3Title','activity3Text','detectorTitle','detectorSubtitle','scanBtn','pricingTitle','pricingSubtitle','plan1Name','plan1f1','plan1f2','plan1f3','plan1Btn','plan2Name','plan2f1','plan2f2','plan2f3','plan2Btn','plan3Name','plan3f1','plan3f2','plan3f3','plan3Btn','loginTitle','loginSubtitle','authNameLabel','authEmailLabel','authPasswordLabel','loginBtn','videoTitle','videoSubtitle','videoTypeLabel','videoDurationLabel','videoVoiceLabel','subtitleStyleLabel','templatePackLabel','buildVideoPlanBtn','videoWorkflowTitle','videoSpecTitle','videoSpecText','scenePlanTitle','renderQueueTitle','renderQueueText'];
-
-  // ── REFS ──
-  const uiLanguage        = document.getElementById('uiLanguage');
-  const apiUrlInput       = document.getElementById('apiUrl');
-  const nicheInput        = document.getElementById('niche');
-  const contentLanguage   = document.getElementById('contentLanguage');
-  const generateBtn       = document.getElementById('generateBtn');
-  const copyBtn           = document.getElementById('copyBtn');
-  const statusEl          = document.getElementById('status');
-  const titlesList        = document.getElementById('titlesList');
-  const scriptOutput      = document.getElementById('scriptOutput');
-  const helpTextEl        = document.getElementById('helpText');
-  const detectorKeyword   = document.getElementById('detectorKeyword');
-  const detectorPlatform  = document.getElementById('detectorPlatform');
-  const scanBtn           = document.getElementById('scanBtn');
-  const detectorResults   = document.getElementById('detectorResults');
-  const openLoginBtn      = document.getElementById('openLoginBtn');
-  const logoutBtn         = document.getElementById('logoutBtn');
-  const authModal         = document.getElementById('authModal');
-  const closeModalBtn     = document.getElementById('closeModalBtn');
-  const loginBtn          = document.getElementById('loginBtn');
-  const authName          = document.getElementById('authName');
-  const authEmail         = document.getElementById('authEmail');
-  const authPassword      = document.getElementById('authPassword');
-  const authStatus        = document.getElementById('authStatus');
-  const userBadge         = document.getElementById('userBadge');
-  const userBadgeText     = document.getElementById('userBadgeText');
-  const videoStatus       = document.getElementById('videoStatus');
-  const buildVideoPlanBtn = document.getElementById('buildVideoPlanBtn');
-  const scenePlanList     = document.getElementById('scenePlanList');
-  const videoDuration     = document.getElementById('videoDuration');
-  const videoType         = document.getElementById('videoType');
-  const videoVoice        = document.getElementById('videoVoice');
-  const generateVoiceBtn  = document.getElementById('generateVoiceBtn');
-  const voicePreview      = document.getElementById('voicePreview');
-  const createVideoBtn    = document.getElementById('createVideoBtn');
-  // Bloc téléchargement vidéo (FFmpeg)
-  const videoDownloadBlock = document.getElementById('videoDownloadBlock');
-  const videoPlayer        = document.getElementById('videoPlayer');
-  const videoDownloadLink  = document.getElementById('videoDownloadLink');
-
-  // ── HELPERS ──
-  const detectorSeed = [
-    { title: '3 hooks that explode watch time', creator: '@trendpilot', platform: 'TikTok', views: 482000, likes: 43100, comments: 2800, shares: 3900 },
-    { title: 'The faceless format making money now', creator: '@cashcreator', platform: 'YouTube Shorts', views: 721000, likes: 59300, comments: 3500, shares: 5100 },
-    { title: 'This niche is quietly going viral', creator: '@nichehunter', platform: 'Instagram Reels', views: 318000, likes: 21900, comments: 1400, shares: 1800 },
-    { title: 'Why this short script format converts', creator: '@viralstudio', platform: 'Facebook Reels', views: 264000, likes: 17300, comments: 1100, shares: 1500 }
-  ];
-
-  function getState() { return JSON.parse(localStorage.getItem('viral_dashboard_state') || '{"scripts":0,"alerts":0,"revenue":0,"topNiche":"—","growth":0}'); }
-  function saveState(s) { localStorage.setItem('viral_dashboard_state', JSON.stringify(s)); }
-
-  function updateDashboard() {
-    const s = getState();
-    document.getElementById('kpiRevenue').textContent  = `$${s.revenue}`;
-    document.getElementById('kpiScripts').textContent  = String(s.scripts);
-    document.getElementById('kpiAlerts').textContent   = String(s.alerts);
-    document.getElementById('miniStat1Value').textContent = `$${s.revenue}`;
-    document.getElementById('miniStat2Value').textContent = s.topNiche || '—';
-    document.getElementById('miniStat3Value').textContent = `${s.growth}%`;
-  }
-
-  function addActivity(title, text) {
-    const feed = document.getElementById('activityFeed');
-    const card = document.createElement('div');
-    card.className = 'result-card';
-    card.innerHTML = `<h3>${title}</h3><p style="margin:0; color:var(--muted);">${text}</p>`;
-    feed.prepend(card);
-    while (feed.children.length > 5) feed.removeChild(feed.lastChild);
-  }
-
-  function setStatus(msg, state = 'ready') {
-    statusEl.textContent = msg;
-    statusEl.dataset.state = state;
-    statusEl.className = 'status';
-    if (state === 'error')   statusEl.classList.add('error');
-    if (state === 'success') statusEl.classList.add('success');
-  }
-
-  function setVideoStatus(msg, state = 'ready') {
-    videoStatus.textContent = msg;
-    videoStatus.className = 'status';
-    if (state === 'error')   videoStatus.classList.add('error');
-    if (state === 'success') videoStatus.classList.add('success');
-  }
-
-  function applyTranslations(lang) {
-    const t = translations[lang] || translations.en;
-    ids.forEach(id => { const el = document.getElementById(id); if (el && t[id]) el.textContent = t[id]; });
-    nicheInput.placeholder       = t.nichePlaceholder || 'money';
-    scriptOutput.placeholder     = t.scriptPlaceholder || '';
-    detectorKeyword.placeholder  = t.detectorKeywordPlaceholder || 'AI money';
-    helpTextEl.innerHTML = `${t.helpPrefix || ''}<span class="link-accent">https://your-service.onrender.com</span>`;
-    if (!statusEl.textContent || statusEl.dataset.state === 'ready') setStatus(t.statusReady, 'ready');
-  }
-
-  function normalizeApiUrl(url) { return url.trim().replace(/\/$/, '').replace(/\/docs$/, ''); }
-
-  function getLanguageCodeFromVoice(v) {
-    if (!v) return 'en-US';
-    if (v.startsWith('fr-FR')) return 'fr-FR';
-    if (v.startsWith('en-GB')) return 'en-GB';
-    return 'en-US';
-  }
-
-  // ── GENERATE CONTENT ──
-  async function generateContent() {
-    const lang = uiLanguage.value;
-    const t    = translations[lang] || translations.en;
-    const apiUrl = normalizeApiUrl(apiUrlInput.value);
-    const niche  = nicheInput.value.trim();
-    const outputLang = contentLanguage.value;
-
-    if (!apiUrl) return setStatus(t.statusMissingUrl, 'error');
-    if (!niche)  return setStatus(t.statusMissingNiche, 'error');
-
-    generateBtn.disabled = true;
-    setStatus(t.statusGenerating, 'ready');
-
-    try {
-      const res  = await fetch(`${apiUrl}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche, langue: outputLang, duration: parseInt(document.getElementById('videoDuration').value) || 30 }) });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-
-      titlesList.innerHTML = '';
-      (data.titles || []).forEach(title => { const li = document.createElement('li'); li.textContent = title; titlesList.appendChild(li); });
-      scriptOutput.value = data.script || '';
-
-      // Stocker les 40 URLs vidéo (5 par scène)
-      window._pexelsVideoUrl= data.video_url || '';
-      window._pexelsVideoUrl2= data.video_url2 || '';
-      window._pexelsVideoUrl3= data.video_url3 || '';
-      window._pexelsVideoUrl4= data.video_url4 || '';
-      window._pexelsVideoUrl5= data.video_url5 || '';
-      window._pexelsVideoUrl6= data.video_url6 || '';
-      window._pexelsVideoUrl7= data.video_url7 || '';
-      window._pexelsVideoUrl8= data.video_url8 || '';
-      window._pexelsVideoUrl9= data.video_url9 || '';
-      window._pexelsVideoUrl10= data.video_url10 || '';
-      window._pexelsVideoUrl11= data.video_url11 || '';
-      window._pexelsVideoUrl12= data.video_url12 || '';
-      window._pexelsVideoUrl13= data.video_url13 || '';
-      window._pexelsVideoUrl14= data.video_url14 || '';
-      window._pexelsVideoUrl15= data.video_url15 || '';
-      window._pexelsVideoUrl16= data.video_url16 || '';
-      window._pexelsVideoUrl17= data.video_url17 || '';
-      window._pexelsVideoUrl18= data.video_url18 || '';
-      window._pexelsVideoUrl19= data.video_url19 || '';
-      window._pexelsVideoUrl20= data.video_url20 || '';
-      window._pexelsVideoUrl21= data.video_url21 || '';
-      window._pexelsVideoUrl22= data.video_url22 || '';
-      window._pexelsVideoUrl23= data.video_url23 || '';
-      window._pexelsVideoUrl24= data.video_url24 || '';
-      window._pexelsVideoUrl25= data.video_url25 || '';
-      window._pexelsVideoUrl26= data.video_url26 || '';
-      window._pexelsVideoUrl27= data.video_url27 || '';
-      window._pexelsVideoUrl28= data.video_url28 || '';
-      window._pexelsVideoUrl29= data.video_url29 || '';
-      window._pexelsVideoUrl30= data.video_url30 || '';
-      window._pexelsVideoUrl31= data.video_url31 || '';
-      window._pexelsVideoUrl32= data.video_url32 || '';
-      window._pexelsVideoUrl33= data.video_url33 || '';
-      window._pexelsVideoUrl34= data.video_url34 || '';
-      window._pexelsVideoUrl35= data.video_url35 || '';
-      window._pexelsVideoUrl36= data.video_url36 || '';
-      window._pexelsVideoUrl37= data.video_url37 || '';
-      window._pexelsVideoUrl38= data.video_url38 || '';
-      window._pexelsVideoUrl39= data.video_url39 || '';
-      window._pexelsVideoUrl40= data.video_url40 || '';
-
-      // Stocker chaque scène individuellement pour les sous-titres
-      window._scene1 = data.scene1 || '';
-      window._scene2 = data.scene2 || '';
-      window._scene3 = data.scene3 || '';
-      window._scene4 = data.scene4 || '';
-      window._scene5 = data.scene5 || '';
-      window._scene6 = data.scene6 || '';
-      window._scene7 = data.scene7 || '';
-      window._scene8 = data.scene8 || '';
-      window._nb_scenes = data.nb_scenes || 4;
-      window._duration  = data.duration  || 30;
-
-      setStatus(t.statusSuccess, 'success');
-      const s = getState(); s.scripts += 1; s.revenue += 19; s.topNiche = niche; s.growth = Math.min(99, s.growth + 7); saveState(s); updateDashboard();
-      addActivity('Content generated', `A new content batch was generated for "${niche}" in ${outputLang.toUpperCase()}.`);
-    } catch (e) {
-      setStatus(e.message || t.statusError, 'error');
-    } finally {
-      generateBtn.disabled = false;
-    }
-  }
-
-  // ── COPY SCRIPT ──
-  async function copyScript() {
-    const t = translations[uiLanguage.value] || translations.en;
-    if (!scriptOutput.value.trim()) return setStatus(t.statusCopyEmpty, 'error');
-    try { await navigator.clipboard.writeText(scriptOutput.value); } catch { scriptOutput.select(); document.execCommand('copy'); }
-    setStatus(t.statusCopied, 'success');
-  }
-
-  // ── DETECTOR ──
-  function renderDetector(results) {
-    detectorResults.innerHTML = '';
-    results.forEach(item => {
-      const score = Math.min(99, Math.round((item.views/10000)*0.55 + (item.likes/1000)*0.9 + item.shares*0.008 + item.comments*0.01));
-      const el = document.createElement('div'); el.className = 'detector-item';
-      el.innerHTML = `<div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;"><h3>${item.title}</h3><span class="score-pill">Score ${score}</span></div><div class="detector-meta"><span>${item.platform}</span><span>${item.creator}</span><span>${item.views.toLocaleString()} views</span><span>${item.likes.toLocaleString()} likes</span><span>${item.comments.toLocaleString()} comments</span><span>${item.shares.toLocaleString()} shares</span></div><p style="margin:0; color:var(--muted);">Keyword match: <strong style="color:var(--text);">${detectorKeyword.value || 'general trend'}</strong></p>`;
-      detectorResults.appendChild(el);
-    });
-  }
-
-  function scanTrends() {
-    const keyword = detectorKeyword.value.trim() || 'viral';
-    const platform = detectorPlatform.value;
-    const s = getState();
-    const results = detectorSeed.map((item, i) => ({ ...item, title: `${keyword} — ${item.title}`, platform, views: item.views + i*14000, likes: item.likes + i*1200, comments: item.comments + i*90, shares: item.shares + i*140 }));
-    renderDetector(results);
-    s.alerts += results.length; s.growth = Math.min(99, s.growth + 3); saveState(s); updateDashboard();
-    addActivity('Trend scan completed', `A new viral scan was run for "${keyword}" on ${platform}.`);
-  }
-
-  // ── AUTH ──
-  function updateAuthUI() {
-    const user = JSON.parse(localStorage.getItem('viral_user') || 'null');
-    if (user) { userBadge.classList.add('show'); userBadgeText.textContent = user.name; openLoginBtn.style.display = 'none'; logoutBtn.style.display = 'inline-flex'; }
-    else { userBadge.classList.remove('show'); openLoginBtn.style.display = 'inline-flex'; logoutBtn.style.display = 'none'; }
-  }
-
-  function loginUser() {
-    const t = translations[uiLanguage.value] || translations.en;
-    if (!authName.value.trim() || !authEmail.value.trim() || !authPassword.value.trim()) { authStatus.textContent = t.authMissing; authStatus.className = 'status error'; return; }
-    localStorage.setItem('viral_user', JSON.stringify({ name: authName.value.trim(), email: authEmail.value.trim() }));
-    authStatus.textContent = t.authSuccess; authStatus.className = 'status success'; updateAuthUI();
-    setTimeout(() => authModal.classList.remove('open'), 500);
-  }
-
-  function logoutUser() {
-    const t = translations[uiLanguage.value] || translations.en;
-    localStorage.removeItem('viral_user'); updateAuthUI(); setStatus(t.authLogout, 'success');
-  }
-
-  // ── VIDEO PLAN ──
-  function buildVideoPlan() {
-    const duration = videoDuration.value;
-    const type     = videoType.value;
-    const voice    = videoVoice.value;
-    const subtitles = document.getElementById('subtitleStyle').value;
-    const template  = document.getElementById('templatePack').value;
-    const niche     = nicheInput.value.trim() || 'general niche';
-
-    const scenes = duration === '60'
-      ? ['Hook scene','Problem scene','Opportunity scene','Main solution scene','Proof / reinforcement scene','CTA scene']
-      : duration === '45'
-      ? ['Hook scene','Problem scene','Solution scene','Proof scene','CTA scene']
-      : ['Hook scene','Problem / opportunity scene','Solution / insight scene','CTA scene'];
-
-    scenePlanList.innerHTML = '';
-    scenes.forEach((scene, i) => { const li = document.createElement('li'); li.textContent = `${i+1}. ${scene} — ${niche}`; scenePlanList.appendChild(li); });
-    document.getElementById('videoSpecText').textContent = `${duration}-second vertical 9:16 ${type} video, voice: ${voice}, subtitles: ${subtitles}, template: ${template}.`;
-    setVideoStatus('Video plan ready.', 'success');
-    addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
-  }
-
-  // ── GENERATE VOICE ──
-  async function generateVoice() {
-    const apiUrl = normalizeApiUrl(apiUrlInput.value);
-    const text   = scriptOutput.value.trim();
-    const selectedVoice  = videoVoice.value;
-    const languageCode   = getLanguageCodeFromVoice(selectedVoice);
-
-    if (!apiUrl) { setVideoStatus('Enter API URL first.', 'error'); return; }
-    if (!text)   { setVideoStatus('Generate script first.', 'error'); return; }
-
-    setVideoStatus('Generating voice...', 'ready');
-    generateVoiceBtn.disabled = true;
-
-    try {
-      const res  = await fetch(`${apiUrl}/generate-audio`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, languageCode, voiceName: selectedVoice, speakingRate: 1.0 }) });
-      const data = await res.json();
-      if (!res.ok || data.error) { setVideoStatus(`Voice failed: ${data.error || 'unknown error'}`, 'error'); return; }
-      if (!data.audio_url) { setVideoStatus('Voice failed: no audio URL returned.', 'error'); return; }
-      window._generatedVoiceUrl = data.audio_url;
-      window._syncUrl = data.sync_url || '';  // timestamps exacts Google TTS
-      voicePreview.src = data.audio_url; voicePreview.load();
-      setVideoStatus('Voice generated successfully.', 'success');
-      addActivity('Voice generated', `A voice track was created with ${selectedVoice}.`);
-    } catch (e) {
-      setVideoStatus(`Voice failed: ${e.message}`, 'error');
-    } finally {
-      generateVoiceBtn.disabled = false;
-    }
-  }
-
-  // ── CREATE VIDEO (FFmpeg — retourne video_url directement) ──
-  async function createVideo() {
-    const apiUrl = normalizeApiUrl(apiUrlInput.value);
-    const chosenDuration = parseInt(document.getElementById('videoDuration').value) || 30;
-    const chosenMusicUrl = document.getElementById('musicSelect')?.value || '';
-
-    if (!apiUrl) { setVideoStatus('Enter API URL first.', 'error'); return; }
-    if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4 && !window._pexelsVideoUrl5 && !window._pexelsVideoUrl6 && !window._pexelsVideoUrl7 && !window._pexelsVideoUrl8) {
-      setVideoStatus('Generate content first so source videos are available.', 'error'); return;
-    }
-
-    setVideoStatus(`Sending to FFmpeg renderer... this may take ${chosenDuration * 2} seconds.`, 'ready');
-    createVideoBtn.disabled = true;
-
-    // Masquer le bloc vidéo précédent pendant le rendu
-    videoDownloadBlock.classList.remove('show');
-
-    // Utiliser les scènes stockées après /generate (une par phrase prononcée)
-    const text1 = window._scene1 || '';
-    const text2 = window._scene2 || '';
-    const text3 = window._scene3 || '';
-    const text4 = window._scene4 || '';
-    const text5 = window._scene5 || '';
-    const text6 = window._scene6 || '';
-    const text7 = window._scene7 || '';
-    const text8 = window._scene8 || '';
-
-    try {
-      const res  = await fetch(`${apiUrl}/create-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text1, text2, text3, text4, text5, text6, text7, text8,
-          video_url:   window._pexelsVideoUrl   || '',
-          video_url2:  window._pexelsVideoUrl2  || '',
-          video_url3:  window._pexelsVideoUrl3  || '',
-          video_url4:  window._pexelsVideoUrl4  || '',
-          video_url5:  window._pexelsVideoUrl5  || '',
-          video_url6:  window._pexelsVideoUrl6  || '',
-          video_url7:  window._pexelsVideoUrl7  || '',
-          video_url8:  window._pexelsVideoUrl8  || '',
-          video_url9:  window._pexelsVideoUrl9  || '',
-          video_url10: window._pexelsVideoUrl10 || '',
-          video_url11: window._pexelsVideoUrl11 || '',
-          video_url12: window._pexelsVideoUrl12 || '',
-          video_url13: window._pexelsVideoUrl13 || '',
-          video_url14: window._pexelsVideoUrl14 || '',
-          video_url15: window._pexelsVideoUrl15 || '',
-          video_url16: window._pexelsVideoUrl16 || '',
-          video_url17: window._pexelsVideoUrl17 || '',
-          video_url18: window._pexelsVideoUrl18 || '',
-          video_url19: window._pexelsVideoUrl19 || '',
-          video_url20: window._pexelsVideoUrl20 || '',
-          video_url21: window._pexelsVideoUrl21 || '',
-          video_url22: window._pexelsVideoUrl22 || '',
-          video_url23: window._pexelsVideoUrl23 || '',
-          video_url24: window._pexelsVideoUrl24 || '',
-          audio_url:  window._generatedVoiceUrl || '',
-          sync_url:   window._syncUrl || '',
-          music_url:  chosenMusicUrl,
-          duration:   chosenDuration
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(google_url, json=payload)
+        data = response.json()
+        if response.status_code != 200:
+            return {"error": "Google TTS a échoué", "details": data}
+        audio_content = data.get("audioContent")
+        if not audio_content:
+            return {"error": "Aucun audio retourné par Google"}
+
+        # Sauvegarder le fichier audio
+        filename = f"{uuid.uuid4().hex}.mp3"
+        filepath = os.path.join(AUDIO_DIR, filename)
+        with open(filepath, "wb") as f:
+            f.write(base64.b64decode(audio_content))
+        audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
+
+        # Sauvegarder les mots du texte pour la synchronisation des sous-titres
+        words = req.text.strip().split()
+        sync_filename = filename.replace(".mp3", "_sync.json")
+        sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
+        with open(sync_filepath, "w", encoding="utf-8") as f:
+            json.dump({"words": words, "timepoints": []}, f)
+
+        sync_url = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
+
+        return {
+            "success": True,
+            "audio_url": audio_url,
+            "sync_url": sync_url,
+            "filename": filename
+        }
+    except Exception as e:
+        return {"error": f"Erreur TTS: {str(e)}"}
+
+
+# FFMPEG: CRÉER LA VIDÉO FINALE
+@app.post("/create-video")
+async def create_video(req: VideoRequest):
+    job_dir = None
+    try:
+        if not PUBLIC_BASE_URL:
+            return JSONResponse(status_code=400, content={"error": "PUBLIC_BASE_URL manquante"})
+
+        if not ffmpeg_exists():
+            return JSONResponse(status_code=500, content={
+                "error": "FFmpeg n'est pas installé sur le serveur"
+            })
+
+        # Durée choisie par l'utilisateur
+        chosen_duration = req.duration if req.duration in [30, 45, 60] else 30
+
+        # Nombre de scènes selon la durée
+        # 30 sec → 4 scènes, 45 sec → 6 scènes, 60 sec → 8 scènes
+        if chosen_duration == 60:
+            nb_scenes = 8
+        elif chosen_duration == 45:
+            nb_scenes = 6
+        else:
+            nb_scenes = 4
+
+        # Récupérer les 40 URLs vidéo (5 par scène × 8 scènes max)
+        all_video_urls = [
+            (req.video_url or "").strip(),
+            (req.video_url2 or "").strip(),
+            (req.video_url3 or "").strip(),
+            (req.video_url4 or "").strip(),
+            (req.video_url5 or "").strip(),
+            (req.video_url6 or "").strip(),
+            (req.video_url7 or "").strip(),
+            (req.video_url8 or "").strip(),
+            (req.video_url9 or "").strip(),
+            (req.video_url10 or "").strip(),
+            (req.video_url11 or "").strip(),
+            (req.video_url12 or "").strip(),
+            (req.video_url13 or "").strip(),
+            (req.video_url14 or "").strip(),
+            (req.video_url15 or "").strip(),
+            (req.video_url16 or "").strip(),
+            (req.video_url17 or "").strip(),
+            (req.video_url18 or "").strip(),
+            (req.video_url19 or "").strip(),
+            (req.video_url20 or "").strip(),
+            (req.video_url21 or "").strip(),
+            (req.video_url22 or "").strip(),
+            (req.video_url23 or "").strip(),
+            (req.video_url24 or "").strip(),
+            (req.video_url25 or "").strip(),
+            (req.video_url26 or "").strip(),
+            (req.video_url27 or "").strip(),
+            (req.video_url28 or "").strip(),
+            (req.video_url29 or "").strip(),
+            (req.video_url30 or "").strip(),
+            (req.video_url31 or "").strip(),
+            (req.video_url32 or "").strip(),
+            (req.video_url33 or "").strip(),
+            (req.video_url34 or "").strip(),
+            (req.video_url35 or "").strip(),
+            (req.video_url36 or "").strip(),
+            (req.video_url37 or "").strip(),
+            (req.video_url38 or "").strip(),
+            (req.video_url39 or "").strip(),
+            (req.video_url40 or "").strip(),
+        ]
+
+        # Récupérer tous les textes de sous-titres (jusqu'à 8)
+        all_subtitle_texts = [
+            (req.text1 or "").strip()[:200],
+            (req.text2 or "").strip()[:200],
+            (req.text3 or "").strip()[:200],
+            (req.text4 or "").strip()[:200],
+            (req.text5 or "").strip()[:200],
+            (req.text6 or "").strip()[:200],
+            (req.text7 or "").strip()[:200],
+            (req.text8 or "").strip()[:200],
+        ]
+
+        valid_video_urls_raw = [u for u in all_video_urls if u]
+        if not valid_video_urls_raw:
+            return JSONResponse(status_code=400, content={"error": "Aucune vidéo n'a été fournie"})
+
+        # Construire la liste finale des clips vidéo :
+        # 2 clips par scène — chaque clip dure segment_duration / 2
+        # Exemple pour 4 scènes de 9s : 8 clips de 4.5s chacun
+        CLIPS_PER_SCENE = 5
+        nb_clips_total = nb_scenes * CLIPS_PER_SCENE
+
+        video_urls = []
+        subtitle_texts = []
+
+        for i in range(nb_scenes):
+            scene_text = all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
+            for j in range(CLIPS_PER_SCENE):
+                slot = i * CLIPS_PER_SCENE + j
+                if slot < len(all_video_urls) and all_video_urls[slot]:
+                    video_urls.append(all_video_urls[slot])
+                elif valid_video_urls_raw:
+                    # Recycle si pas de vidéo disponible pour ce slot
+                    video_urls.append(valid_video_urls_raw[slot % len(valid_video_urls_raw)])
+                # Le texte du sous-titre ne s'affiche que sur le 1er clip de chaque scène
+                subtitle_texts.append(scene_text if j == 0 else "")
+
+        valid_video_urls = video_urls
+
+        # Durée de chaque clip = durée totale / nb clips totaux
+        segment_duration = chosen_duration / nb_clips_total
+        total_duration = chosen_duration
+
+        job_id = uuid.uuid4().hex
+        job_dir = os.path.join(WORK_DIR, job_id)
+        os.makedirs(job_dir, exist_ok=True)
+
+        voice_url = (req.audio_url or "").strip()
+        music_url = (req.music_url or "").strip()
+
+        # ── ÉTAPE 1 : Télécharger la voix et mesurer sa durée réelle
+        # La durée de la voix est la SEULE référence pour toute la vidéo.
+        # Elle prime sur la durée choisie dans l'interface.
+        voice_path = None
+        real_total_duration = float(total_duration)  # fallback sans voix
+
+        if voice_url:
+            voice_mp3_path = os.path.join(job_dir, "voice.mp3")
+            voice_path     = os.path.join(job_dir, "voice.wav")
+            await download_file(voice_url, voice_mp3_path)
+            # Convertir en WAV pour éviter les erreurs de lecture MP3 par FFmpeg
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", voice_mp3_path,
+                "-ar", "44100", "-ac", "2",
+                voice_path
+            ])
+            measured = get_audio_duration(voice_path)
+            if measured > 1.0:
+                real_total_duration = measured
+
+        # Durée de chaque segment vidéo = durée voix / nb scènes
+        real_segment_duration = real_total_duration / nb_scenes
+
+        # ── ÉTAPE 2 : Télécharger les vidéos sources
+        raw_video_paths = []
+        for i, url in enumerate(valid_video_urls):
+            raw_path = os.path.join(job_dir, f"raw_{i}.mp4")
+            await download_file(url, raw_path)
+            raw_video_paths.append(raw_path)
+
+        # ── ÉTAPE 3 : Normaliser chaque segment à la bonne durée
+        norm_video_paths = []
+        for i, raw_path in enumerate(raw_video_paths):
+            norm_path = os.path.join(job_dir, f"seg_{i}.mp4")
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", raw_path,
+                "-t", str(real_segment_duration),
+                "-vf", "scale=405:720:force_original_aspect_ratio=increase,crop=405:720,fps=30,format=yuv420p",
+                "-an",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-r", "30",
+                norm_path
+            ])
+            norm_video_paths.append(norm_path)
+
+        # ── ÉTAPE 4 : Concaténer les segments
+        concat_list_path = os.path.join(job_dir, "concat.txt")
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            for path in norm_video_paths:
+                abs_path = os.path.abspath(path)
+                f.write(f"file '{abs_path}'\n")
+
+        # Vidéo concaténée brute (durée théorique = real_total_duration)
+        stitched_raw_path = os.path.join(job_dir, "stitched_raw.mp4")
+        run_cmd([
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", concat_list_path,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-r", "30",
+            "-pix_fmt", "yuv420p", "-an",
+            stitched_raw_path
+        ])
+
+        # ── ÉTAPE 5 : Vérifier la durée réelle de la vidéo concaténée
+        # Si elle est plus courte que la voix (à cause d'arrondi ou de vidéos
+        # sources trop courtes), on boucle la vidéo pour combler le manque.
+        stitched_duration = get_audio_duration(stitched_raw_path)
+        stitched_path = os.path.join(job_dir, "stitched.mp4")
+
+        if stitched_duration < real_total_duration - 0.5:
+            # La vidéo est plus courte que la voix → on la boucle
+            run_cmd([
+                "ffmpeg", "-y",
+                "-stream_loop", "-1",
+                "-i", stitched_raw_path,
+                "-t", str(real_total_duration),
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-r", "30",
+                "-pix_fmt", "yuv420p", "-an",
+                stitched_path
+            ])
+        else:
+            # La vidéo est assez longue → on la coupe exactement
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", stitched_raw_path,
+                "-t", str(real_total_duration),
+                "-c:v", "copy", "-an",
+                stitched_path
+            ])
+
+        # ── ÉTAPE 6 : Préparer l'audio final (voix + musique optionnelle)
+        final_audio_path = None
+
+        if voice_url and voice_path:
+            if music_url:
+                music_path = os.path.join(job_dir, "music.mp3")
+                await download_file(music_url, music_path)
+                mixed_path = os.path.join(job_dir, "mixed.m4a")
+                run_cmd([
+                    "ffmpeg", "-y",
+                    "-i", voice_path,
+                    "-stream_loop", "-1", "-i", music_path,
+                    "-filter_complex",
+                    f"[1:a]volume=0.12,atrim=0:{real_total_duration}[bg];"
+                    f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+                    "-map", "[aout]",
+                    "-c:a", "aac", "-b:a", "192k",
+                    mixed_path
+                ])
+                final_audio_path = mixed_path
+            else:
+                # Pas de musique → on garde la voix telle quelle sans la couper
+                final_audio_path = voice_path
+
+        # ── ÉTAPE 7 : SRT avec synchronisation EXACTE via timepoints Google TTS
+        srt_path = os.path.join(job_dir, "subtitles.srt")
+        srt_built = False
+
+        # Essayer d'utiliser les timepoints exacts de Google TTS
+        sync_url = (req.sync_url or "").strip()
+        if sync_url:
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    sync_resp = await client.get(sync_url)
+                sync_data = sync_resp.json()
+                words_list = sync_data.get("words", [])
+                timepoints_list = sync_data.get("timepoints", [])
+                if words_list and timepoints_list:
+                    srt_built = build_srt_from_timepoints(
+                        words_list, timepoints_list, srt_path, words_per_block=5
+                    )
+            except Exception:
+                srt_built = False
+
+        # Fallback : estimation par mots si pas de timepoints disponibles
+        if not srt_built:
+            nb_subtitles = len([t for t in subtitle_texts if t.strip()])
+            srt_segment_duration = (
+                real_total_duration / nb_subtitles if nb_subtitles > 0
+                else real_segment_duration
+            )
+            write_srt(subtitle_texts, srt_segment_duration, srt_path)
+
+        # ── ÉTAPE 8 : Rendu final avec sous-titres brûlés
+        output_filename = f"{job_id}.mp4"
+        output_path = os.path.join(VIDEO_DIR, output_filename)
+
+        srt_escaped = escape_srt_path(os.path.abspath(srt_path))
+        # Alignment=2  = centré horizontalement, ancrage en BAS du texte
+        # MarginV=30   = 30px depuis le bas — valeur petite et stable
+        # PlayResY=720 = dit à FFmpeg que la vidéo fait 720px de haut
+        #                pour que MarginV soit interprété correctement
+        subtitle_filter = (
+            f"subtitles='{srt_escaped}':"
+            "force_style='Alignment=2,MarginV=70,"
+            "PlayResX=405,PlayResY=720,"
+            "FontName=Arial,FontSize=24,Bold=1,"
+            "PrimaryColour=&H00FFFFFF,"
+            "OutlineColour=&H00000000,"
+            "BorderStyle=3,Outline=2,Shadow=0,"
+            "BackColour=&H99000000'"
+        )
+
+        if final_audio_path:
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", stitched_path,
+                "-i", final_audio_path,
+                "-vf", subtitle_filter,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-r", "30",
+                "-c:a", "aac", "-b:a", "192k",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                # PAS de -shortest : la vidéo dure exactement comme la voix
+                output_path
+            ])
+        else:
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", stitched_path,
+                "-vf", subtitle_filter,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-r", "30",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                output_path
+            ])
+
+        # Nettoyage du dossier temporaire de travail
+        shutil.rmtree(job_dir, ignore_errors=True)
+
+        video_url = f"{PUBLIC_BASE_URL}/video/{output_filename}"
+
+        return JSONResponse(status_code=200, content={
+            "success": True,
+            "video_url": video_url,
+            "message": "Vidéo générée avec FFmpeg"
         })
-      });
 
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        setVideoStatus(`Video error: ${data.error || 'unknown error'}`, 'error');
-        return;
-      }
-
-      // FFmpeg retourne directement video_url — pas de polling nécessaire
-      if (!data.video_url) {
-        setVideoStatus('Video error: no video URL returned.', 'error');
-        return;
-      }
-
-      const videoUrl = data.video_url;
-
-      // Afficher le lecteur et le lien de téléchargement
-      videoPlayer.src       = videoUrl;
-      videoDownloadLink.href = videoUrl;
-      videoDownloadBlock.classList.add('show');
-      videoPlayer.load();
-
-      setVideoStatus('✅ Video ready!', 'success');
-      addActivity('Video ready', 'Your FFmpeg video is ready to preview and download.');
-
-      const s = getState(); s.scripts += 1; saveState(s); updateDashboard();
-
-    } catch (e) {
-      setVideoStatus(`Video error: ${e.message}`, 'error');
-    } finally {
-      createVideoBtn.disabled = false;
-    }
-  }
-
-  // ── INIT ──
-  const savedApiUrl = localStorage.getItem('viral_api_url');
-  if (savedApiUrl) apiUrlInput.value = savedApiUrl;
-  apiUrlInput.addEventListener('input', () => localStorage.setItem('viral_api_url', apiUrlInput.value.trim()));
-
-  uiLanguage.addEventListener('change', () => applyTranslations(uiLanguage.value));
-  generateBtn.addEventListener('click', generateContent);
-  generateVoiceBtn.addEventListener('click', generateVoice);
-  copyBtn.addEventListener('click', copyScript);
-  scanBtn.addEventListener('click', scanTrends);
-  buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
-  createVideoBtn.addEventListener('click', createVideo);
-  openLoginBtn.addEventListener('click', () => authModal.classList.add('open'));
-  closeModalBtn.addEventListener('click', () => authModal.classList.remove('open'));
-  loginBtn.addEventListener('click', loginUser);
-  logoutBtn.addEventListener('click', logoutUser);
-  authModal.addEventListener('click', e => { if (e.target === authModal) authModal.classList.remove('open'); });
-
-  document.getElementById('plan1Btn').addEventListener('click', () => addActivity('Plan selected', 'Starter plan clicked.'));
-  document.getElementById('plan2Btn').addEventListener('click', () => addActivity('Plan selected', 'Pro plan clicked.'));
-  document.getElementById('plan3Btn').addEventListener('click', () => addActivity('Plan selected', 'Business plan clicked.'));
-
-  uiLanguage.value = 'en';
-  applyTranslations('en');
-  updateDashboard();
-  updateAuthUI();
-  renderDetector(detectorSeed);
-  </script>
-</body>
-</html>          video_url:   window._pexelsVideoUrl || '',
-          video_url2:  window._pexelsVideoUrl2 || '',
-          video_url3:  window._pexelsVideoUrl3 || '',
-          video_url4:  window._pexelsVideoUrl4 || '',
-          video_url5:  window._pexelsVideoUrl5 || '',
-          video_url6:  window._pexelsVideoUrl6 || '',
-          video_url7:  window._pexelsVideoUrl7 || '',
-          video_url8:  window._pexelsVideoUrl8 || '',
-          video_url9:  window._pexelsVideoUrl9 || '',
-          video_url10: window._pexelsVideoUrl10 || '',
-          video_url11: window._pexelsVideoUrl11 || '',
-          video_url12: window._pexelsVideoUrl12 || '',
-          video_url13: window._pexelsVideoUrl13 || '',
-          video_url14: window._pexelsVideoUrl14 || '',
-          video_url15: window._pexelsVideoUrl15 || '',
-          video_url16: window._pexelsVideoUrl16 || '',
-          video_url17: window._pexelsVideoUrl17 || '',
-          video_url18: window._pexelsVideoUrl18 || '',
-          video_url19: window._pexelsVideoUrl19 || '',
-          video_url20: window._pexelsVideoUrl20 || '',
-          video_url21: window._pexelsVideoUrl21 || '',
-          video_url22: window._pexelsVideoUrl22 || '',
-          video_url23: window._pexelsVideoUrl23 || '',
-          video_url24: window._pexelsVideoUrl24 || '',
-          video_url25: window._pexelsVideoUrl25 || '',
-          video_url26: window._pexelsVideoUrl26 || '',
-          video_url27: window._pexelsVideoUrl27 || '',
-          video_url28: window._pexelsVideoUrl28 || '',
-          video_url29: window._pexelsVideoUrl29 || '',
-          video_url30: window._pexelsVideoUrl30 || '',
-          video_url31: window._pexelsVideoUrl31 || '',
-          video_url32: window._pexelsVideoUrl32 || '',
-          video_url33: window._pexelsVideoUrl33 || '',
-          video_url34: window._pexelsVideoUrl34 || '',
-          video_url35: window._pexelsVideoUrl35 || '',
-          video_url36: window._pexelsVideoUrl36 || '',
-          video_url37: window._pexelsVideoUrl37 || '',
-          video_url38: window._pexelsVideoUrl38 || '',
-          video_url39: window._pexelsVideoUrl39 || '',
-          video_url40: window._pexelsVideoUrl40 || '',
-          audio_url:  window._generatedVoiceUrl || '',
-          sync_url:   window._syncUrl || '',
-          music_url:  chosenMusicUrl,
-          duration:   chosenDuration
+    except httpx.HTTPError as e:
+        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
+        return JSONResponse(status_code=500, content={
+            "error": f"Erreur téléchargement: {str(e)}"
         })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        setVideoStatus(`Video error: ${data.error || 'unknown error'}`, 'error');
-        return;
-      }
-
-      // FFmpeg retourne directement video_url — pas de polling nécessaire
-      if (!data.video_url) {
-        setVideoStatus('Video error: no video URL returned.', 'error');
-        return;
-      }
-
-      const videoUrl = data.video_url;
-
-      // Afficher le lecteur et le lien de téléchargement
-      videoPlayer.src       = videoUrl;
-      videoDownloadLink.href = videoUrl;
-      videoDownloadBlock.classList.add('show');
-      videoPlayer.load();
-
-      setVideoStatus('✅ Video ready!', 'success');
-      addActivity('Video ready', 'Your FFmpeg video is ready to preview and download.');
-
-      const s = getState(); s.scripts += 1; saveState(s); updateDashboard();
-
-    } catch (e) {
-      setVideoStatus(`Video error: ${e.message}`, 'error');
-    } finally {
-      createVideoBtn.disabled = false;
-    }
-  }
-
-  // ── INIT ──
-  const savedApiUrl = localStorage.getItem('viral_api_url');
-  if (savedApiUrl) apiUrlInput.value = savedApiUrl;
-  apiUrlInput.addEventListener('input', () => localStorage.setItem('viral_api_url', apiUrlInput.value.trim()));
-
-  uiLanguage.addEventListener('change', () => applyTranslations(uiLanguage.value));
-  generateBtn.addEventListener('click', generateContent);
-  generateVoiceBtn.addEventListener('click', generateVoice);
-  copyBtn.addEventListener('click', copyScript);
-  scanBtn.addEventListener('click', scanTrends);
-  buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
-  createVideoBtn.addEventListener('click', createVideo);
-  openLoginBtn.addEventListener('click', () => authModal.classList.add('open'));
-  closeModalBtn.addEventListener('click', () => authModal.classList.remove('open'));
-  loginBtn.addEventListener('click', loginUser);
-  logoutBtn.addEventListener('click', logoutUser);
-  authModal.addEventListener('click', e => { if (e.target === authModal) authModal.classList.remove('open'); });
-
-  document.getElementById('plan1Btn').addEventListener('click', () => addActivity('Plan selected', 'Starter plan clicked.'));
-  document.getElementById('plan2Btn').addEventListener('click', () => addActivity('Plan selected', 'Pro plan clicked.'));
-  document.getElementById('plan3Btn').addEventListener('click', () => addActivity('Plan selected', 'Business plan clicked.'));
-
-  uiLanguage.value = 'en';
-  applyTranslations('en');
-  updateDashboard();
-  updateAuthUI();
-  renderDetector(detectorSeed);
-  </script>
-</body>
-</html>
+    except RuntimeError as e:
+        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
+        return JSONResponse(status_code=500, content={
+            "error": f"Erreur FFmpeg: {str(e)}"
+        })
+    except Exception as e:
+        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
+        return JSONResponse(status_code=500, content={
+            "error": f"Erreur create-video: {str(e)}"
+        })
