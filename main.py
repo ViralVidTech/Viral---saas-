@@ -461,7 +461,7 @@ TITLES:
         script_parts = [scenes[key] for key in scene_keys if scenes[key]]
         script = "\n\n".join(script_parts)
 
-        video_urls = ["", "", "", "", "", "", "", ""]
+        video_urls = [""] * 32
 
         # Construire les requêtes de recherche pour chaque scène
         # On prend les 3 premiers mots significatifs de chaque scène
@@ -641,14 +641,6 @@ TITLES:
             "video_url30": video_urls[29],
             "video_url31": video_urls[30],
             "video_url32": video_urls[31],
-            "video_url33": video_urls[32],
-            "video_url34": video_urls[33],
-            "video_url35": video_urls[34],
-            "video_url36": video_urls[35],
-            "video_url37": video_urls[36],
-            "video_url38": video_urls[37],
-            "video_url39": video_urls[38],
-            "video_url40": video_urls[39],
             "raw_claude_text": text
         }
 
