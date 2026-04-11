@@ -58,7 +58,7 @@ class VideoRequest(BaseModel):
     text6: str = ""
     text7: str = ""
     text8: str = ""
-    # 2 vidéos par scène × 8 scènes = 16 URLs vidéo
+    # 5 vidéos par scène × 8 scènes = 40 URLs vidéo
     video_url: str = ""
     video_url2: str = ""
     video_url3: str = ""
@@ -75,6 +75,30 @@ class VideoRequest(BaseModel):
     video_url14: str = ""
     video_url15: str = ""
     video_url16: str = ""
+    video_url17: str = ""
+    video_url18: str = ""
+    video_url19: str = ""
+    video_url20: str = ""
+    video_url21: str = ""
+    video_url22: str = ""
+    video_url23: str = ""
+    video_url24: str = ""
+    video_url25: str = ""
+    video_url26: str = ""
+    video_url27: str = ""
+    video_url28: str = ""
+    video_url29: str = ""
+    video_url30: str = ""
+    video_url31: str = ""
+    video_url32: str = ""
+    video_url33: str = ""
+    video_url34: str = ""
+    video_url35: str = ""
+    video_url36: str = ""
+    video_url37: str = ""
+    video_url38: str = ""
+    video_url39: str = ""
+    video_url40: str = ""
     audio_url: str = ""
     sync_url: str = ""
     music_url: str = ""
@@ -156,7 +180,7 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
 
     # Avancer tous les sous-titres de 0.5s pour compenser
     # le délai naturel entre l'estimation et la prononciation réelle
-    ADVANCE = 0.7
+    ADVANCE = 0.6
 
     for text in all_texts:
         words = text.split()
@@ -385,23 +409,43 @@ TITLES:
         # Construire les requêtes de recherche pour chaque scène
         # On prend les 3 premiers mots significatifs de chaque scène
         # pour trouver des vidéos qui correspondent au contenu
-        def extract_keywords(scene_text: str, fallback: str) -> str:
+        def extract_keywords(scene_text: str, fallback: str, scene_key: str = "") -> str:
+            """
+            Extrait les mots-clés les plus visuels d'une scène.
+            Privilégie les noms et adjectifs concrets qui donnent
+            de bonnes images de stock (personnes, lieux, actions).
+            """
             if not scene_text:
                 return fallback
             words = scene_text.split()
-            # Filtrer les mots trop courts ou trop communs
-            stop_words = {"le","la","les","un","une","des","de","du","et","en",
-                         "que","qui","pour","par","sur","dans","avec","the","a",
-                         "an","is","are","you","your","to","of","in","and","or",
-                         "it","this","that","we","our","my","not","can","will"}
-            keywords = [w for w in words if len(w) > 3 and w.lower() not in stop_words]
-            return " ".join(keywords[:3]) if keywords else fallback
+            stop_words = {
+                # Français
+                "le","la","les","un","une","des","de","du","et","en","que","qui",
+                "pour","par","sur","dans","avec","est","sont","mais","donc","car",
+                "tout","tous","toute","cette","cela","plus","très","bien","aussi",
+                "comme","même","fait","peut","faut","doit","avoir","être","faire",
+                # Anglais
+                "the","a","an","is","are","you","your","to","of","in","and","or",
+                "it","this","that","we","our","my","not","can","will","all","if",
+                "have","has","been","with","they","their","from","but","when","how"
+            }
+            # Garder uniquement les mots significatifs de plus de 4 caractères
+            keywords = [w.strip(".,!?;:") for w in words
+                       if len(w.strip(".,!?;:")) > 4
+                       and w.lower().strip(".,!?;:") not in stop_words]
 
-        # Préparer une requête par scène
+            # Ajouter la niche comme contexte pour ancrer la recherche
+            if keywords:
+                # Combiner 2 mots-clés de la scène + la niche
+                query = " ".join(keywords[:2]) + " " + fallback
+                return query.strip()
+            return fallback
+
+        # Préparer une requête par scène — combinaison mots-clés + niche
         scene_queries = []
         for key in scene_keys:
             if scenes[key]:
-                query = extract_keywords(scenes[key], niche)
+                query = extract_keywords(scenes[key], niche, key)
                 scene_queries.append(query)
 
         # Compléter avec la niche si on n'a pas assez de scènes
@@ -414,7 +458,7 @@ TITLES:
             try:
                 resp = await client.get(
                     "https://api.pexels.com/videos/search",
-                    params={"query": query, "per_page": count + 2, "orientation": "portrait"},
+                    params={"query": query, "per_page": count + 4, "orientation": "portrait"},
                     headers={"Authorization": PEXELS_API_KEY},
                 )
                 data = resp.json()
@@ -441,7 +485,7 @@ TITLES:
                     params={
                         "key": PIXABAY_API_KEY,
                         "q": query,
-                        "per_page": count + 2,
+                        "per_page": count + 4,
                         "video_type": "film",
                     },
                 )
@@ -462,33 +506,33 @@ TITLES:
             return results
 
         # video_urls : 16 slots — 2 vidéos par scène (slot 0-1 = scène1, 2-3 = scène2...)
-        video_urls = [""] * 16
+        video_urls = [""] * 40
 
         if PEXELS_API_KEY or PIXABAY_API_KEY:
             try:
                 async with httpx.AsyncClient(timeout=45) as client:
                     for i, query in enumerate(scene_queries[:8]):
-                        slot = i * 2  # chaque scène occupe 2 slots consécutifs
+                        slot = i * 5  # chaque scène occupe 5 slots consécutifs
                         collected = []
 
                         # 1. Pexels avec mots-clés de la scène
                         if PEXELS_API_KEY:
-                            collected += await fetch_pexels_videos(client, query, 2)
+                            collected += await fetch_pexels_videos(client, query, 5)
 
                         # 2. Pixabay si pas assez
-                        if PIXABAY_API_KEY and len(collected) < 2:
-                            collected += await fetch_pixabay_videos(client, query, 2 - len(collected))
+                        if PIXABAY_API_KEY and len(collected) < 5:
+                            collected += await fetch_pixabay_videos(client, query, 5 - len(collected))
 
                         # 3. Fallback niche si toujours pas assez
-                        if PEXELS_API_KEY and len(collected) < 2 and query != niche:
-                            collected += await fetch_pexels_videos(client, niche, 2 - len(collected))
+                        if PEXELS_API_KEY and len(collected) < 5 and query != niche:
+                            collected += await fetch_pexels_videos(client, niche, 5 - len(collected))
 
-                        # Remplir les 2 slots de cette scène
-                        for j in range(2):
+                        # Remplir les 5 slots de cette scène
+                        for j in range(5):
                             if j < len(collected):
                                 video_urls[slot + j] = collected[j]
                             elif collected:
-                                video_urls[slot + j] = collected[0]  # recycle si 1 seul résultat
+                                video_urls[slot + j] = collected[j % len(collected)]
             except Exception:
                 pass
 
@@ -508,7 +552,7 @@ TITLES:
             "scene8": scene_list[7] if len(scene_list) > 7 else "",
             "nb_scenes": len(scene_list),
             "duration": duration,
-            "video_url":   video_urls[0],
+            "video_url":  video_urls[0],
             "video_url2":  video_urls[1],
             "video_url3":  video_urls[2],
             "video_url4":  video_urls[3],
@@ -524,6 +568,30 @@ TITLES:
             "video_url14": video_urls[13],
             "video_url15": video_urls[14],
             "video_url16": video_urls[15],
+            "video_url17": video_urls[16],
+            "video_url18": video_urls[17],
+            "video_url19": video_urls[18],
+            "video_url20": video_urls[19],
+            "video_url21": video_urls[20],
+            "video_url22": video_urls[21],
+            "video_url23": video_urls[22],
+            "video_url24": video_urls[23],
+            "video_url25": video_urls[24],
+            "video_url26": video_urls[25],
+            "video_url27": video_urls[26],
+            "video_url28": video_urls[27],
+            "video_url29": video_urls[28],
+            "video_url30": video_urls[29],
+            "video_url31": video_urls[30],
+            "video_url32": video_urls[31],
+            "video_url33": video_urls[32],
+            "video_url34": video_urls[33],
+            "video_url35": video_urls[34],
+            "video_url36": video_urls[35],
+            "video_url37": video_urls[36],
+            "video_url38": video_urls[37],
+            "video_url39": video_urls[38],
+            "video_url40": video_urls[39],
             "raw_claude_text": text
         }
 
@@ -685,7 +753,7 @@ async def create_video(req: VideoRequest):
         else:
             nb_scenes = 4
 
-        # Récupérer les 16 URLs vidéo (2 par scène × 8 scènes max)
+        # Récupérer les 40 URLs vidéo (5 par scène × 8 scènes max)
         all_video_urls = [
             (req.video_url or "").strip(),
             (req.video_url2 or "").strip(),
@@ -703,6 +771,30 @@ async def create_video(req: VideoRequest):
             (req.video_url14 or "").strip(),
             (req.video_url15 or "").strip(),
             (req.video_url16 or "").strip(),
+            (req.video_url17 or "").strip(),
+            (req.video_url18 or "").strip(),
+            (req.video_url19 or "").strip(),
+            (req.video_url20 or "").strip(),
+            (req.video_url21 or "").strip(),
+            (req.video_url22 or "").strip(),
+            (req.video_url23 or "").strip(),
+            (req.video_url24 or "").strip(),
+            (req.video_url25 or "").strip(),
+            (req.video_url26 or "").strip(),
+            (req.video_url27 or "").strip(),
+            (req.video_url28 or "").strip(),
+            (req.video_url29 or "").strip(),
+            (req.video_url30 or "").strip(),
+            (req.video_url31 or "").strip(),
+            (req.video_url32 or "").strip(),
+            (req.video_url33 or "").strip(),
+            (req.video_url34 or "").strip(),
+            (req.video_url35 or "").strip(),
+            (req.video_url36 or "").strip(),
+            (req.video_url37 or "").strip(),
+            (req.video_url38 or "").strip(),
+            (req.video_url39 or "").strip(),
+            (req.video_url40 or "").strip(),
         ]
 
         # Récupérer tous les textes de sous-titres (jusqu'à 8)
@@ -724,7 +816,7 @@ async def create_video(req: VideoRequest):
         # Construire la liste finale des clips vidéo :
         # 2 clips par scène — chaque clip dure segment_duration / 2
         # Exemple pour 4 scènes de 9s : 8 clips de 4.5s chacun
-        CLIPS_PER_SCENE = 2
+        CLIPS_PER_SCENE = 5
         nb_clips_total = nb_scenes * CLIPS_PER_SCENE
 
         video_urls = []
