@@ -975,6 +975,7 @@
       if (!res.ok || data.error) { setVideoStatus(`Voice failed: ${data.error || 'unknown error'}`, 'error'); return; }
       if (!data.audio_url) { setVideoStatus('Voice failed: no audio URL returned.', 'error'); return; }
       window._generatedVoiceUrl = data.audio_url;
+      window._syncUrl = data.sync_url || '';  // timestamps exacts Google TTS
       voicePreview.src = data.audio_url; voicePreview.load();
       setVideoStatus('Voice generated successfully.', 'success');
       addActivity('Voice generated', `A voice track was created with ${selectedVoice}.`);
@@ -1027,6 +1028,7 @@
           video_url7: window._pexelsVideoUrl7 || '',
           video_url8: window._pexelsVideoUrl8 || '',
           audio_url:  window._generatedVoiceUrl || '',
+          sync_url:   window._syncUrl || '',
           music_url:  chosenMusicUrl,
           duration:   chosenDuration
         })
