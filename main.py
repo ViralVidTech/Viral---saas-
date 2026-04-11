@@ -65,6 +65,7 @@ class VideoRequest(BaseModel):
     video_url7: str = ""
     video_url8: str = ""
     audio_url: str = ""
+    sync_url: str = ""   # URL du fichier JSON avec les timepoints Google TTS
     music_url: str = ""
     duration: int = 30  # 30, 45 ou 60 secondes
 
@@ -418,6 +419,80 @@ TITLES:
         return {"error": f"Erreur Claude: {str(e)}"}
 
 
+def build_ssml_with_marks(text: str) -> tuple:
+    """
+    Transforme un texte en SSML avec une <mark> devant chaque mot.
+    Retourne (ssml_string, liste_de_mots).
+    Google TTS retournera ensuite le timestamp exact de chaque mark.
+    """
+    words = text.strip().split()
+    parts = []
+    for i, word in enumerate(words):
+        parts.append(f'<mark name="w{i}"/>{word}')
+    ssml = "<speak>" + " ".join(parts) + "</speak>"
+    return ssml, words
+
+
+def build_srt_from_timepoints(words: list, timepoints: list, out_path: str, words_per_block: int = 5):
+    """
+    Construit le fichier SRT à partir des timestamps EXACTS
+    fournis par Google TTS pour chaque mot.
+    """
+    # Construire un dict : index_mot → temps_début (en secondes)
+    mark_times = {}
+    for tp in timepoints:
+        mark_name = tp.get("markName", "")
+        time_seconds = tp.get("timeSeconds", 0.0)
+        if mark_name.startswith("w"):
+            try:
+                idx = int(mark_name[1:])
+                mark_times[idx] = float(time_seconds)
+            except ValueError:
+                pass
+
+    if not mark_times or not words:
+        return False
+
+    # Durée totale estimée = dernier timestamp + durée moyenne par mot
+    last_idx = max(mark_times.keys())
+    if len(mark_times) > 1:
+        avg_word_dur = mark_times[last_idx] / last_idx if last_idx > 0 else 0.35
+    else:
+        avg_word_dur = 0.35
+    estimated_end = mark_times.get(last_idx, 0) + avg_word_dur * words_per_block
+
+    entries = []
+    entry_idx = 1
+
+    for j in range(0, len(words), words_per_block):
+        block_words = words[j:j + words_per_block]
+        block_text = " ".join(block_words)
+
+        # Début du bloc = timestamp du premier mot du bloc
+        start = mark_times.get(j, None)
+        if start is None:
+            continue
+
+        # Fin du bloc = timestamp du premier mot du prochain bloc (ou fin estimée)
+        next_j = j + words_per_block
+        if next_j < len(words) and next_j in mark_times:
+            end = mark_times[next_j] - 0.05
+        else:
+            end = estimated_end - 0.05
+
+        end = max(start + 0.1, end)
+
+        entries.append(
+            f"{entry_idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
+        )
+        entry_idx += 1
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(entries))
+
+    return True
+
+
 # GOOGLE TTS
 @app.post("/generate-audio")
 async def generate_audio(req: TTSRequest):
@@ -428,11 +503,15 @@ async def generate_audio(req: TTSRequest):
     if not req.text.strip():
         return {"error": "Le texte est vide"}
 
+    # Construire le SSML avec une mark devant chaque mot
+    ssml, words = build_ssml_with_marks(req.text)
+
     google_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={GOOGLE_TTS_API_KEY}"
     payload = {
-        "input": {"text": req.text},
+        "input": {"ssml": ssml},
         "voice": {"languageCode": req.languageCode, "name": req.voiceName},
         "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
+        "enableTimePointing": ["SSML_MARK"]
     }
 
     try:
@@ -444,12 +523,34 @@ async def generate_audio(req: TTSRequest):
         audio_content = data.get("audioContent")
         if not audio_content:
             return {"error": "Aucun audio retourné par Google"}
+
+        # Sauvegarder le fichier audio
         filename = f"{uuid.uuid4().hex}.mp3"
         filepath = os.path.join(AUDIO_DIR, filename)
         with open(filepath, "wb") as f:
             f.write(base64.b64decode(audio_content))
         audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
-        return {"success": True, "audio_url": audio_url, "filename": filename}
+
+        # Récupérer les timepoints (timestamps exacts de chaque mot)
+        timepoints = data.get("timepoints", [])
+
+        # Sauvegarder les timepoints et les mots dans un fichier JSON
+        # pour que create_video puisse les utiliser
+        sync_filename = filename.replace(".mp3", "_sync.json")
+        sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
+        import json
+        with open(sync_filepath, "w", encoding="utf-8") as f:
+            json.dump({"words": words, "timepoints": timepoints}, f)
+
+        sync_url = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
+
+        return {
+            "success": True,
+            "audio_url": audio_url,
+            "sync_url": sync_url,
+            "filename": filename,
+            "timepoints_count": len(timepoints)
+        }
     except Exception as e:
         return {"error": f"Erreur TTS: {str(e)}"}
 
@@ -638,14 +739,34 @@ async def create_video(req: VideoRequest):
                 # Pas de musique → on garde la voix telle quelle sans la couper
                 final_audio_path = voice_path
 
-        # ── ÉTAPE 7 : SRT synchronisé sur la durée réelle de la voix
+        # ── ÉTAPE 7 : SRT avec synchronisation EXACTE via timepoints Google TTS
         srt_path = os.path.join(job_dir, "subtitles.srt")
-        nb_subtitles = len([t for t in subtitle_texts if t.strip()])
-        srt_segment_duration = (
-            real_total_duration / nb_subtitles if nb_subtitles > 0
-            else real_segment_duration
-        )
-        write_srt(subtitle_texts, srt_segment_duration, srt_path)
+        srt_built = False
+
+        # Essayer d'utiliser les timepoints exacts de Google TTS
+        sync_url = (req.sync_url or "").strip()
+        if sync_url:
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    sync_resp = await client.get(sync_url)
+                sync_data = sync_resp.json()
+                words_list = sync_data.get("words", [])
+                timepoints_list = sync_data.get("timepoints", [])
+                if words_list and timepoints_list:
+                    srt_built = build_srt_from_timepoints(
+                        words_list, timepoints_list, srt_path, words_per_block=5
+                    )
+            except Exception:
+                srt_built = False
+
+        # Fallback : estimation par mots si pas de timepoints disponibles
+        if not srt_built:
+            nb_subtitles = len([t for t in subtitle_texts if t.strip()])
+            srt_segment_duration = (
+                real_total_duration / nb_subtitles if nb_subtitles > 0
+                else real_segment_duration
+            )
+            write_srt(subtitle_texts, srt_segment_duration, srt_path)
 
         # ── ÉTAPE 8 : Rendu final avec sous-titres brûlés
         output_filename = f"{job_id}.mp4"
@@ -658,7 +779,7 @@ async def create_video(req: VideoRequest):
         #                pour que MarginV soit interprété correctement
         subtitle_filter = (
             f"subtitles='{srt_escaped}':"
-            "force_style='Alignment=2,MarginV=55,"
+            "force_style='Alignment=2,MarginV=70,"
             "PlayResX=405,PlayResY=720,"
             "FontName=Arial,FontSize=24,Bold=1,"
             "PrimaryColour=&H00FFFFFF,"
