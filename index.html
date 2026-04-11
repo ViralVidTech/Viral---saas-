@@ -853,7 +853,7 @@
       (data.titles || []).forEach(title => { const li = document.createElement('li'); li.textContent = title; titlesList.appendChild(li); });
       scriptOutput.value = data.script || '';
 
-      // Stocker les 40 URLs vidéo (5 par scène)
+      // Stocker les 24 URLs vidéo (3 par scène)
       window._pexelsVideoUrl= data.video_url || '';
       window._pexelsVideoUrl2= data.video_url2 || '';
       window._pexelsVideoUrl3= data.video_url3 || '';
@@ -886,14 +886,6 @@
       window._pexelsVideoUrl30= data.video_url30 || '';
       window._pexelsVideoUrl31= data.video_url31 || '';
       window._pexelsVideoUrl32= data.video_url32 || '';
-      window._pexelsVideoUrl33= data.video_url33 || '';
-      window._pexelsVideoUrl34= data.video_url34 || '';
-      window._pexelsVideoUrl35= data.video_url35 || '';
-      window._pexelsVideoUrl36= data.video_url36 || '';
-      window._pexelsVideoUrl37= data.video_url37 || '';
-      window._pexelsVideoUrl38= data.video_url38 || '';
-      window._pexelsVideoUrl39= data.video_url39 || '';
-      window._pexelsVideoUrl40= data.video_url40 || '';
 
       // Stocker chaque scène individuellement pour les sous-titres
       window._scene1 = data.scene1 || '';
@@ -1080,6 +1072,14 @@
           video_url22: window._pexelsVideoUrl22 || '',
           video_url23: window._pexelsVideoUrl23 || '',
           video_url24: window._pexelsVideoUrl24 || '',
+          video_url25: window._pexelsVideoUrl25 || '',
+          video_url26: window._pexelsVideoUrl26 || '',
+          video_url27: window._pexelsVideoUrl27 || '',
+          video_url28: window._pexelsVideoUrl28 || '',
+          video_url29: window._pexelsVideoUrl29 || '',
+          video_url30: window._pexelsVideoUrl30 || '',
+          video_url31: window._pexelsVideoUrl31 || '',
+          video_url32: window._pexelsVideoUrl32 || '',
           audio_url:  window._generatedVoiceUrl || '',
           sync_url:   window._syncUrl || '',
           music_url:  chosenMusicUrl,
