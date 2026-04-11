@@ -867,7 +867,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         # Exemple pour 4 scènes de 9s : 8 clips de 4.5s chacun
         # ── CONFIGURATION : 2 vidéos par scène, pipeline simple
         # ── CONFIGURATION : 4 clips par scène
-        CLIPS_PER_SCENE = 4
+        CLIPS_PER_SCENE = 2
         nb_clips_total = nb_scenes * CLIPS_PER_SCENE
 
         # Construire la liste des URLs : 4 clips par scène
@@ -896,7 +896,6 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         total_duration = chosen_duration
 
-        job_id = uuid.uuid4().hex
         job_dir = os.path.join(WORK_DIR, job_id)
         os.makedirs(job_dir, exist_ok=True)
 
@@ -1121,9 +1120,8 @@ async def create_video(req: VideoRequest):
     job_id = uuid.uuid4().hex
     VIDEO_JOBS[job_id] = {"status": "processing"}
 
-    # Lancer le traitement dans un thread séparé pour ne pas bloquer
-    loop = asyncio.get_event_loop()
-    asyncio.ensure_future(_process_video(job_id, req))
+    # Lancer le traitement en arrière-plan
+    asyncio.create_task(_process_video(job_id, req))
 
     return JSONResponse(status_code=200, content={
         "success": True,
