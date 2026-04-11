@@ -1003,6 +1003,11 @@
 
     try {
       const res  = await fetch(`${apiUrl}/generate-audio`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, languageCode, voiceName: selectedVoice, speakingRate: 1.0 }) });
+      const contentTypeV = res.headers.get('content-type') || '';
+      if (!contentTypeV.includes('application/json')) {
+        setVideoStatus('Server waking up, please retry in a few seconds.', 'error');
+        return;
+      }
       const data = await res.json();
       if (!res.ok || data.error) { setVideoStatus(`Voice failed: ${data.error || 'unknown error'}`, 'error'); return; }
       if (!data.audio_url) { setVideoStatus('Voice failed: no audio URL returned.', 'error'); return; }
@@ -1082,6 +1087,13 @@
         })
       });
 
+      // Vérifier que la réponse est bien du JSON
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        setVideoStatus('Server error — please try again in a few seconds.', 'error');
+        return;
+      }
+
       const data = await res.json();
 
       if (!res.ok || data.error) {
@@ -1089,28 +1101,56 @@
         return;
       }
 
-      // FFmpeg retourne directement video_url — pas de polling nécessaire
-      if (!data.video_url) {
-        setVideoStatus('Video error: no video URL returned.', 'error');
+      // Le serveur retourne un job_id immédiatement — on poll le statut
+      const jobId = data.job_id;
+      if (!jobId) {
+        setVideoStatus('Video error: no job ID returned.', 'error');
         return;
       }
 
-      const videoUrl = data.video_url;
+      setVideoStatus('⏳ Rendering in progress...', 'ready');
 
-      // Afficher le lecteur et le lien de téléchargement
-      videoPlayer.src       = videoUrl;
-      videoDownloadLink.href = videoUrl;
-      videoDownloadBlock.classList.add('show');
-      videoPlayer.load();
+      // Poller /video-status/{jobId} toutes les 5 secondes
+      let tries = 0;
+      const maxTries = 60; // 5 minutes max
+      const pollInterval = setInterval(async () => {
+        tries++;
+        try {
+          const statusRes = await fetch(`${apiUrl}/video-status/${jobId}`);
+          const statusData = await statusRes.json();
 
-      setVideoStatus('✅ Video ready!', 'success');
-      addActivity('Video ready', 'Your FFmpeg video is ready to preview and download.');
+          if (statusData.status === 'done' && statusData.video_url) {
+            clearInterval(pollInterval);
+            const videoUrl = statusData.video_url;
+            videoPlayer.src        = videoUrl;
+            videoDownloadLink.href = videoUrl;
+            videoDownloadBlock.classList.add('show');
+            videoPlayer.load();
+            setVideoStatus('✅ Video ready!', 'success');
+            addActivity('Video ready', 'Your FFmpeg video is ready to preview and download.');
+            const s = getState(); s.scripts += 1; saveState(s); updateDashboard();
+            createVideoBtn.disabled = false;
 
-      const s = getState(); s.scripts += 1; saveState(s); updateDashboard();
+          } else if (statusData.status === 'failed') {
+            clearInterval(pollInterval);
+            setVideoStatus(`Video error: ${statusData.error || 'rendering failed'}`, 'error');
+            createVideoBtn.disabled = false;
+
+          } else if (tries >= maxTries) {
+            clearInterval(pollInterval);
+            setVideoStatus('Timeout — rendering took too long.', 'error');
+            createVideoBtn.disabled = false;
+
+          } else {
+            setVideoStatus(`⏳ Rendering... (${tries * 5}s elapsed)`, 'ready');
+          }
+        } catch (e) {
+          // Erreur de polling passagère — continuer
+        }
+      }, 5000);
 
     } catch (e) {
       setVideoStatus(`Video error: ${e.message}`, 'error');
-    } finally {
       createVideoBtn.disabled = false;
     }
   }
