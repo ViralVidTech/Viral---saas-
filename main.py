@@ -854,22 +854,14 @@ async def create_video(req: VideoRequest):
         real_total_duration = float(total_duration)  # fallback sans voix
 
         if voice_url:
-            voice_mp3_path = os.path.join(job_dir, "voice.mp3")
-            voice_path     = os.path.join(job_dir, "voice.wav")
-            await download_file(voice_url, voice_mp3_path)
-            # Convertir en WAV pour éviter les erreurs de lecture MP3 par FFmpeg
-            run_cmd([
-                "ffmpeg", "-y",
-                "-i", voice_mp3_path,
-                "-ar", "44100", "-ac", "2",
-                voice_path
-            ])
+            voice_path = os.path.join(job_dir, "voice.mp3")
+            await download_file(voice_url, voice_path)
             measured = get_audio_duration(voice_path)
             if measured > 1.0:
                 real_total_duration = measured
 
-        # Durée de chaque segment vidéo = durée voix / nb scènes
-        real_segment_duration = real_total_duration / nb_scenes
+        # Durée de chaque CLIP vidéo = durée voix / nb clips totaux (5 par scène)
+        real_segment_duration = real_total_duration / nb_clips_total
 
         # ── ÉTAPE 2 : Télécharger les vidéos sources
         raw_video_paths = []
@@ -951,6 +943,7 @@ async def create_video(req: VideoRequest):
                 mixed_path = os.path.join(job_dir, "mixed.m4a")
                 run_cmd([
                     "ffmpeg", "-y",
+                    "-fflags", "+genpts",
                     "-i", voice_path,
                     "-stream_loop", "-1", "-i", music_path,
                     "-filter_complex",
