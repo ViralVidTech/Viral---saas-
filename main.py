@@ -5,6 +5,7 @@ from pydantic import BaseModel
 import os
 import uuid
 import base64
+import json
 import httpx
 import subprocess
 import shutil
