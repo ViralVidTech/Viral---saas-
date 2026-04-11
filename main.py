@@ -854,8 +854,16 @@ async def create_video(req: VideoRequest):
         real_total_duration = float(total_duration)  # fallback sans voix
 
         if voice_url:
-            voice_path = os.path.join(job_dir, "voice.mp3")
-            await download_file(voice_url, voice_path)
+            voice_mp3_path = os.path.join(job_dir, "voice.mp3")
+            voice_path     = os.path.join(job_dir, "voice.wav")
+            await download_file(voice_url, voice_mp3_path)
+            # Convertir en WAV pour éviter les erreurs de lecture MP3 par FFmpeg
+            run_cmd([
+                "ffmpeg", "-y",
+                "-i", voice_mp3_path,
+                "-ar", "44100", "-ac", "2",
+                voice_path
+            ])
             measured = get_audio_duration(voice_path)
             if measured > 1.0:
                 real_total_duration = measured
