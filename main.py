@@ -127,30 +127,63 @@ def run_cmd(cmd):
     return result
 
 
-async def download_file(url: str, dest_path: str, retries: int = 4, delay: float = 3.0):
+async def download_file(url: str, dest_path: str, retries: int = 3, delay: float = 2.0):
     """
     Télécharge un fichier avec tentatives automatiques.
-    Utile quand le serveur Render sort de veille et retourne 502 temporairement.
+    Pour les vidéos stock, on limite à 15MB max pour accélérer le téléchargement.
     """
-    import asyncio
+    MAX_VIDEO_BYTES = 15 * 1024 * 1024  # 15 MB max par vidéo
     last_error = None
     for attempt in range(retries):
         try:
-            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-                response = await client.get(url)
-                if response.status_code in (502, 503, 504):
-                    # Serveur temporairement indisponible → attendre et réessayer
-                    await asyncio.sleep(delay * (attempt + 1))
-                    continue
-                response.raise_for_status()
-                with open(dest_path, "wb") as f:
-                    f.write(response.content)
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=10.0),
+                follow_redirects=True
+            ) as client:
+                # Streaming pour limiter la taille et accélérer
+                async with client.stream("GET", url) as response:
+                    if response.status_code in (502, 503, 504):
+                        await asyncio.sleep(delay * (attempt + 1))
+                        continue
+                    response.raise_for_status()
+                    downloaded = 0
+                    with open(dest_path, "wb") as f:
+                        async for chunk in response.aiter_bytes(chunk_size=65536):
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            # Limiter la taille pour les vidéos stock
+                            if downloaded >= MAX_VIDEO_BYTES:
+                                break
                 return  # succès
         except Exception as e:
             last_error = e
             if attempt < retries - 1:
                 await asyncio.sleep(delay * (attempt + 1))
     raise last_error or RuntimeError(f"Échec téléchargement après {retries} tentatives: {url}")
+
+
+async def download_audio_file(url: str, dest_path: str, retries: int = 4, delay: float = 3.0):
+    """Téléchargement audio sans limite de taille."""
+    last_error = None
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0, connect=10.0),
+                follow_redirects=True
+            ) as client:
+                response = await client.get(url)
+                if response.status_code in (502, 503, 504):
+                    await asyncio.sleep(delay * (attempt + 1))
+                    continue
+                response.raise_for_status()
+                with open(dest_path, "wb") as f:
+                    f.write(response.content)
+                return
+        except Exception as e:
+            last_error = e
+            if attempt < retries - 1:
+                await asyncio.sleep(delay * (attempt + 1))
+    raise last_error or RuntimeError(f"Échec téléchargement audio: {url}")
 
 
 def srt_timestamp(seconds: float) -> str:
@@ -530,7 +563,7 @@ TITLES:
             return results
 
         # video_urls : 16 slots — 2 vidéos par scène (slot 0-1 = scène1, 2-3 = scène2...)
-        video_urls = [""] * 40
+        video_urls = [""] * 32
 
         if PEXELS_API_KEY or PIXABAY_API_KEY:
             try:
@@ -840,7 +873,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         # Construire la liste finale des clips vidéo :
         # 2 clips par scène — chaque clip dure segment_duration / 2
         # Exemple pour 4 scènes de 9s : 8 clips de 4.5s chacun
-        CLIPS_PER_SCENE = 5
+        CLIPS_PER_SCENE = 4
         nb_clips_total = nb_scenes * CLIPS_PER_SCENE
 
         video_urls = []
@@ -879,7 +912,7 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         if voice_url:
             voice_path = os.path.join(job_dir, "voice.mp3")
-            await download_file(voice_url, voice_path)
+            await download_audio_file(voice_url, voice_path)
             measured = get_audio_duration(voice_path)
             if measured > 1.0:
                 real_total_duration = measured
@@ -907,16 +940,16 @@ async def _process_video(job_id: str, req: VideoRequest):
                 "ffmpeg", "-y",
                 "-i", raw_path,
                 "-t", str(real_segment_duration),
-                "-vf", "scale=405:720:force_original_aspect_ratio=increase,crop=405:720,fps=30,format=yuv420p",
+                "-vf", "scale=405:720:force_original_aspect_ratio=increase,crop=405:720,fps=25,format=yuv420p",
                 "-an",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
-                "-r", "30",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+                "-r", "25",
                 norm_path
             ])
 
         # Lancer max 4 normalisations en parallèle pour ne pas surcharger le CPU
         from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=6) as executor:
             list(executor.map(normalize_one, zip(raw_video_paths, norm_video_paths)))
 
         # ── ÉTAPE 4 : Concaténer les segments
@@ -951,8 +984,8 @@ async def _process_video(job_id: str, req: VideoRequest):
                 "-stream_loop", "-1",
                 "-i", stitched_raw_path,
                 "-t", str(real_total_duration),
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-r", "30",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-r", "25",
                 "-pix_fmt", "yuv420p", "-an",
                 stitched_path
             ])
@@ -972,7 +1005,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         if voice_url and voice_path:
             if music_url:
                 music_path = os.path.join(job_dir, "music.mp3")
-                await download_file(music_url, music_path)
+                await download_audio_file(music_url, music_path)
                 mixed_path = os.path.join(job_dir, "mixed.m4a")
                 run_cmd([
                     "ffmpeg", "-y",
@@ -1047,9 +1080,9 @@ async def _process_video(job_id: str, req: VideoRequest):
                 "-i", final_audio_path,
                 "-vf", subtitle_filter,
                 "-map", "0:v:0", "-map", "1:a:0",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-r", "30",
-                "-c:a", "aac", "-b:a", "192k",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-r", "25",
+                "-c:a", "aac", "-b:a", "128k",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 # PAS de -shortest : la vidéo dure exactement comme la voix
@@ -1060,8 +1093,8 @@ async def _process_video(job_id: str, req: VideoRequest):
                 "ffmpeg", "-y",
                 "-i", stitched_path,
                 "-vf", subtitle_filter,
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                "-r", "30",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-r", "25",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 output_path
