@@ -144,6 +144,10 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
     idx = 1
     current_time = 0.0
 
+    # Avancer tous les sous-titres de 0.5s pour compenser
+    # le délai naturel entre l'estimation et la prononciation réelle
+    ADVANCE = 0.5
+
     for text in all_texts:
         words = text.split()
 
@@ -153,9 +157,9 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
             block_text = " ".join(block)
             block_word_count = len(block)
 
-            start = current_time
             duration = block_word_count * seconds_per_word
-            end = start + duration - 0.05  # petit écart pour éviter chevauchement
+            start = max(0.0, current_time - ADVANCE)
+            end   = max(start + 0.1, start + duration - 0.05)
 
             entries.append(
                 f"{idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
