@@ -121,12 +121,30 @@ def run_cmd(cmd):
     return result
 
 
-async def download_file(url: str, dest_path: str):
-    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-        response = await client.get(url)
-        response.raise_for_status()
-        with open(dest_path, "wb") as f:
-            f.write(response.content)
+async def download_file(url: str, dest_path: str, retries: int = 4, delay: float = 3.0):
+    """
+    Télécharge un fichier avec tentatives automatiques.
+    Utile quand le serveur Render sort de veille et retourne 502 temporairement.
+    """
+    import asyncio
+    last_error = None
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                response = await client.get(url)
+                if response.status_code in (502, 503, 504):
+                    # Serveur temporairement indisponible → attendre et réessayer
+                    await asyncio.sleep(delay * (attempt + 1))
+                    continue
+                response.raise_for_status()
+                with open(dest_path, "wb") as f:
+                    f.write(response.content)
+                return  # succès
+        except Exception as e:
+            last_error = e
+            if attempt < retries - 1:
+                await asyncio.sleep(delay * (attempt + 1))
+    raise last_error or RuntimeError(f"Échec téléchargement après {retries} tentatives: {url}")
 
 
 def srt_timestamp(seconds: float) -> str:
