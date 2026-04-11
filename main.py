@@ -503,16 +503,32 @@ async def generate_audio(req: TTSRequest):
     if not req.text.strip():
         return {"error": "Le texte est vide"}
 
-    # Construire le SSML avec une mark devant chaque mot
-    ssml, words = build_ssml_with_marks(req.text)
-
     google_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={GOOGLE_TTS_API_KEY}"
-    payload = {
-        "input": {"ssml": ssml},
-        "voice": {"languageCode": req.languageCode, "name": req.voiceName},
-        "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
-        "enableTimePointing": ["SSML_MARK"]
-    }
+
+    # Les voix Chirp3 (ex: en-US-Chirp3-HD-Achernar) ne supportent PAS le SSML
+    # ni enableTimePointing. On détecte le type de voix pour choisir la bonne méthode.
+    voice_name = req.voiceName or ""
+    supports_ssml = "Neural2" in voice_name or "Standard" in voice_name or "Wavenet" in voice_name
+
+    words = req.text.strip().split()
+    timepoints = []
+
+    if supports_ssml:
+        # Voix Neural2/Standard/Wavenet : on utilise SSML + timepoints
+        ssml, words = build_ssml_with_marks(req.text)
+        payload = {
+            "input": {"ssml": ssml},
+            "voice": {"languageCode": req.languageCode, "name": req.voiceName},
+            "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
+            "enableTimePointing": ["SSML_MARK"]
+        }
+    else:
+        # Voix Chirp3 : texte simple, pas de SSML, pas de timepoints
+        payload = {
+            "input": {"text": req.text},
+            "voice": {"languageCode": req.languageCode, "name": req.voiceName},
+            "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
+        }
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
@@ -531,14 +547,12 @@ async def generate_audio(req: TTSRequest):
             f.write(base64.b64decode(audio_content))
         audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
 
-        # Récupérer les timepoints (timestamps exacts de chaque mot)
+        # Récupérer les timepoints si disponibles (Neural2 seulement)
         timepoints = data.get("timepoints", [])
 
         # Sauvegarder les timepoints et les mots dans un fichier JSON
-        # pour que create_video puisse les utiliser
         sync_filename = filename.replace(".mp3", "_sync.json")
         sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
-        import json
         with open(sync_filepath, "w", encoding="utf-8") as f:
             json.dump({"words": words, "timepoints": timepoints}, f)
 
