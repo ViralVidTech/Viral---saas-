@@ -853,15 +853,47 @@
       (data.titles || []).forEach(title => { const li = document.createElement('li'); li.textContent = title; titlesList.appendChild(li); });
       scriptOutput.value = data.script || '';
 
-      // Stocker les 8 URLs vidéo Pexels
-      window._pexelsVideoUrl  = data.video_url  || '';
-      window._pexelsVideoUrl2 = data.video_url2 || '';
-      window._pexelsVideoUrl3 = data.video_url3 || '';
-      window._pexelsVideoUrl4 = data.video_url4 || '';
-      window._pexelsVideoUrl5 = data.video_url5 || '';
-      window._pexelsVideoUrl6 = data.video_url6 || '';
-      window._pexelsVideoUrl7 = data.video_url7 || '';
-      window._pexelsVideoUrl8 = data.video_url8 || '';
+      // Stocker les 40 URLs vidéo (5 par scène)
+      window._pexelsVideoUrl= data.video_url || '';
+      window._pexelsVideoUrl2= data.video_url2 || '';
+      window._pexelsVideoUrl3= data.video_url3 || '';
+      window._pexelsVideoUrl4= data.video_url4 || '';
+      window._pexelsVideoUrl5= data.video_url5 || '';
+      window._pexelsVideoUrl6= data.video_url6 || '';
+      window._pexelsVideoUrl7= data.video_url7 || '';
+      window._pexelsVideoUrl8= data.video_url8 || '';
+      window._pexelsVideoUrl9= data.video_url9 || '';
+      window._pexelsVideoUrl10= data.video_url10 || '';
+      window._pexelsVideoUrl11= data.video_url11 || '';
+      window._pexelsVideoUrl12= data.video_url12 || '';
+      window._pexelsVideoUrl13= data.video_url13 || '';
+      window._pexelsVideoUrl14= data.video_url14 || '';
+      window._pexelsVideoUrl15= data.video_url15 || '';
+      window._pexelsVideoUrl16= data.video_url16 || '';
+      window._pexelsVideoUrl17= data.video_url17 || '';
+      window._pexelsVideoUrl18= data.video_url18 || '';
+      window._pexelsVideoUrl19= data.video_url19 || '';
+      window._pexelsVideoUrl20= data.video_url20 || '';
+      window._pexelsVideoUrl21= data.video_url21 || '';
+      window._pexelsVideoUrl22= data.video_url22 || '';
+      window._pexelsVideoUrl23= data.video_url23 || '';
+      window._pexelsVideoUrl24= data.video_url24 || '';
+      window._pexelsVideoUrl25= data.video_url25 || '';
+      window._pexelsVideoUrl26= data.video_url26 || '';
+      window._pexelsVideoUrl27= data.video_url27 || '';
+      window._pexelsVideoUrl28= data.video_url28 || '';
+      window._pexelsVideoUrl29= data.video_url29 || '';
+      window._pexelsVideoUrl30= data.video_url30 || '';
+      window._pexelsVideoUrl31= data.video_url31 || '';
+      window._pexelsVideoUrl32= data.video_url32 || '';
+      window._pexelsVideoUrl33= data.video_url33 || '';
+      window._pexelsVideoUrl34= data.video_url34 || '';
+      window._pexelsVideoUrl35= data.video_url35 || '';
+      window._pexelsVideoUrl36= data.video_url36 || '';
+      window._pexelsVideoUrl37= data.video_url37 || '';
+      window._pexelsVideoUrl38= data.video_url38 || '';
+      window._pexelsVideoUrl39= data.video_url39 || '';
+      window._pexelsVideoUrl40= data.video_url40 || '';
 
       // Stocker chaque scène individuellement pour les sous-titres
       window._scene1 = data.scene1 || '';
@@ -993,7 +1025,7 @@
     const chosenMusicUrl = document.getElementById('musicSelect')?.value || '';
 
     if (!apiUrl) { setVideoStatus('Enter API URL first.', 'error'); return; }
-    if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4) {
+    if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4 && !window._pexelsVideoUrl5 && !window._pexelsVideoUrl6 && !window._pexelsVideoUrl7 && !window._pexelsVideoUrl8) {
       setVideoStatus('Generate content first so source videos are available.', 'error'); return;
     }
 
@@ -1019,14 +1051,139 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text1, text2, text3, text4, text5, text6, text7, text8,
-          video_url:  window._pexelsVideoUrl  || '',
-          video_url2: window._pexelsVideoUrl2 || '',
-          video_url3: window._pexelsVideoUrl3 || '',
-          video_url4: window._pexelsVideoUrl4 || '',
-          video_url5: window._pexelsVideoUrl5 || '',
-          video_url6: window._pexelsVideoUrl6 || '',
-          video_url7: window._pexelsVideoUrl7 || '',
-          video_url8: window._pexelsVideoUrl8 || '',
+          video_url:   window._pexelsVideoUrl   || '',
+          video_url2:  window._pexelsVideoUrl2  || '',
+          video_url3:  window._pexelsVideoUrl3  || '',
+          video_url4:  window._pexelsVideoUrl4  || '',
+          video_url5:  window._pexelsVideoUrl5  || '',
+          video_url6:  window._pexelsVideoUrl6  || '',
+          video_url7:  window._pexelsVideoUrl7  || '',
+          video_url8:  window._pexelsVideoUrl8  || '',
+          video_url9:  window._pexelsVideoUrl9  || '',
+          video_url10: window._pexelsVideoUrl10 || '',
+          video_url11: window._pexelsVideoUrl11 || '',
+          video_url12: window._pexelsVideoUrl12 || '',
+          video_url13: window._pexelsVideoUrl13 || '',
+          video_url14: window._pexelsVideoUrl14 || '',
+          video_url15: window._pexelsVideoUrl15 || '',
+          video_url16: window._pexelsVideoUrl16 || '',
+          video_url17: window._pexelsVideoUrl17 || '',
+          video_url18: window._pexelsVideoUrl18 || '',
+          video_url19: window._pexelsVideoUrl19 || '',
+          video_url20: window._pexelsVideoUrl20 || '',
+          video_url21: window._pexelsVideoUrl21 || '',
+          video_url22: window._pexelsVideoUrl22 || '',
+          video_url23: window._pexelsVideoUrl23 || '',
+          video_url24: window._pexelsVideoUrl24 || '',
+          audio_url:  window._generatedVoiceUrl || '',
+          sync_url:   window._syncUrl || '',
+          music_url:  chosenMusicUrl,
+          duration:   chosenDuration
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setVideoStatus(`Video error: ${data.error || 'unknown error'}`, 'error');
+        return;
+      }
+
+      // FFmpeg retourne directement video_url — pas de polling nécessaire
+      if (!data.video_url) {
+        setVideoStatus('Video error: no video URL returned.', 'error');
+        return;
+      }
+
+      const videoUrl = data.video_url;
+
+      // Afficher le lecteur et le lien de téléchargement
+      videoPlayer.src       = videoUrl;
+      videoDownloadLink.href = videoUrl;
+      videoDownloadBlock.classList.add('show');
+      videoPlayer.load();
+
+      setVideoStatus('✅ Video ready!', 'success');
+      addActivity('Video ready', 'Your FFmpeg video is ready to preview and download.');
+
+      const s = getState(); s.scripts += 1; saveState(s); updateDashboard();
+
+    } catch (e) {
+      setVideoStatus(`Video error: ${e.message}`, 'error');
+    } finally {
+      createVideoBtn.disabled = false;
+    }
+  }
+
+  // ── INIT ──
+  const savedApiUrl = localStorage.getItem('viral_api_url');
+  if (savedApiUrl) apiUrlInput.value = savedApiUrl;
+  apiUrlInput.addEventListener('input', () => localStorage.setItem('viral_api_url', apiUrlInput.value.trim()));
+
+  uiLanguage.addEventListener('change', () => applyTranslations(uiLanguage.value));
+  generateBtn.addEventListener('click', generateContent);
+  generateVoiceBtn.addEventListener('click', generateVoice);
+  copyBtn.addEventListener('click', copyScript);
+  scanBtn.addEventListener('click', scanTrends);
+  buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
+  createVideoBtn.addEventListener('click', createVideo);
+  openLoginBtn.addEventListener('click', () => authModal.classList.add('open'));
+  closeModalBtn.addEventListener('click', () => authModal.classList.remove('open'));
+  loginBtn.addEventListener('click', loginUser);
+  logoutBtn.addEventListener('click', logoutUser);
+  authModal.addEventListener('click', e => { if (e.target === authModal) authModal.classList.remove('open'); });
+
+  document.getElementById('plan1Btn').addEventListener('click', () => addActivity('Plan selected', 'Starter plan clicked.'));
+  document.getElementById('plan2Btn').addEventListener('click', () => addActivity('Plan selected', 'Pro plan clicked.'));
+  document.getElementById('plan3Btn').addEventListener('click', () => addActivity('Plan selected', 'Business plan clicked.'));
+
+  uiLanguage.value = 'en';
+  applyTranslations('en');
+  updateDashboard();
+  updateAuthUI();
+  renderDetector(detectorSeed);
+  </script>
+</body>
+</html>          video_url:   window._pexelsVideoUrl || '',
+          video_url2:  window._pexelsVideoUrl2 || '',
+          video_url3:  window._pexelsVideoUrl3 || '',
+          video_url4:  window._pexelsVideoUrl4 || '',
+          video_url5:  window._pexelsVideoUrl5 || '',
+          video_url6:  window._pexelsVideoUrl6 || '',
+          video_url7:  window._pexelsVideoUrl7 || '',
+          video_url8:  window._pexelsVideoUrl8 || '',
+          video_url9:  window._pexelsVideoUrl9 || '',
+          video_url10: window._pexelsVideoUrl10 || '',
+          video_url11: window._pexelsVideoUrl11 || '',
+          video_url12: window._pexelsVideoUrl12 || '',
+          video_url13: window._pexelsVideoUrl13 || '',
+          video_url14: window._pexelsVideoUrl14 || '',
+          video_url15: window._pexelsVideoUrl15 || '',
+          video_url16: window._pexelsVideoUrl16 || '',
+          video_url17: window._pexelsVideoUrl17 || '',
+          video_url18: window._pexelsVideoUrl18 || '',
+          video_url19: window._pexelsVideoUrl19 || '',
+          video_url20: window._pexelsVideoUrl20 || '',
+          video_url21: window._pexelsVideoUrl21 || '',
+          video_url22: window._pexelsVideoUrl22 || '',
+          video_url23: window._pexelsVideoUrl23 || '',
+          video_url24: window._pexelsVideoUrl24 || '',
+          video_url25: window._pexelsVideoUrl25 || '',
+          video_url26: window._pexelsVideoUrl26 || '',
+          video_url27: window._pexelsVideoUrl27 || '',
+          video_url28: window._pexelsVideoUrl28 || '',
+          video_url29: window._pexelsVideoUrl29 || '',
+          video_url30: window._pexelsVideoUrl30 || '',
+          video_url31: window._pexelsVideoUrl31 || '',
+          video_url32: window._pexelsVideoUrl32 || '',
+          video_url33: window._pexelsVideoUrl33 || '',
+          video_url34: window._pexelsVideoUrl34 || '',
+          video_url35: window._pexelsVideoUrl35 || '',
+          video_url36: window._pexelsVideoUrl36 || '',
+          video_url37: window._pexelsVideoUrl37 || '',
+          video_url38: window._pexelsVideoUrl38 || '',
+          video_url39: window._pexelsVideoUrl39 || '',
+          video_url40: window._pexelsVideoUrl40 || '',
           audio_url:  window._generatedVoiceUrl || '',
           sync_url:   window._syncUrl || '',
           music_url:  chosenMusicUrl,
