@@ -237,7 +237,7 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
 
     # Avancer tous les sous-titres de 0.5s pour compenser
     # le délai naturel entre l'estimation et la prononciation réelle
-    ADVANCE = 0.6
+    ADVANCE = 0.7
 
     for text in all_texts:
         words = text.split()
@@ -867,7 +867,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         # Exemple pour 4 scènes de 9s : 8 clips de 4.5s chacun
         # ── CONFIGURATION : 2 vidéos par scène, pipeline simple
         # ── CONFIGURATION : 4 clips par scène
-        CLIPS_PER_SCENE = 2
+        CLIPS_PER_SCENE = 5
         nb_clips_total = nb_scenes * CLIPS_PER_SCENE
 
         # Construire la liste des URLs : 4 clips par scène
