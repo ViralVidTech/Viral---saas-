@@ -1112,7 +1112,7 @@
 
       // Poller /video-status/{jobId} toutes les 5 secondes
       let tries = 0;
-      const maxTries = 120; // 10 minutes max
+      const maxTries = 240; // 20 minutes max
       const pollInterval = setInterval(async () => {
         tries++;
         try {
