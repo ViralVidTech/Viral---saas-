@@ -909,87 +909,102 @@ async def _process_video(job_id: str, req: VideoRequest):
             if measured > 1.0:
                 real_total_duration = measured
 
-        # Durée de chaque CLIP vidéo = durée voix / nb clips totaux (5 par scène)
-        real_segment_duration = real_total_duration / nb_clips_total
+        # Durée de chaque SCÈNE = durée voix / nb scènes
+        # (on télécharge 1 vidéo par scène au lieu de 4 — 4x plus rapide)
+        real_segment_duration = real_total_duration / nb_scenes
 
-        # ── ÉTAPE 2 : Télécharger les vidéos EN PARALLÈLE
+        # ── ÉTAPE 2 : Télécharger 2 vidéos par scène en parallèle
+        # 2 vidéos × nb_scenes = 8 à 16 fichiers max — rapide et varié visuellement
+        VIDS_PER_SCENE = 2
+        scene_urls = []      # liste à plat : [scène0_vid0, scène0_vid1, scène1_vid0, ...]
+        scene_sub_texts = []
+
+        for i in range(nb_scenes):
+            collected = []
+            for j in range(CLIPS_PER_SCENE):
+                slot = i * CLIPS_PER_SCENE + j
+                if slot < len(valid_video_urls) and valid_video_urls[slot]:
+                    collected.append(valid_video_urls[slot])
+                if len(collected) >= VIDS_PER_SCENE:
+                    break
+            # Fallback si pas assez
+            while len(collected) < VIDS_PER_SCENE and valid_video_urls_raw:
+                collected.append(valid_video_urls_raw[i % len(valid_video_urls_raw)])
+            scene_urls.extend(collected[:VIDS_PER_SCENE])
+            scene_sub_texts.append(
+                all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
+            )
+
+        subtitle_texts = scene_sub_texts
+
+        # Télécharger toutes les URLs en parallèle
         raw_video_paths = [os.path.join(job_dir, f"raw_{i}.mp4")
-                           for i in range(len(valid_video_urls))]
-
+                           for i in range(len(scene_urls))]
         await asyncio.gather(*[
             download_file(url, path)
-            for url, path in zip(valid_video_urls, raw_video_paths)
+            for url, path in zip(scene_urls, raw_video_paths)
+            if url
         ])
 
-        # ── ÉTAPE 3 : Normaliser chaque segment EN PARALLÈLE
-        # On utilise un thread pool pour lancer plusieurs FFmpeg simultanément
-        norm_video_paths = [os.path.join(job_dir, f"seg_{i}.mp4")
-                            for i in range(len(raw_video_paths))]
-
-        def normalize_one(args):
-            raw_path, norm_path = args
+        # ── ÉTAPE 3 : Normaliser — chaque clip dure real_segment_duration / VIDS_PER_SCENE
+        clip_duration = real_segment_duration / VIDS_PER_SCENE
+        norm_video_paths = []
+        for i, raw_path in enumerate(raw_video_paths):
+            if not os.path.exists(raw_path):
+                continue
+            norm_path = os.path.join(job_dir, f"seg_{i}.mp4")
             run_cmd([
                 "ffmpeg", "-y",
                 "-i", raw_path,
-                "-t", str(real_segment_duration),
-                "-vf", "scale=405:720:force_original_aspect_ratio=increase,crop=405:720,fps=25,format=yuv420p",
+                "-t", str(clip_duration),
+                "-vf", "scale=405:720:force_original_aspect_ratio=increase,"
+                       "crop=405:720,fps=25,format=yuv420p",
                 "-an",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
                 "-r", "25",
                 norm_path
             ])
+            norm_video_paths.append(norm_path)
 
-        # Lancer max 4 normalisations en parallèle pour ne pas surcharger le CPU
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            list(executor.map(normalize_one, zip(raw_video_paths, norm_video_paths)))
+        if not norm_video_paths:
+            raise RuntimeError("Aucun segment vidéo produit")
 
-        # ── ÉTAPE 4 : Concaténer les segments
+        # ── ÉTAPE 4 : Concaténer
         concat_list_path = os.path.join(job_dir, "concat.txt")
         with open(concat_list_path, "w", encoding="utf-8") as f:
             for path in norm_video_paths:
-                abs_path = os.path.abspath(path)
-                f.write(f"file '{abs_path}'\n")
+                f.write(f"file '{os.path.abspath(path)}'\n")
 
-        # Vidéo concaténée brute (durée théorique = real_total_duration)
         stitched_raw_path = os.path.join(job_dir, "stitched_raw.mp4")
         run_cmd([
             "ffmpeg", "-y",
             "-f", "concat", "-safe", "0",
             "-i", concat_list_path,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-            "-r", "30",
-            "-pix_fmt", "yuv420p", "-an",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+            "-r", "25", "-pix_fmt", "yuv420p", "-an",
             stitched_raw_path
         ])
 
-        # ── ÉTAPE 5 : Vérifier la durée réelle de la vidéo concaténée
-        # Si elle est plus courte que la voix (à cause d'arrondi ou de vidéos
-        # sources trop courtes), on boucle la vidéo pour combler le manque.
+        # ── ÉTAPE 5 : Ajuster durée
         stitched_duration = get_audio_duration(stitched_raw_path)
         stitched_path = os.path.join(job_dir, "stitched.mp4")
 
         if stitched_duration < real_total_duration - 0.5:
-            # La vidéo est plus courte que la voix → on la boucle
             run_cmd([
                 "ffmpeg", "-y",
-                "-stream_loop", "-1",
-                "-i", stitched_raw_path,
+                "-stream_loop", "-1", "-i", stitched_raw_path,
                 "-t", str(real_total_duration),
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                "-r", "25",
-                "-pix_fmt", "yuv420p", "-an",
+                "-r", "25", "-pix_fmt", "yuv420p", "-an",
                 stitched_path
             ])
         else:
-            # La vidéo est assez longue → on la coupe exactement
             run_cmd([
-                "ffmpeg", "-y",
-                "-i", stitched_raw_path,
+                "ffmpeg", "-y", "-i", stitched_raw_path,
                 "-t", str(real_total_duration),
-                "-c:v", "copy", "-an",
-                stitched_path
+                "-c:v", "copy", "-an", stitched_path
             ])
+
 
         # ── ÉTAPE 6 : Préparer l'audio final (voix + musique optionnelle)
         final_audio_path = None
