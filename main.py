@@ -505,30 +505,12 @@ async def generate_audio(req: TTSRequest):
 
     google_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={GOOGLE_TTS_API_KEY}"
 
-    # Les voix Chirp3 (ex: en-US-Chirp3-HD-Achernar) ne supportent PAS le SSML
-    # ni enableTimePointing. On détecte le type de voix pour choisir la bonne méthode.
-    voice_name = req.voiceName or ""
-    supports_ssml = "Neural2" in voice_name or "Standard" in voice_name or "Wavenet" in voice_name
-
-    words = req.text.strip().split()
-    timepoints = []
-
-    if supports_ssml:
-        # Voix Neural2/Standard/Wavenet : on utilise SSML + timepoints
-        ssml, words = build_ssml_with_marks(req.text)
-        payload = {
-            "input": {"ssml": ssml},
-            "voice": {"languageCode": req.languageCode, "name": req.voiceName},
-            "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
-            "enableTimePointing": ["SSML_MARK"]
-        }
-    else:
-        # Voix Chirp3 : texte simple, pas de SSML, pas de timepoints
-        payload = {
-            "input": {"text": req.text},
-            "voice": {"languageCode": req.languageCode, "name": req.voiceName},
-            "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
-        }
+    # Texte simple pour toutes les voix (Chirp3, Neural2, Standard, Wavenet)
+    payload = {
+        "input": {"text": req.text},
+        "voice": {"languageCode": req.languageCode, "name": req.voiceName},
+        "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
+    }
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
@@ -547,14 +529,12 @@ async def generate_audio(req: TTSRequest):
             f.write(base64.b64decode(audio_content))
         audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
 
-        # Récupérer les timepoints si disponibles (Neural2 seulement)
-        timepoints = data.get("timepoints", [])
-
-        # Sauvegarder les timepoints et les mots dans un fichier JSON
+        # Sauvegarder les mots du texte pour la synchronisation des sous-titres
+        words = req.text.strip().split()
         sync_filename = filename.replace(".mp3", "_sync.json")
         sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
         with open(sync_filepath, "w", encoding="utf-8") as f:
-            json.dump({"words": words, "timepoints": timepoints}, f)
+            json.dump({"words": words, "timepoints": []}, f)
 
         sync_url = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
 
@@ -562,8 +542,7 @@ async def generate_audio(req: TTSRequest):
             "success": True,
             "audio_url": audio_url,
             "sync_url": sync_url,
-            "filename": filename,
-            "timepoints_count": len(timepoints)
+            "filename": filename
         }
     except Exception as e:
         return {"error": f"Erreur TTS: {str(e)}"}
