@@ -887,28 +887,37 @@ async def _process_video(job_id: str, req: VideoRequest):
         # Durée de chaque CLIP vidéo = durée voix / nb clips totaux (5 par scène)
         real_segment_duration = real_total_duration / nb_clips_total
 
-        # ── ÉTAPE 2 : Télécharger les vidéos sources
-        raw_video_paths = []
-        for i, url in enumerate(valid_video_urls):
-            raw_path = os.path.join(job_dir, f"raw_{i}.mp4")
-            await download_file(url, raw_path)
-            raw_video_paths.append(raw_path)
+        # ── ÉTAPE 2 : Télécharger les vidéos EN PARALLÈLE
+        raw_video_paths = [os.path.join(job_dir, f"raw_{i}.mp4")
+                           for i in range(len(valid_video_urls))]
 
-        # ── ÉTAPE 3 : Normaliser chaque segment à la bonne durée
-        norm_video_paths = []
-        for i, raw_path in enumerate(raw_video_paths):
-            norm_path = os.path.join(job_dir, f"seg_{i}.mp4")
+        await asyncio.gather(*[
+            download_file(url, path)
+            for url, path in zip(valid_video_urls, raw_video_paths)
+        ])
+
+        # ── ÉTAPE 3 : Normaliser chaque segment EN PARALLÈLE
+        # On utilise un thread pool pour lancer plusieurs FFmpeg simultanément
+        norm_video_paths = [os.path.join(job_dir, f"seg_{i}.mp4")
+                            for i in range(len(raw_video_paths))]
+
+        def normalize_one(args):
+            raw_path, norm_path = args
             run_cmd([
                 "ffmpeg", "-y",
                 "-i", raw_path,
                 "-t", str(real_segment_duration),
                 "-vf", "scale=405:720:force_original_aspect_ratio=increase,crop=405:720,fps=30,format=yuv420p",
                 "-an",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
                 "-r", "30",
                 norm_path
             ])
-            norm_video_paths.append(norm_path)
+
+        # Lancer max 4 normalisations en parallèle pour ne pas surcharger le CPU
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            list(executor.map(normalize_one, zip(raw_video_paths, norm_video_paths)))
 
         # ── ÉTAPE 4 : Concaténer les segments
         concat_list_path = os.path.join(job_dir, "concat.txt")
