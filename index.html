@@ -767,12 +767,8 @@
   const videoDownloadLink  = document.getElementById('videoDownloadLink');
 
   // ── HELPERS ──
-  const detectorSeed = [
-    { title: '3 hooks that explode watch time', creator: '@trendpilot', platform: 'TikTok', views: 482000, likes: 43100, comments: 2800, shares: 3900 },
-    { title: 'The faceless format making money now', creator: '@cashcreator', platform: 'YouTube Shorts', views: 721000, likes: 59300, comments: 3500, shares: 5100 },
-    { title: 'This niche is quietly going viral', creator: '@nichehunter', platform: 'Instagram Reels', views: 318000, likes: 21900, comments: 1400, shares: 1800 },
-    { title: 'Why this short script format converts', creator: '@viralstudio', platform: 'Facebook Reels', views: 264000, likes: 17300, comments: 1100, shares: 1500 }
-  ];
+  // Detector — données de démarrage vides, remplies par l'IA au scan
+  const detectorSeed = [];
 
   function getState() { return JSON.parse(localStorage.getItem('viral_dashboard_state') || '{"scripts":0,"alerts":0,"revenue":0,"topNiche":"—","growth":0}'); }
   function saveState(s) { localStorage.setItem('viral_dashboard_state', JSON.stringify(s)); }
@@ -920,22 +916,94 @@
   // ── DETECTOR ──
   function renderDetector(results) {
     detectorResults.innerHTML = '';
+    if (!results || results.length === 0) {
+      detectorResults.innerHTML = '<p style="color:var(--muted); text-align:center; padding:20px;">No results yet. Enter a keyword and click Scan.</p>';
+      return;
+    }
     results.forEach(item => {
-      const score = Math.min(99, Math.round((item.views/10000)*0.55 + (item.likes/1000)*0.9 + item.shares*0.008 + item.comments*0.01));
-      const el = document.createElement('div'); el.className = 'detector-item';
-      el.innerHTML = `<div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;"><h3>${item.title}</h3><span class="score-pill">Score ${score}</span></div><div class="detector-meta"><span>${item.platform}</span><span>${item.creator}</span><span>${item.views.toLocaleString()} views</span><span>${item.likes.toLocaleString()} likes</span><span>${item.comments.toLocaleString()} comments</span><span>${item.shares.toLocaleString()} shares</span></div><p style="margin:0; color:var(--muted);">Keyword match: <strong style="color:var(--text);">${detectorKeyword.value || 'general trend'}</strong></p>`;
+      const score = item.viralScore || 0;
+      const scoreColor = score >= 80 ? '#22c55e' : score >= 60 ? '#f59e0b' : '#ef4444';
+      const el = document.createElement('div');
+      el.className = 'detector-item';
+      el.style.cursor = 'pointer';
+      el.innerHTML = `
+        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+          <h3 style="margin:0; flex:1;">${item.title}</h3>
+          <span class="score-pill" style="background:${scoreColor}20; color:${scoreColor}; border:1px solid ${scoreColor}40; padding:4px 12px; border-radius:20px; font-weight:700; white-space:nowrap;">
+            🔥 Score ${score}/100
+          </span>
+        </div>
+        <div class="detector-meta" style="margin:10px 0 8px;">
+          <span>📱 ${item.platform}</span>
+          <span>🎯 ${item.niche}</span>
+          <span>⏱ ${item.bestDuration}</span>
+          <span>🌍 ${item.targetAudience}</span>
+        </div>
+        <p style="margin:6px 0 4px; font-size:0.9rem;"><strong>Why it goes viral:</strong> ${item.whyViral}</p>
+        <p style="margin:4px 0 4px; font-size:0.9rem; color:var(--muted);"><strong>Hook idea:</strong> ${item.hookIdea}</p>
+        <p style="margin:4px 0 0; font-size:0.9rem; color:var(--muted);"><strong>Best hashtags:</strong> ${item.hashtags}</p>
+        <div style="margin-top:10px;">
+          <button class="primary-btn" style="font-size:0.82rem; padding:6px 14px;" onclick="useDetectorResult(${JSON.stringify(item).replace(/"/g,'&quot;')})">
+            ✨ Use this idea
+          </button>
+        </div>`;
       detectorResults.appendChild(el);
     });
   }
 
-  function scanTrends() {
-    const keyword = detectorKeyword.value.trim() || 'viral';
+  function useDetectorResult(item) {
+    // Pré-remplir le générateur avec l'idée détectée
+    const nicheInput = document.getElementById('niche');
+    if (nicheInput) {
+      nicheInput.value = item.niche || item.title;
+    }
+    // Scroller vers le générateur
+    document.getElementById('generator').scrollIntoView({ behavior: 'smooth' });
+    addActivity('Idea applied', `"${item.title}" applied to the generator.`);
+  }
+
+  async function scanTrends() {
+    const keyword  = detectorKeyword.value.trim() || 'money';
     const platform = detectorPlatform.value;
-    const s = getState();
-    const results = detectorSeed.map((item, i) => ({ ...item, title: `${keyword} — ${item.title}`, platform, views: item.views + i*14000, likes: item.likes + i*1200, comments: item.comments + i*90, shares: item.shares + i*140 }));
-    renderDetector(results);
-    s.alerts += results.length; s.growth = Math.min(99, s.growth + 3); saveState(s); updateDashboard();
-    addActivity('Trend scan completed', `A new viral scan was run for "${keyword}" on ${platform}.`);
+    const language = detectorLanguage.value;
+    const apiUrl   = normalizeApiUrl(apiUrlInput.value);
+
+    scanBtn.disabled = true;
+    scanBtn.textContent = '⏳ Analyzing...';
+    detectorResults.innerHTML = '<p style="color:var(--muted); text-align:center; padding:20px;">🔍 Claude AI is analyzing viral trends for you...</p>';
+
+    try {
+      if (!apiUrl) { 
+        detectorResults.innerHTML = '<p style="color:#ef4444; text-align:center; padding:20px;">Enter API URL first.</p>';
+        return;
+      }
+
+      // Appel au backend qui gère Claude de façon sécurisée
+      const response = await fetch(`${apiUrl}/scan-trends`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword, platform, language })
+      });
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      const results = data.results || [];
+
+      renderDetector(results);
+
+      const s = getState();
+      s.alerts += results.length;
+      s.growth = Math.min(99, s.growth + 5);
+      saveState(s);
+      updateDashboard();
+      addActivity('Viral scan completed', \`Claude AI found \${results.length} viral ideas for "\${keyword}" on \${platform}.\`);
+
+    } catch (e) {
+      detectorResults.innerHTML = \`<p style="color:#ef4444; text-align:center; padding:20px;">Error: \${e.message}. Check your API URL and try again.</p>\`;
+    } finally {
+      scanBtn.disabled = false;
+      scanBtn.textContent = 'Scan trends';
+    }
   }
 
   // ── AUTH ──
@@ -1181,7 +1249,7 @@
   applyTranslations('en');
   updateDashboard();
   updateAuthUI();
-  renderDetector(detectorSeed);
+  renderDetector([]); // Le détecteur se remplit via Claude AI au scan
   </script>
 </body>
 </html>
