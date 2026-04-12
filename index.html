@@ -771,24 +771,42 @@
   // Detector — données de démarrage vides, remplies par l'IA au scan
   const detectorSeed = [];
 
-  function getState() { return JSON.parse(localStorage.getItem('viral_dashboard_state') || '{"scripts":0,"alerts":0,"revenue":0,"topNiche":"—","growth":0}'); }
+  function getState() {
+    try {
+      return JSON.parse(localStorage.getItem('viral_dashboard_state') || '{}');
+    } catch(e) {
+      return {scripts:0, alerts:0, revenue:0, topNiche:'—', growth:0};
+    }
+  }
   function saveState(s) { localStorage.setItem('viral_dashboard_state', JSON.stringify(s)); }
 
   function updateDashboard() {
     const s = getState();
-    document.getElementById('kpiRevenue').textContent  = `$${s.revenue}`;
-    document.getElementById('kpiScripts').textContent  = String(s.scripts);
-    document.getElementById('kpiAlerts').textContent   = String(s.alerts);
-    document.getElementById('miniStat1Value').textContent = `$${s.revenue}`;
-    document.getElementById('miniStat2Value').textContent = s.topNiche || '—';
-    document.getElementById('miniStat3Value').textContent = `${s.growth}%`;
+    const revenue  = Number(s.revenue)  || 0;
+    const scripts  = Number(s.scripts)  || 0;
+    const alerts   = Number(s.alerts)   || 0;
+    const growth   = Number(s.growth)   || 0;
+    const topNiche = s.topNiche || '—';
+    document.getElementById('kpiRevenue').textContent     = `$${revenue}`;
+    document.getElementById('kpiScripts').textContent     = String(scripts);
+    document.getElementById('kpiAlerts').textContent      = String(alerts);
+    document.getElementById('miniStat1Value').textContent = `$${revenue}`;
+    document.getElementById('miniStat2Value').textContent = topNiche;
+    document.getElementById('miniStat3Value').textContent = `${growth}%`;
   }
 
   function addActivity(title, text) {
     const feed = document.getElementById('activityFeed');
     const card = document.createElement('div');
     card.className = 'result-card';
-    card.innerHTML = `<h3>${title}</h3><p style="margin:0; color:var(--muted);">${text}</p>`;
+    // Utiliser textContent au lieu de innerHTML pour éviter tout risque XSS
+    const h3 = document.createElement('h3');
+    h3.textContent = title;
+    const p = document.createElement('p');
+    p.style.cssText = 'margin:0; color:var(--muted);';
+    p.textContent = text;
+    card.appendChild(h3);
+    card.appendChild(p);
     feed.prepend(card);
     while (feed.children.length > 5) feed.removeChild(feed.lastChild);
   }
@@ -814,7 +832,12 @@
     nicheInput.placeholder       = t.nichePlaceholder || 'money';
     scriptOutput.placeholder     = t.scriptPlaceholder || '';
     detectorKeyword.placeholder  = t.detectorKeywordPlaceholder || 'AI money';
-    helpTextEl.innerHTML = `${t.helpPrefix || ''}<span class="link-accent">https://your-service.onrender.com</span>`;
+    while (helpTextEl.firstChild) helpTextEl.removeChild(helpTextEl.firstChild);
+    if (t.helpPrefix) helpTextEl.appendChild(document.createTextNode(t.helpPrefix));
+    const helpLink = document.createElement('span');
+    helpLink.className = 'link-accent';
+    helpLink.textContent = 'https://your-service.onrender.com';
+    helpTextEl.appendChild(helpLink);
     if (!statusEl.textContent || statusEl.dataset.state === 'ready') setStatus(t.statusReady, 'ready');
   }
 
@@ -826,6 +849,9 @@
     if (v.startsWith('en-GB')) return 'en-GB';
     return 'en-US';
   }
+
+  // Helper : message bilingue selon la langue choisie
+  function t2(fr, en) { return uiLanguage.value === 'fr' ? fr : en; }
 
   // ── GENERATE CONTENT ──
   async function generateContent() {
@@ -843,6 +869,10 @@
 
     try {
       const res  = await fetch(`${apiUrl}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche, langue: outputLang, duration: parseInt(document.getElementById('videoDuration').value) || 30 }) });
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        throw new Error('Server waking up — please retry in a few seconds.');
+      }
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
 
@@ -919,10 +949,13 @@
   window._detectorResults = [];
 
   function renderDetector(results) {
-    detectorResults.innerHTML = '';
+    while (detectorResults.firstChild) detectorResults.removeChild(detectorResults.firstChild);
     window._detectorResults = results || [];
     if (!results || results.length === 0) {
-      detectorResults.innerHTML = '<p style="color:var(--muted); text-align:center; padding:20px;">No results yet. Enter a keyword and click Scan.</p>';
+      const msg = document.createElement('p');
+      msg.style.cssText = 'color:var(--muted); text-align:center; padding:20px;';
+      msg.textContent = 'No results yet. Enter a keyword and click Scan.';
+      detectorResults.appendChild(msg);
       return;
     }
     results.forEach((item, index) => {
@@ -931,27 +964,50 @@
       const el = document.createElement('div');
       el.className = 'detector-item';
       el.style.cursor = 'pointer';
-      el.innerHTML = `
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-          <h3 style="margin:0; flex:1;">${item.title}</h3>
-          <span class="score-pill" style="background:${scoreColor}20; color:${scoreColor}; border:1px solid ${scoreColor}40; padding:4px 12px; border-radius:20px; font-weight:700; white-space:nowrap;">
-            🔥 Score ${score}/100
-          </span>
-        </div>
-        <div class="detector-meta" style="margin:10px 0 8px;">
-          <span>📱 ${item.platform}</span>
-          <span>🎯 ${item.niche}</span>
-          <span>⏱ ${item.bestDuration}</span>
-          <span>🌍 ${item.targetAudience}</span>
-        </div>
-        <p style="margin:6px 0 4px; font-size:0.9rem;"><strong>Why it goes viral:</strong> ${item.whyViral}</p>
-        <p style="margin:4px 0 4px; font-size:0.9rem; color:var(--muted);"><strong>Hook idea:</strong> ${item.hookIdea}</p>
-        <p style="margin:4px 0 0; font-size:0.9rem; color:var(--muted);"><strong>Best hashtags:</strong> ${item.hashtags}</p>
-        <div style="margin-top:10px;">
-          <button class="primary-btn" style="font-size:0.82rem; padding:6px 14px;" onclick="useDetectorResult(${index})">
-            ✨ Use this idea
-          </button>
-        </div>`;
+      // Construire le DOM proprement sans innerHTML pour les données API
+      const header = document.createElement('div');
+      header.style.cssText = 'display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;';
+      const h3 = document.createElement('h3');
+      h3.style.cssText = 'margin:0; flex:1;';
+      h3.textContent = item.title;
+      const pill = document.createElement('span');
+      pill.className = 'score-pill';
+      pill.style.cssText = `background:${scoreColor}20; color:${scoreColor}; border:1px solid ${scoreColor}40; padding:4px 12px; border-radius:20px; font-weight:700; white-space:nowrap;`;
+      pill.textContent = `🔥 Score ${score}/100`;
+      header.appendChild(h3);
+      header.appendChild(pill);
+
+      const meta = document.createElement('div');
+      meta.className = 'detector-meta';
+      meta.style.cssText = 'margin:10px 0 8px;';
+      [['📱', item.platform], ['🎯', item.niche], ['⏱', item.bestDuration], ['🌍', item.targetAudience]].forEach(([icon, val]) => {
+        const span = document.createElement('span');
+        span.textContent = `${icon} ${val}`;
+        meta.appendChild(span);
+      });
+
+      const makeP = (label, val, muted) => {
+        const p = document.createElement('p');
+        p.style.cssText = `margin:6px 0 4px; font-size:0.9rem;${muted ? ' color:var(--muted);' : ''}`;
+        const strong = document.createElement('strong');
+        strong.textContent = label;
+        p.appendChild(strong);
+        p.appendChild(document.createTextNode(' ' + (val || '')));
+        return p;
+      };
+
+      const btn = document.createElement('button');
+      btn.className = 'primary-btn';
+      btn.style.cssText = 'font-size:0.82rem; padding:6px 14px; margin-top:10px;';
+      btn.textContent = '✨ Use this idea';
+      btn.onclick = () => useDetectorResult(index);
+
+      el.appendChild(header);
+      el.appendChild(meta);
+      el.appendChild(makeP('Why it goes viral:', item.whyViral, false));
+      el.appendChild(makeP('Hook idea:', item.hookIdea, true));
+      el.appendChild(makeP('Best hashtags:', item.hashtags, true));
+      el.appendChild(btn);
       detectorResults.appendChild(el);
     });
   }
@@ -975,12 +1031,20 @@
     const apiUrl   = normalizeApiUrl(apiUrlInput.value);
 
     scanBtn.disabled = true;
-    scanBtn.textContent = '⏳ Analyzing...';
-    detectorResults.innerHTML = '<p style="color:var(--muted); text-align:center; padding:20px;">🔍 Claude AI is analyzing viral trends for you...</p>';
+    scanBtn.textContent = uiLanguage.value === 'fr' ? '⏳ Analyse...' : '⏳ Analyzing...';
+    while (detectorResults.firstChild) detectorResults.removeChild(detectorResults.firstChild);
+    const loadingMsg = document.createElement('p');
+    loadingMsg.style.cssText = 'color:var(--muted); text-align:center; padding:20px;';
+    loadingMsg.textContent = '🔍 Claude AI is analyzing viral trends for you...';
+    detectorResults.appendChild(loadingMsg);
 
     try {
-      if (!apiUrl) { 
-        detectorResults.innerHTML = '<p style="color:#ef4444; text-align:center; padding:20px;">Enter API URL first.</p>';
+      if (!apiUrl) {
+        while (detectorResults.firstChild) detectorResults.removeChild(detectorResults.firstChild);
+        const noUrl = document.createElement('p');
+        noUrl.style.cssText = 'color:#ef4444; text-align:center; padding:20px;';
+        noUrl.textContent = uiLanguage.value === 'fr' ? "Entrez l'URL API d'abord." : 'Enter API URL first.';
+        detectorResults.appendChild(noUrl);
         return;
       }
 
@@ -991,6 +1055,10 @@
         body: JSON.stringify({ keyword, platform, language })
       });
 
+      const scanCt = response.headers.get('content-type') || '';
+      if (!scanCt.includes('application/json')) {
+        throw new Error('Server waking up — please retry in a few seconds.');
+      }
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       const results = data.results || [];
@@ -1005,16 +1073,21 @@
       addActivity('Viral scan completed', `Claude AI found ${results.length} viral ideas for "${keyword}" on ${platform}.`);
 
     } catch (e) {
-      detectorResults.innerHTML = `<p style="color:#ef4444; text-align:center; padding:20px;">Error: ${e.message}. Check your API URL and try again.</p>`;
+      while (detectorResults.firstChild) detectorResults.removeChild(detectorResults.firstChild);
+      const errMsg = document.createElement('p');
+      errMsg.style.cssText = 'color:#ef4444; text-align:center; padding:20px;';
+      errMsg.textContent = `Error: ${e.message}. Check your API URL and try again.`;
+      detectorResults.appendChild(errMsg);
     } finally {
       scanBtn.disabled = false;
-      scanBtn.textContent = 'Scan trends';
+      scanBtn.textContent = uiLanguage.value === 'fr' ? 'Scanner les tendances' : 'Scan trends';
     }
   }
 
   // ── AUTH ──
   function updateAuthUI() {
-    const user = JSON.parse(localStorage.getItem('viral_user') || 'null');
+    let user = null;
+    try { user = JSON.parse(localStorage.getItem('viral_user') || 'null'); } catch(e) { user = null; }
     if (user) { userBadge.classList.add('show'); userBadgeText.textContent = user.name; openLoginBtn.style.display = 'none'; logoutBtn.style.display = 'inline-flex'; }
     else { userBadge.classList.remove('show'); openLoginBtn.style.display = 'inline-flex'; logoutBtn.style.display = 'none'; }
   }
@@ -1050,7 +1123,7 @@
     scenePlanList.innerHTML = '';
     scenes.forEach((scene, i) => { const li = document.createElement('li'); li.textContent = `${i+1}. ${scene} — ${niche}`; scenePlanList.appendChild(li); });
     document.getElementById('videoSpecText').textContent = `${duration}-second vertical 9:16 ${type} video, voice: ${voice}, subtitles: ${subtitles}, template: ${template}.`;
-    setVideoStatus('Video plan ready.', 'success');
+    setVideoStatus(t2('Plan vidéo prêt.', 'Video plan ready.'), 'success');
     addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
   }
 
@@ -1061,29 +1134,29 @@
     const selectedVoice  = videoVoice.value;
     const languageCode   = getLanguageCodeFromVoice(selectedVoice);
 
-    if (!apiUrl) { setVideoStatus('Enter API URL first.', 'error'); return; }
-    if (!text)   { setVideoStatus('Generate script first.', 'error'); return; }
+    if (!apiUrl) { setVideoStatus(t2('Entrez l\'URL API d\'abord.', 'Enter API URL first.'), 'error'); return; }
+    if (!text)   { setVideoStatus(t2('Générez d\'abord le script.', 'Generate script first.'), 'error'); return; }
 
-    setVideoStatus('Generating voice...', 'ready');
+    setVideoStatus(t2('Génération de la voix...', 'Generating voice...'), 'ready');
     generateVoiceBtn.disabled = true;
 
     try {
       const res  = await fetch(`${apiUrl}/generate-audio`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, languageCode, voiceName: selectedVoice, speakingRate: 1.0 }) });
       const contentTypeV = res.headers.get('content-type') || '';
       if (!contentTypeV.includes('application/json')) {
-        setVideoStatus('Server waking up, please retry in a few seconds.', 'error');
+        setVideoStatus(t2('Serveur en démarrage, réessayez dans quelques secondes.', 'Server waking up, please retry in a few seconds.'), 'error');
         return;
       }
       const data = await res.json();
-      if (!res.ok || data.error) { setVideoStatus(`Voice failed: ${data.error || 'unknown error'}`, 'error'); return; }
-      if (!data.audio_url) { setVideoStatus('Voice failed: no audio URL returned.', 'error'); return; }
+      if (!res.ok || data.error) { setVideoStatus(t2(`Voix échouée : ${data.error || 'erreur inconnue'}`, `Voice failed: ${data.error || 'unknown error'}`), 'error'); return; }
+      if (!data.audio_url) { setVideoStatus(t2('Voix échouée : aucune URL audio.', 'Voice failed: no audio URL returned.'), 'error'); return; }
       window._generatedVoiceUrl = data.audio_url;
       window._syncUrl = data.sync_url || '';  // timestamps exacts Google TTS
       voicePreview.src = data.audio_url; voicePreview.load();
-      setVideoStatus('Voice generated successfully.', 'success');
+      setVideoStatus(t2('Voix générée avec succès.', 'Voice generated successfully.'), 'success');
       addActivity('Voice generated', `A voice track was created with ${selectedVoice}.`);
     } catch (e) {
-      setVideoStatus(`Voice failed: ${e.message}`, 'error');
+      setVideoStatus(t2(`Voix échouée : ${e.message}`, `Voice failed: ${e.message}`), 'error');
     } finally {
       generateVoiceBtn.disabled = false;
     }
@@ -1095,12 +1168,12 @@
     const chosenDuration = parseInt(document.getElementById('videoDuration').value) || 30;
     const chosenMusicUrl = document.getElementById('musicSelect')?.value || '';
 
-    if (!apiUrl) { setVideoStatus('Enter API URL first.', 'error'); return; }
+    if (!apiUrl) { setVideoStatus(t2('Entrez l\'URL API d\'abord.', 'Enter API URL first.'), 'error'); return; }
     if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4 && !window._pexelsVideoUrl5 && !window._pexelsVideoUrl6 && !window._pexelsVideoUrl7 && !window._pexelsVideoUrl8) {
-      setVideoStatus('Generate content first so source videos are available.', 'error'); return;
+      setVideoStatus(t2('Générez d\'abord le contenu.', 'Generate content first so source videos are available.'), 'error'); return;
     }
 
-    setVideoStatus(`Sending to FFmpeg renderer... this may take ${chosenDuration * 2} seconds.`, 'ready');
+    setVideoStatus(t2(`Envoi au moteur FFmpeg... environ ${chosenDuration * 2} secondes.`, `Sending to FFmpeg renderer... this may take ${chosenDuration * 2} seconds.`), 'ready');
     createVideoBtn.disabled = true;
 
     // Masquer le bloc vidéo précédent pendant le rendu
@@ -1164,7 +1237,7 @@
       // Vérifier que la réponse est bien du JSON
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
-        setVideoStatus('Server error — please try again in a few seconds.', 'error');
+        setVideoStatus(t2('Erreur serveur — réessayez dans quelques secondes.', 'Server error — please try again in a few seconds.'), 'error');
         return;
       }
 
@@ -1178,21 +1251,28 @@
       // Le serveur retourne un job_id immédiatement — on poll le statut
       const jobId = data.job_id;
       if (!jobId) {
-        setVideoStatus('Video error: no job ID returned.', 'error');
+        setVideoStatus(t2('Erreur : pas d\'identifiant de job.', 'Video error: no job ID returned.'), 'error');
         return;
       }
 
-      setVideoStatus('⏳ Rendering in progress...', 'ready');
+      setVideoStatus(t2('⏳ Rendu en cours...', '⏳ Rendering in progress...'), 'ready');
 
       // Poller /video-status/{jobId} toutes les 5 secondes
       let tries = 0;
+      let consecutiveErrors = 0;
       const maxTries = 240; // 20 minutes max
       const pollInterval = setInterval(async () => {
         tries++;
         try {
           const statusRes = await fetch(`${apiUrl}/video-status/${jobId}`);
+          const pollCt = statusRes.headers.get('content-type') || '';
+          if (!pollCt.includes('application/json')) {
+            consecutiveErrors = (consecutiveErrors || 0) + 1;
+            return; // Réessayer au prochain tick
+          }
           const statusData = await statusRes.json();
 
+          consecutiveErrors = 0;  // reset au succès
           if (statusData.status === 'done' && statusData.video_url) {
             clearInterval(pollInterval);
             const videoUrl = statusData.video_url;
@@ -1200,7 +1280,7 @@
             videoDownloadLink.href = videoUrl;
             videoDownloadBlock.classList.add('show');
             videoPlayer.load();
-            setVideoStatus('✅ Video ready!', 'success');
+            setVideoStatus(t2('✅ Vidéo prête !', '✅ Video ready!'), 'success');
             addActivity('Video ready', 'Your FFmpeg video is ready to preview and download.');
             const s = getState(); s.scripts += 1; saveState(s); updateDashboard();
             createVideoBtn.disabled = false;
@@ -1212,14 +1292,17 @@
 
           } else if (tries >= maxTries) {
             clearInterval(pollInterval);
-            setVideoStatus('Timeout — rendering took too long.', 'error');
+            setVideoStatus(t2('Délai dépassé — rendu trop long.', 'Timeout — rendering took too long.'), 'error');
             createVideoBtn.disabled = false;
 
           } else {
             setVideoStatus(`⏳ Rendering... (${tries * 5}s elapsed)`, 'ready');
           }
-        } catch (e) {
-          // Erreur de polling passagère — continuer
+        } catch (pollErr) {
+          consecutiveErrors = (consecutiveErrors || 0) + 1;
+          if (consecutiveErrors >= 3) {
+            setVideoStatus(`⏳ Rendering... (${tries * 5}s) — connection issue, retrying...`, 'ready');
+          }
         }
       }, 5000);
 
@@ -1234,7 +1317,10 @@
   if (savedApiUrl) apiUrlInput.value = savedApiUrl;
   apiUrlInput.addEventListener('input', () => localStorage.setItem('viral_api_url', apiUrlInput.value.trim()));
 
-  uiLanguage.addEventListener('change', () => applyTranslations(uiLanguage.value));
+  uiLanguage.addEventListener('change', () => {
+    localStorage.setItem('viral_ui_lang', uiLanguage.value);
+    applyTranslations(uiLanguage.value);
+  });
   generateBtn.addEventListener('click', generateContent);
   generateVoiceBtn.addEventListener('click', generateVoice);
   copyBtn.addEventListener('click', copyScript);
@@ -1251,8 +1337,9 @@
   document.getElementById('plan2Btn').addEventListener('click', () => addActivity('Plan selected', 'Pro plan clicked.'));
   document.getElementById('plan3Btn').addEventListener('click', () => addActivity('Plan selected', 'Business plan clicked.'));
 
-  uiLanguage.value = 'en';
-  applyTranslations('en');
+  const savedLang = localStorage.getItem('viral_ui_lang') || 'en';
+  uiLanguage.value = savedLang;
+  applyTranslations(savedLang);
   updateDashboard();
   updateAuthUI();
   renderDetector([]); // Le détecteur se remplit via Claude AI au scan
