@@ -997,10 +997,10 @@
       s.growth = Math.min(99, s.growth + 5);
       saveState(s);
       updateDashboard();
-      addActivity('Viral scan completed', \`Claude AI found \${results.length} viral ideas for "\${keyword}" on \${platform}.\`);
+      addActivity('Viral scan completed', `Claude AI found ${results.length} viral ideas for "${keyword}" on ${platform}.`);
 
     } catch (e) {
-      detectorResults.innerHTML = \`<p style="color:#ef4444; text-align:center; padding:20px;">Error: \${e.message}. Check your API URL and try again.</p>\`;
+      detectorResults.innerHTML = `<p style="color:#ef4444; text-align:center; padding:20px;">Error: ${e.message}. Check your API URL and try again.</p>`;
     } finally {
       scanBtn.disabled = false;
       scanBtn.textContent = 'Scan trends';
