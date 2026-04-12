@@ -408,7 +408,7 @@ TITLES:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": "claude-haiku-4-5",
                     "max_tokens": 2000,
                     "messages": [{"role": "user", "content": prompt}]
                 }
@@ -766,7 +766,7 @@ Focus on what is currently trending and has high viral potential. Be specific an
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": "claude-haiku-4-5",
                     "max_tokens": 1500,
                     "messages": [{"role": "user", "content": prompt}],
                 },
