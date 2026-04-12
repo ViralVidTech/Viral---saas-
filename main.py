@@ -10,7 +10,6 @@ import httpx
 import subprocess
 import shutil
 import asyncio
-import threading
 
 app = FastAPI()
 
@@ -118,6 +117,7 @@ def ffmpeg_exists():
 
 
 def run_cmd(cmd):
+    """Exécute une commande FFmpeg de façon synchrone — à appeler via asyncio.to_thread."""
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(
@@ -127,12 +127,17 @@ def run_cmd(cmd):
     return result
 
 
+async def async_run_cmd(cmd):
+    """Wrapper async pour run_cmd — évite de bloquer la boucle d'événements."""
+    return await asyncio.to_thread(run_cmd, cmd)
+
+
 async def download_file(url: str, dest_path: str, retries: int = 3, delay: float = 2.0):
     """
-    Télécharge un fichier avec tentatives automatiques.
-    Pour les vidéos stock, on limite à 15MB max pour accélérer le téléchargement.
+    Télécharge un fichier vidéo complet sans coupure brutale.
+    On télécharge le fichier entier pour éviter les MP4 tronqués qui font
+    crasher FFmpeg aléatoirement. Le timeout global de 30s limite les fichiers trop lourds.
     """
-    MAX_VIDEO_BYTES = 15 * 1024 * 1024  # 15 MB max par vidéo
     last_error = None
     for attempt in range(retries):
         try:
@@ -140,21 +145,15 @@ async def download_file(url: str, dest_path: str, retries: int = 3, delay: float
                 timeout=httpx.Timeout(30.0, connect=10.0),
                 follow_redirects=True
             ) as client:
-                # Streaming pour limiter la taille et accélérer
                 async with client.stream("GET", url) as response:
                     if response.status_code in (502, 503, 504):
                         await asyncio.sleep(delay * (attempt + 1))
                         continue
                     response.raise_for_status()
-                    downloaded = 0
                     with open(dest_path, "wb") as f:
                         async for chunk in response.aiter_bytes(chunk_size=65536):
                             f.write(chunk)
-                            downloaded += len(chunk)
-                            # Limiter la taille pour les vidéos stock
-                            if downloaded >= MAX_VIDEO_BYTES:
-                                break
-                return  # succès
+                return  # succès — fichier complet
         except Exception as e:
             last_error = e
             if attempt < retries - 1:
@@ -295,12 +294,15 @@ async def serve_ui():
     return "<h1>API is running</h1>"
 
 
-# SERVIR LES FICHIERS AUDIO
+# SERVIR LES FICHIERS AUDIO ET SYNC JSON
 @app.get("/audio/{filename}")
 async def serve_audio(filename: str):
     file_path = os.path.join(AUDIO_DIR, filename)
     if not os.path.exists(file_path):
         return {"error": "Audio file not found"}
+    # Détecter le bon type MIME selon l'extension
+    if filename.endswith(".json"):
+        return FileResponse(file_path, media_type="application/json", filename=filename)
     return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
 
 
@@ -408,7 +410,7 @@ TITLES:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-haiku-4-5",
+                    "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 2000,
                     "messages": [{"role": "user", "content": prompt}]
                 }
@@ -766,18 +768,28 @@ Focus on what is currently trending and has high viral potential. Be specific an
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-haiku-4-5",
+                    "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 1500,
                     "messages": [{"role": "user", "content": prompt}],
                 },
             )
+        if response.status_code != 200:
+            err = response.json() if "application/json" in response.headers.get("content-type","") else {}
+            return {"error": f"Claude API erreur {response.status_code}", "details": err}
         data = response.json()
+        if not data.get("content"):
+            return {"error": "Claude n'a retourné aucun contenu"}
         raw = ""
         for block in data.get("content", []):
             if block.get("type") == "text":
                 raw += block.get("text", "")
         clean = raw.replace("```json", "").replace("```", "").strip()
-        results = json.loads(clean)
+        if not clean:
+            return {"error": "Claude a retourné un contenu vide"}
+        try:
+            results = json.loads(clean)
+        except json.JSONDecodeError as je:
+            return {"error": f"Réponse Claude non parseable: {str(je)}", "raw": clean[:200]}
         return {"success": True, "results": results}
     except Exception as e:
         return {"error": f"Erreur scan: {str(e)}"}
@@ -795,17 +807,58 @@ async def generate_audio(req: TTSRequest):
 
     google_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={GOOGLE_TTS_API_KEY}"
 
-    # Texte simple pour toutes les voix (Chirp3, Neural2, Standard, Wavenet)
-    payload = {
-        "input": {"text": req.text},
-        "voice": {"languageCode": req.languageCode, "name": req.voiceName},
-        "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
-    }
+    # Détecter si la voix supporte SSML et timepoints
+    # Chirp3 → texte simple uniquement
+    # Neural2, WaveNet, Standard → SSML + timepoints disponibles
+    voice_name = req.voiceName or ""
+    supports_timepoints = any(v in voice_name for v in ["Neural2", "Wavenet", "Standard"])
+
+    words = req.text.strip().split()
+
+    if supports_timepoints:
+        # Construire SSML avec une mark par mot pour timestamps exacts
+        def escape_xml(text: str) -> str:
+            """Échapper les caractères spéciaux XML pour le SSML."""
+            return (text
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace('"', "&quot;")
+                    .replace("'", "&apos;"))
+
+        ssml_parts = [f'<mark name="w{i}"/>{escape_xml(w)}' for i, w in enumerate(words)]
+        ssml = "<speak>" + " ".join(ssml_parts) + "</speak>"
+        payload = {
+            "input": {"ssml": ssml},
+            "voice": {"languageCode": req.languageCode, "name": req.voiceName},
+            "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
+            "enableTimePointing": ["SSML_MARK"]
+        }
+    else:
+        # Chirp3 et autres voix modernes → texte simple
+        payload = {
+            "input": {"text": req.text},
+            "voice": {"languageCode": req.languageCode, "name": req.voiceName},
+            "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
+        }
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(google_url, json=payload)
         data = response.json()
+
+        # Si SSML échoue (voix non compatible), réessayer en texte simple
+        if response.status_code != 200 and supports_timepoints:
+            payload_fallback = {
+                "input": {"text": req.text},
+                "voice": {"languageCode": req.languageCode, "name": req.voiceName},
+                "audioConfig": {"audioEncoding": "MP3", "speakingRate": req.speakingRate},
+            }
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(google_url, json=payload_fallback)
+            data = response.json()
+            supports_timepoints = False  # fallback sans timepoints
+
         if response.status_code != 200:
             return {"error": "Google TTS a échoué", "details": data}
         audio_content = data.get("audioContent")
@@ -819,12 +872,14 @@ async def generate_audio(req: TTSRequest):
             f.write(base64.b64decode(audio_content))
         audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
 
-        # Sauvegarder les mots du texte pour la synchronisation des sous-titres
-        words = req.text.strip().split()
+        # Récupérer les timepoints si disponibles
+        timepoints = data.get("timepoints", []) if supports_timepoints else []
+
+        # Sauvegarder words + timepoints pour la synchro des sous-titres
         sync_filename = filename.replace(".mp3", "_sync.json")
         sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
         with open(sync_filepath, "w", encoding="utf-8") as f:
-            json.dump({"words": words, "timepoints": []}, f)
+            json.dump({"words": words, "timepoints": timepoints}, f)
 
         sync_url = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
 
@@ -832,7 +887,8 @@ async def generate_audio(req: TTSRequest):
             "success": True,
             "audio_url": audio_url,
             "sync_url": sync_url,
-            "filename": filename
+            "filename": filename,
+            "timepoints_count": len(timepoints)
         }
     except Exception as e:
         return {"error": f"Erreur TTS: {str(e)}"}
@@ -844,12 +900,12 @@ async def _process_video(job_id: str, req: VideoRequest):
     job_dir = None
     try:
         if not PUBLIC_BASE_URL:
-            return JSONResponse(status_code=400, content={"error": "PUBLIC_BASE_URL manquante"})
+            VIDEO_JOBS[job_id] = {"status": "failed", "error": "PUBLIC_BASE_URL manquante"}
+            return
 
         if not ffmpeg_exists():
-            return JSONResponse(status_code=500, content={
-                "error": "FFmpeg n'est pas installé sur le serveur"
-            })
+            VIDEO_JOBS[job_id] = {"status": "failed", "error": "FFmpeg non installé sur le serveur"}
+            return
 
         # Durée choisie par l'utilisateur
         chosen_duration = req.duration if req.duration in [30, 45, 60] else 30
@@ -921,17 +977,17 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         valid_video_urls_raw = [u for u in all_video_urls if u]
         if not valid_video_urls_raw:
-            return JSONResponse(status_code=400, content={"error": "Aucune vidéo n'a été fournie"})
+            VIDEO_JOBS[job_id] = {"status": "failed", "error": "Aucune vidéo fournie"}
+            return
 
         # Construire la liste finale des clips vidéo :
-        # 2 clips par scène — chaque clip dure segment_duration / 2
-        # Exemple pour 4 scènes de 9s : 8 clips de 4.5s chacun
+        # CLIPS_PER_SCENE clips par scène — durée totale / nb_clips_total
         # ── CONFIGURATION : 2 vidéos par scène, pipeline simple
-        # ── CONFIGURATION : 4 clips par scène
+        # ── CONFIGURATION : nombre de clips par scène
         CLIPS_PER_SCENE = 5
         nb_clips_total = nb_scenes * CLIPS_PER_SCENE
 
-        # Construire la liste des URLs : 4 clips par scène
+        # Construire la liste des URLs : CLIPS_PER_SCENE clips par scène
         clip_urls = []
         subtitle_texts = []
         for i in range(nb_scenes):
@@ -950,7 +1006,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                     (i * CLIPS_PER_SCENE + len(collected)) % len(valid_video_urls_raw)
                 ])
             clip_urls.extend(collected[:CLIPS_PER_SCENE])
-            # Sous-titre sur le 1er clip seulement
+            # Sous-titre sur le 1er clip de chaque scène, vide pour les suivants
             subtitle_texts.append(scene_text)
             for _ in range(CLIPS_PER_SCENE - 1):
                 subtitle_texts.append("")
@@ -995,6 +1051,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                       for i in range(len(raw_paths))]
 
         def normalize_clip(args):
+            """Fonction synchrone — appelée dans ThreadPoolExecutor, pas en async."""
             src, dst = args
             if not os.path.exists(src):
                 return
@@ -1022,7 +1079,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                 f.write(f"file '{os.path.abspath(p)}'\n")
 
         stitched_raw = os.path.join(job_dir, "stitched_raw.mp4")
-        run_cmd([
+        await async_run_cmd([
             "ffmpeg", "-y", "-f", "concat", "-safe", "0",
             "-i", concat_path,
             "-c:v", "libx264", "-preset", "ultrafast",
@@ -1035,7 +1092,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         stitched_path = os.path.join(job_dir, "stitched.mp4")
 
         if stitched_dur < real_total_duration - 0.5:
-            run_cmd([
+            await async_run_cmd([
                 "ffmpeg", "-y", "-stream_loop", "-1", "-i", stitched_raw,
                 "-t", str(real_total_duration),
                 "-c:v", "libx264", "-preset", "ultrafast",
@@ -1043,7 +1100,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                 stitched_path
             ])
         else:
-            run_cmd([
+            await async_run_cmd([
                 "ffmpeg", "-y", "-i", stitched_raw,
                 "-t", str(real_total_duration),
                 "-c:v", "copy", "-an", stitched_path
@@ -1060,7 +1117,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                 music_path = os.path.join(job_dir, "music.mp3")
                 await download_audio_file(music_url, music_path)
                 mixed_path = os.path.join(job_dir, "mixed.m4a")
-                run_cmd([
+                await async_run_cmd([
                     "ffmpeg", "-y",
                     "-fflags", "+genpts",
                     "-i", voice_path,
@@ -1127,7 +1184,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         )
 
         if final_audio_path:
-            run_cmd([
+            await async_run_cmd([
                 "ffmpeg", "-y",
                 "-i", stitched_path,
                 "-i", final_audio_path,
@@ -1142,7 +1199,7 @@ async def _process_video(job_id: str, req: VideoRequest):
                 output_path
             ])
         else:
-            run_cmd([
+            await async_run_cmd([
                 "ffmpeg", "-y",
                 "-i", stitched_path,
                 "-vf", subtitle_filter,
