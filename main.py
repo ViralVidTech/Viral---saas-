@@ -722,6 +722,67 @@ def build_srt_from_timepoints(words: list, timepoints: list, out_path: str, word
     return True
 
 
+class ScanRequest(BaseModel):
+    keyword: str = "money"
+    platform: str = "TikTok"
+    language: str = "en"
+
+
+@app.post("/scan-trends")
+async def scan_trends(req: ScanRequest):
+    """Analyse les tendances virales via Claude AI et retourne 5 idées de vidéos."""
+    if not ANTHROPIC_API_KEY:
+        return {"error": "ANTHROPIC_API_KEY manquante"}
+
+    lang_label = {"fr": "French", "es": "Spanish", "pt": "Portuguese"}.get(req.language, "English")
+
+    prompt = f"""You are a viral video trend analyst specializing in short-form content for {req.platform}.
+
+Analyze viral trends for the keyword/niche: "{req.keyword}"
+Target language: {lang_label}
+
+Return ONLY a JSON array with exactly 5 viral video ideas. No markdown, no explanation, just valid JSON.
+
+Each object must have exactly these fields:
+- title: string (catchy viral video title, max 60 chars)
+- niche: string (specific niche, max 30 chars)
+- platform: string (use "{req.platform}")
+- viralScore: number (0-100, based on trend potential)
+- bestDuration: string (e.g. "30s", "45s", "60s")
+- targetAudience: string (e.g. "25-35 entrepreneurs")
+- whyViral: string (1 sentence explaining viral potential)
+- hookIdea: string (1 powerful opening hook sentence)
+- hashtags: string (5 relevant hashtags separated by spaces)
+
+Focus on what is currently trending and has high viral potential. Be specific and creative."""
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 1500,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+        data = response.json()
+        raw = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                raw += block.get("text", "")
+        clean = raw.replace("```json", "").replace("```", "").strip()
+        results = json.loads(clean)
+        return {"success": True, "results": results}
+    except Exception as e:
+        return {"error": f"Erreur scan: {str(e)}"}
+
+
 # GOOGLE TTS
 @app.post("/generate-audio")
 async def generate_audio(req: TTSRequest):
