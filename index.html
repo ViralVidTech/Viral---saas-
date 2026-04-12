@@ -915,13 +915,17 @@
   }
 
   // ── DETECTOR ──
+  // Stockage global des résultats du détecteur pour éviter JSON.stringify dans onclick
+  window._detectorResults = [];
+
   function renderDetector(results) {
     detectorResults.innerHTML = '';
+    window._detectorResults = results || [];
     if (!results || results.length === 0) {
       detectorResults.innerHTML = '<p style="color:var(--muted); text-align:center; padding:20px;">No results yet. Enter a keyword and click Scan.</p>';
       return;
     }
-    results.forEach(item => {
+    results.forEach((item, index) => {
       const score = item.viralScore || 0;
       const scoreColor = score >= 80 ? '#22c55e' : score >= 60 ? '#f59e0b' : '#ef4444';
       const el = document.createElement('div');
@@ -944,7 +948,7 @@
         <p style="margin:4px 0 4px; font-size:0.9rem; color:var(--muted);"><strong>Hook idea:</strong> ${item.hookIdea}</p>
         <p style="margin:4px 0 0; font-size:0.9rem; color:var(--muted);"><strong>Best hashtags:</strong> ${item.hashtags}</p>
         <div style="margin-top:10px;">
-          <button class="primary-btn" style="font-size:0.82rem; padding:6px 14px;" onclick="useDetectorResult(${JSON.stringify(item).replace(/"/g,'&quot;')})">
+          <button class="primary-btn" style="font-size:0.82rem; padding:6px 14px;" onclick="useDetectorResult(${index})">
             ✨ Use this idea
           </button>
         </div>`;
@@ -952,13 +956,14 @@
     });
   }
 
-  function useDetectorResult(item) {
-    // Pré-remplir le générateur avec l'idée détectée
+  function useDetectorResult(index) {
+    // Récupérer l'item depuis le tableau global (évite JSON.stringify dans onclick)
+    const item = window._detectorResults[index];
+    if (!item) return;
     const nicheInput = document.getElementById('niche');
     if (nicheInput) {
       nicheInput.value = item.niche || item.title;
     }
-    // Scroller vers le générateur
     document.getElementById('generator').scrollIntoView({ behavior: 'smooth' });
     addActivity('Idea applied', `"${item.title}" applied to the generator.`);
   }
