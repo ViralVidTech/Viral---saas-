@@ -31,6 +31,11 @@ PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
+# ── NOUVELLES CLÉS API ──────────────────────────────────────────────────────
+FAL_API_KEY = os.getenv("FAL_API_KEY", "")          # Flux 2 Pro via fal.ai
+FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")  # Fish Audio TTS
+# ────────────────────────────────────────────────────────────────────────────
+
 AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
 WORK_DIR = "work"
@@ -52,6 +57,27 @@ class TTSRequest(BaseModel):
     languageCode: str = "en-US"
     voiceName: str = "en-US-Chirp3-HD-Achernar"
     speakingRate: float = 1.0
+
+
+# ── NOUVEAUX MODÈLES ────────────────────────────────────────────────────────
+
+class FishTTSRequest(BaseModel):
+    text: str
+    voice_id: str = "a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1"  # voix par défaut Fish Audio
+    language: str = "en"
+    format: str = "mp3"
+    latency: str = "normal"  # "normal" ou "balanced"
+
+
+class FluxImageRequest(BaseModel):
+    prompt: str
+    image_size: str = "portrait_4_3"   # portrait_4_3, square_hd, landscape_4_3
+    num_inference_steps: int = 28
+    guidance_scale: float = 3.5
+    num_images: int = 1
+    enable_safety_checker: bool = True
+
+# ────────────────────────────────────────────────────────────────────────────
 
 
 class VideoRequest(BaseModel):
@@ -133,11 +159,6 @@ async def async_run_cmd(cmd):
 
 
 async def download_file(url: str, dest_path: str, retries: int = 3, delay: float = 2.0):
-    """
-    Télécharge un fichier vidéo complet sans coupure brutale.
-    On télécharge le fichier entier pour éviter les MP4 tronqués qui font
-    crasher FFmpeg aléatoirement. Le timeout global de 30s limite les fichiers trop lourds.
-    """
     last_error = None
     for attempt in range(retries):
         try:
@@ -153,7 +174,7 @@ async def download_file(url: str, dest_path: str, retries: int = 3, delay: float
                     with open(dest_path, "wb") as f:
                         async for chunk in response.aiter_bytes(chunk_size=65536):
                             f.write(chunk)
-                return  # succès — fichier complet
+                return
         except Exception as e:
             last_error = e
             if attempt < retries - 1:
@@ -162,7 +183,6 @@ async def download_file(url: str, dest_path: str, retries: int = 3, delay: float
 
 
 async def download_audio_file(url: str, dest_path: str, retries: int = 4, delay: float = 3.0):
-    """Téléchargement audio sans limite de taille."""
     last_error = None
     for attempt in range(retries):
         try:
@@ -197,18 +217,7 @@ def srt_timestamp(seconds: float) -> str:
 
 
 def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
-    """
-    Génère des sous-titres synchronisés en calculant la durée par mot.
-    
-    Méthode :
-    - On compte le nombre total de mots dans tous les textes
-    - On calcule : durée_par_mot = durée_totale / nb_total_mots
-    - Chaque bloc de 5 mots dure donc : 5 × durée_par_mot
-    - Les sous-titres suivent le rythme réel de la voix
-    """
     WORDS_PER_BLOCK = 5
-
-    # Collecter tous les mots de toutes les scènes
     all_texts = []
     for text in subtitle_texts:
         clean = " ".join((text or "").strip().split())
@@ -220,37 +229,28 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
             f.write("")
         return
 
-    # Compter le total de mots
     total_words = sum(len(t.split()) for t in all_texts)
     total_duration = len(all_texts) * segment_duration
 
-    # Durée par mot = durée totale / nombre total de mots
     if total_words > 0:
         seconds_per_word = total_duration / total_words
     else:
-        seconds_per_word = 0.35  # fallback : 0.35s par mot
+        seconds_per_word = 0.35
 
     entries = []
     idx = 1
     current_time = 0.0
-
-    # Avancer tous les sous-titres de 0.5s pour compenser
-    # le délai naturel entre l'estimation et la prononciation réelle
     ADVANCE = 0.7
 
     for text in all_texts:
         words = text.split()
-
-        # Découper en blocs de WORDS_PER_BLOCK mots
         for j in range(0, len(words), WORDS_PER_BLOCK):
             block = words[j:j + WORDS_PER_BLOCK]
             block_text = " ".join(block)
             block_word_count = len(block)
-
             duration = block_word_count * seconds_per_word
             start = max(0.0, current_time - ADVANCE)
-            end   = max(start + 0.1, start + duration - 0.05)
-
+            end = max(start + 0.1, start + duration - 0.05)
             entries.append(
                 f"{idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
             )
@@ -264,8 +264,8 @@ def write_srt(subtitle_texts: list, segment_duration: float, out_path: str):
 def escape_srt_path(path_str: str) -> str:
     return path_str.replace("\\", "\\\\").replace(":", "\\:")
 
+
 def get_audio_duration(audio_path: str) -> float:
-    """Mesure la durée réelle d'un fichier audio en secondes via ffprobe."""
     try:
         result = subprocess.run(
             [
@@ -279,7 +279,6 @@ def get_audio_duration(audio_path: str) -> float:
         return float(result.stdout.strip())
     except Exception:
         return 0.0
-
 
 
 # ── ROUTES ──────────────────────────────────────────────────────────────────
@@ -300,7 +299,6 @@ async def serve_audio(filename: str):
     file_path = os.path.join(AUDIO_DIR, filename)
     if not os.path.exists(file_path):
         return {"error": "Audio file not found"}
-    # Détecter le bon type MIME selon l'extension
     if filename.endswith(".json"):
         return FileResponse(file_path, media_type="application/json", filename=filename)
     return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
@@ -315,7 +313,172 @@ async def serve_video(filename: str):
     return FileResponse(file_path, media_type="video/mp4", filename=filename)
 
 
-# GÉNÉRER SCRIPT + VIDÉOS PEXELS
+# ── NOUVELLE ROUTE : FISH AUDIO TTS ────────────────────────────────────────
+@app.post("/generate-audio-fish")
+async def generate_audio_fish(req: FishTTSRequest):
+    """
+    Génère de l'audio via Fish Audio API (pay-as-you-go).
+    Retourne une URL audio accessible publiquement.
+    """
+    if not FISH_AUDIO_API_KEY:
+        return {"error": "FISH_AUDIO_API_KEY manquante — ajoutez-la dans les variables d'environnement Render"}
+    if not PUBLIC_BASE_URL:
+        return {"error": "PUBLIC_BASE_URL manquante"}
+    if not req.text.strip():
+        return {"error": "Le texte est vide"}
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                "https://api.fish.audio/v1/tts",
+                headers={
+                    "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "text": req.text,
+                    "reference_id": req.voice_id,
+                    "format": req.format,
+                    "latency": req.latency,
+                    "normalize": True,
+                },
+            )
+
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            return {"error": f"Fish Audio API erreur {response.status_code}", "details": error_detail}
+
+        # Sauvegarder l'audio
+        filename = f"fish_{uuid.uuid4().hex}.mp3"
+        filepath = os.path.join(AUDIO_DIR, filename)
+        with open(filepath, "wb") as f:
+            f.write(response.content)
+
+        audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
+
+        # Sauvegarder sync JSON vide (compatible avec le pipeline existant)
+        words = req.text.strip().split()
+        sync_filename = filename.replace(".mp3", "_sync.json")
+        sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
+        with open(sync_filepath, "w", encoding="utf-8") as f:
+            json.dump({"words": words, "timepoints": []}, f)
+
+        sync_url = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
+
+        return {
+            "success": True,
+            "audio_url": audio_url,
+            "sync_url": sync_url,
+            "filename": filename,
+            "provider": "fish_audio",
+            "characters_used": len(req.text)
+        }
+
+    except Exception as e:
+        return {"error": f"Erreur Fish Audio: {str(e)}"}
+
+
+# ── NOUVELLE ROUTE : FLUX 2 PRO — GÉNÉRATION D'IMAGE ───────────────────────
+@app.post("/generate-image")
+async def generate_image(req: FluxImageRequest):
+    """
+    Génère une image via Flux 2 Pro sur fal.ai.
+    Idéal pour créer des personnages (fruits, cartoons, objets) pour ViralVidTech.
+    """
+    if not FAL_API_KEY:
+        return {"error": "FAL_API_KEY manquante — ajoutez-la dans les variables d'environnement Render"}
+    if not req.prompt.strip():
+        return {"error": "Le prompt est vide"}
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                "https://fal.run/fal-ai/flux-pro/v1.1-ultra",
+                headers={
+                    "Authorization": f"Key {FAL_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "prompt": req.prompt,
+                    "image_size": req.image_size,
+                    "num_inference_steps": req.num_inference_steps,
+                    "guidance_scale": req.guidance_scale,
+                    "num_images": req.num_images,
+                    "enable_safety_checker": req.enable_safety_checker,
+                    "output_format": "jpeg",
+                },
+            )
+
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            return {"error": f"Flux API erreur {response.status_code}", "details": error_detail}
+
+        data = response.json()
+        images = data.get("images", [])
+
+        if not images:
+            return {"error": "Flux n'a retourné aucune image", "details": data}
+
+        # Retourner les URLs des images générées
+        image_urls = [img.get("url", "") for img in images if img.get("url")]
+
+        return {
+            "success": True,
+            "images": image_urls,
+            "image_url": image_urls[0] if image_urls else "",
+            "prompt": req.prompt,
+            "provider": "flux_pro_fal",
+            "seed": data.get("seed"),
+        }
+
+    except Exception as e:
+        return {"error": f"Erreur Flux: {str(e)}"}
+
+
+# ── NOUVELLE ROUTE : LISTE DES VOIX FISH AUDIO ─────────────────────────────
+@app.get("/fish-voices")
+async def list_fish_voices():
+    """
+    Retourne les voix populaires disponibles sur Fish Audio.
+    Utile pour choisir une voix dans l'interface ViralVidTech.
+    """
+    if not FISH_AUDIO_API_KEY:
+        return {"error": "FISH_AUDIO_API_KEY manquante"}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                "https://api.fish.audio/v1/model",
+                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
+                params={"page_size": 20, "sort_by": "task_count"},
+            )
+
+        if response.status_code != 200:
+            return {"error": f"Fish Audio API erreur {response.status_code}"}
+
+        data = response.json()
+        voices = []
+        for item in data.get("items", []):
+            voices.append({
+                "id": item.get("_id", ""),
+                "name": item.get("title", ""),
+                "language": item.get("languages", []),
+                "description": item.get("description", ""),
+            })
+
+        return {"success": True, "voices": voices}
+
+    except Exception as e:
+        return {"error": f"Erreur Fish Audio voices: {str(e)}"}
+
+
+# ── GENERATE (EXISTANT — INCHANGÉ) ─────────────────────────────────────────
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     niche = req.niche.strip() or "general topic"
@@ -333,7 +496,6 @@ async def generate(req: GenerateRequest):
     }
     target_language = lang_map.get(lang, "English")
 
-    # Adapter le nombre de scènes selon la durée choisie
     if duration == 60:
         nb_scenes = 8
         seconds_per_scene = 7
@@ -366,7 +528,7 @@ SOLUTION: [présente la solution en détail - 2 phrases complètes]
 PROOF: [preuve concrète ou exemple réel - 2 phrases complètes]
 
 CTA: [appel à l'action direct - 2 phrases complètes]"""
-    else:  # 30 secondes
+    else:
         nb_scenes = 4
         seconds_per_scene = 7
         scene_structure = """HOOK: [accroche choc - 2 phrases complètes et développées]
@@ -441,7 +603,6 @@ TITLES:
 
         lines = text.split("\n")
         titles = []
-        # Toutes les scènes possibles selon la durée
         scene_keys = ["HOOK", "CONTEXT", "PROBLEM", "AGITATION", "SOLUTION", "PROOF", "BENEFIT", "CTA"]
         scenes = {key: "" for key in scene_keys}
 
@@ -459,60 +620,42 @@ TITLES:
                         scenes[key] = clean.split(":", 1)[1].strip()
                         break
 
-        # Construire le script dans l'ordre naturel, en ignorant les scènes vides
         script_parts = [scenes[key] for key in scene_keys if scenes[key]]
         script = "\n\n".join(script_parts)
 
         video_urls = [""] * 32
 
-        # Construire les requêtes de recherche pour chaque scène
-        # On prend les 3 premiers mots significatifs de chaque scène
-        # pour trouver des vidéos qui correspondent au contenu
         def extract_keywords(scene_text: str, fallback: str, scene_key: str = "") -> str:
-            """
-            Extrait les mots-clés les plus visuels d'une scène.
-            Privilégie les noms et adjectifs concrets qui donnent
-            de bonnes images de stock (personnes, lieux, actions).
-            """
             if not scene_text:
                 return fallback
             words = scene_text.split()
             stop_words = {
-                # Français
                 "le","la","les","un","une","des","de","du","et","en","que","qui",
                 "pour","par","sur","dans","avec","est","sont","mais","donc","car",
                 "tout","tous","toute","cette","cela","plus","très","bien","aussi",
                 "comme","même","fait","peut","faut","doit","avoir","être","faire",
-                # Anglais
                 "the","a","an","is","are","you","your","to","of","in","and","or",
                 "it","this","that","we","our","my","not","can","will","all","if",
                 "have","has","been","with","they","their","from","but","when","how"
             }
-            # Garder uniquement les mots significatifs de plus de 4 caractères
             keywords = [w.strip(".,!?;:") for w in words
                        if len(w.strip(".,!?;:")) > 4
                        and w.lower().strip(".,!?;:") not in stop_words]
-
-            # Ajouter la niche comme contexte pour ancrer la recherche
             if keywords:
-                # Combiner 2 mots-clés de la scène + la niche
                 query = " ".join(keywords[:2]) + " " + fallback
                 return query.strip()
             return fallback
 
-        # Préparer une requête par scène — combinaison mots-clés + niche
         scene_queries = []
         for key in scene_keys:
             if scenes[key]:
                 query = extract_keywords(scenes[key], niche, key)
                 scene_queries.append(query)
 
-        # Compléter avec la niche si on n'a pas assez de scènes
         while len(scene_queries) < 8:
             scene_queries.append(niche)
 
         async def fetch_pexels_videos(client, query: str, count: int = 2) -> list:
-            """Cherche plusieurs vidéos Pexels pour une requête donnée."""
             results = []
             try:
                 resp = await client.get(
@@ -536,7 +679,6 @@ TITLES:
             return results
 
         async def fetch_pixabay_videos(client, query: str, count: int = 2) -> list:
-            """Cherche plusieurs vidéos Pixabay pour une requête donnée."""
             results = []
             try:
                 resp = await client.get(
@@ -564,29 +706,24 @@ TITLES:
                 pass
             return results
 
-        # video_urls : 16 slots — 2 vidéos par scène (slot 0-1 = scène1, 2-3 = scène2...)
         video_urls = [""] * 32
 
         if PEXELS_API_KEY or PIXABAY_API_KEY:
             try:
                 async with httpx.AsyncClient(timeout=45) as client:
                     for i, query in enumerate(scene_queries[:8]):
-                        slot = i * 5  # chaque scène occupe 5 slots consécutifs
+                        slot = i * 5
                         collected = []
 
-                        # 1. Pexels avec mots-clés de la scène
                         if PEXELS_API_KEY:
                             collected += await fetch_pexels_videos(client, query, 5)
 
-                        # 2. Pixabay si pas assez
                         if PIXABAY_API_KEY and len(collected) < 5:
                             collected += await fetch_pixabay_videos(client, query, 5 - len(collected))
 
-                        # 3. Fallback niche si toujours pas assez
                         if PEXELS_API_KEY and len(collected) < 5 and query != niche:
                             collected += await fetch_pexels_videos(client, niche, 5 - len(collected))
 
-                        # Remplir les 5 slots de cette scène
                         for j in range(5):
                             if j < len(collected):
                                 video_urls[slot + j] = collected[j]
@@ -595,7 +732,6 @@ TITLES:
             except Exception:
                 pass
 
-        # Retourner chaque scène séparément pour les sous-titres
         scene_list = [scenes[key] for key in scene_keys if scenes[key]]
 
         return {
@@ -651,11 +787,6 @@ TITLES:
 
 
 def build_ssml_with_marks(text: str) -> tuple:
-    """
-    Transforme un texte en SSML avec une <mark> devant chaque mot.
-    Retourne (ssml_string, liste_de_mots).
-    Google TTS retournera ensuite le timestamp exact de chaque mark.
-    """
     words = text.strip().split()
     parts = []
     for i, word in enumerate(words):
@@ -665,11 +796,6 @@ def build_ssml_with_marks(text: str) -> tuple:
 
 
 def build_srt_from_timepoints(words: list, timepoints: list, out_path: str, words_per_block: int = 5):
-    """
-    Construit le fichier SRT à partir des timestamps EXACTS
-    fournis par Google TTS pour chaque mot.
-    """
-    # Construire un dict : index_mot → temps_début (en secondes)
     mark_times = {}
     for tp in timepoints:
         mark_name = tp.get("markName", "")
@@ -684,7 +810,6 @@ def build_srt_from_timepoints(words: list, timepoints: list, out_path: str, word
     if not mark_times or not words:
         return False
 
-    # Durée totale estimée = dernier timestamp + durée moyenne par mot
     last_idx = max(mark_times.keys())
     if len(mark_times) > 1:
         avg_word_dur = mark_times[last_idx] / last_idx if last_idx > 0 else 0.35
@@ -698,21 +823,15 @@ def build_srt_from_timepoints(words: list, timepoints: list, out_path: str, word
     for j in range(0, len(words), words_per_block):
         block_words = words[j:j + words_per_block]
         block_text = " ".join(block_words)
-
-        # Début du bloc = timestamp du premier mot du bloc
         start = mark_times.get(j, None)
         if start is None:
             continue
-
-        # Fin du bloc = timestamp du premier mot du prochain bloc (ou fin estimée)
         next_j = j + words_per_block
         if next_j < len(words) and next_j in mark_times:
             end = mark_times[next_j] - 0.05
         else:
             end = estimated_end - 0.05
-
         end = max(start + 0.1, end)
-
         entries.append(
             f"{entry_idx}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{block_text}\n"
         )
@@ -732,7 +851,6 @@ class ScanRequest(BaseModel):
 
 @app.post("/scan-trends")
 async def scan_trends(req: ScanRequest):
-    """Analyse les tendances virales via Claude AI et retourne 5 idées de vidéos."""
     if not ANTHROPIC_API_KEY:
         return {"error": "ANTHROPIC_API_KEY manquante"}
 
@@ -795,7 +913,7 @@ Focus on what is currently trending and has high viral potential. Be specific an
         return {"error": f"Erreur scan: {str(e)}"}
 
 
-# GOOGLE TTS
+# GOOGLE TTS (EXISTANT — INCHANGÉ)
 @app.post("/generate-audio")
 async def generate_audio(req: TTSRequest):
     if not GOOGLE_TTS_API_KEY:
@@ -807,18 +925,13 @@ async def generate_audio(req: TTSRequest):
 
     google_url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={GOOGLE_TTS_API_KEY}"
 
-    # Détecter si la voix supporte SSML et timepoints
-    # Chirp3 → texte simple uniquement
-    # Neural2, WaveNet, Standard → SSML + timepoints disponibles
     voice_name = req.voiceName or ""
     supports_timepoints = any(v in voice_name for v in ["Neural2", "Wavenet", "Standard"])
 
     words = req.text.strip().split()
 
     if supports_timepoints:
-        # Construire SSML avec une mark par mot pour timestamps exacts
         def escape_xml(text: str) -> str:
-            """Échapper les caractères spéciaux XML pour le SSML."""
             return (text
                     .replace("&", "&amp;")
                     .replace("<", "&lt;")
@@ -835,7 +948,6 @@ async def generate_audio(req: TTSRequest):
             "enableTimePointing": ["SSML_MARK"]
         }
     else:
-        # Chirp3 et autres voix modernes → texte simple
         payload = {
             "input": {"text": req.text},
             "voice": {"languageCode": req.languageCode, "name": req.voiceName},
@@ -847,7 +959,6 @@ async def generate_audio(req: TTSRequest):
             response = await client.post(google_url, json=payload)
         data = response.json()
 
-        # Si SSML échoue (voix non compatible), réessayer en texte simple
         if response.status_code != 200 and supports_timepoints:
             payload_fallback = {
                 "input": {"text": req.text},
@@ -857,7 +968,7 @@ async def generate_audio(req: TTSRequest):
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(google_url, json=payload_fallback)
             data = response.json()
-            supports_timepoints = False  # fallback sans timepoints
+            supports_timepoints = False
 
         if response.status_code != 200:
             return {"error": "Google TTS a échoué", "details": data}
@@ -865,17 +976,14 @@ async def generate_audio(req: TTSRequest):
         if not audio_content:
             return {"error": "Aucun audio retourné par Google"}
 
-        # Sauvegarder le fichier audio
         filename = f"{uuid.uuid4().hex}.mp3"
         filepath = os.path.join(AUDIO_DIR, filename)
         with open(filepath, "wb") as f:
             f.write(base64.b64decode(audio_content))
         audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
 
-        # Récupérer les timepoints si disponibles
         timepoints = data.get("timepoints", []) if supports_timepoints else []
 
-        # Sauvegarder words + timepoints pour la synchro des sous-titres
         sync_filename = filename.replace(".mp3", "_sync.json")
         sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
         with open(sync_filepath, "w", encoding="utf-8") as f:
@@ -894,9 +1002,8 @@ async def generate_audio(req: TTSRequest):
         return {"error": f"Erreur TTS: {str(e)}"}
 
 
-# FFMPEG: CRÉER LA VIDÉO FINALE
+# FFMPEG: CRÉER LA VIDÉO FINALE (EXISTANT — INCHANGÉ)
 async def _process_video(job_id: str, req: VideoRequest):
-    """Traitement vidéo en arrière-plan — appelé dans un thread séparé."""
     job_dir = None
     try:
         if not PUBLIC_BASE_URL:
@@ -907,11 +1014,8 @@ async def _process_video(job_id: str, req: VideoRequest):
             VIDEO_JOBS[job_id] = {"status": "failed", "error": "FFmpeg non installé sur le serveur"}
             return
 
-        # Durée choisie par l'utilisateur
         chosen_duration = req.duration if req.duration in [30, 45, 60] else 30
 
-        # Nombre de scènes selon la durée
-        # 30 sec → 4 scènes, 45 sec → 6 scènes, 60 sec → 8 scènes
         if chosen_duration == 60:
             nb_scenes = 8
         elif chosen_duration == 45:
@@ -919,7 +1023,6 @@ async def _process_video(job_id: str, req: VideoRequest):
         else:
             nb_scenes = 4
 
-        # Récupérer les 40 URLs vidéo (5 par scène × 8 scènes max)
         all_video_urls = [
             (req.video_url or "").strip(),
             (req.video_url2 or "").strip(),
@@ -963,7 +1066,6 @@ async def _process_video(job_id: str, req: VideoRequest):
             (req.video_url40 or "").strip(),
         ]
 
-        # Récupérer tous les textes de sous-titres (jusqu'à 8)
         all_subtitle_texts = [
             (req.text1 or "").strip()[:200],
             (req.text2 or "").strip()[:200],
@@ -980,33 +1082,25 @@ async def _process_video(job_id: str, req: VideoRequest):
             VIDEO_JOBS[job_id] = {"status": "failed", "error": "Aucune vidéo fournie"}
             return
 
-        # Construire la liste finale des clips vidéo :
-        # CLIPS_PER_SCENE clips par scène — durée totale / nb_clips_total
-        # ── CONFIGURATION : 2 vidéos par scène, pipeline simple
-        # ── CONFIGURATION : nombre de clips par scène
         CLIPS_PER_SCENE = 5
         nb_clips_total = nb_scenes * CLIPS_PER_SCENE
 
-        # Construire la liste des URLs : CLIPS_PER_SCENE clips par scène
         clip_urls = []
         subtitle_texts = []
         for i in range(nb_scenes):
             scene_text = all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
             collected = []
-            # Chercher 4 URLs valides pour cette scène
             for slot_offset in range(len(all_video_urls)):
                 slot = i * CLIPS_PER_SCENE + slot_offset
                 if slot < len(all_video_urls) and all_video_urls[slot]:
                     collected.append(all_video_urls[slot])
                 if len(collected) >= CLIPS_PER_SCENE:
                     break
-            # Fallback si pas assez de vidéos
             while len(collected) < CLIPS_PER_SCENE and valid_video_urls_raw:
                 collected.append(valid_video_urls_raw[
                     (i * CLIPS_PER_SCENE + len(collected)) % len(valid_video_urls_raw)
                 ])
             clip_urls.extend(collected[:CLIPS_PER_SCENE])
-            # Sous-titre sur le 1er clip de chaque scène, vide pour les suivants
             subtitle_texts.append(scene_text)
             for _ in range(CLIPS_PER_SCENE - 1):
                 subtitle_texts.append("")
@@ -1019,7 +1113,6 @@ async def _process_video(job_id: str, req: VideoRequest):
         voice_url = (req.audio_url or "").strip()
         music_url = (req.music_url or "").strip()
 
-        # ── ÉTAPE 1 : Voix — mesurer durée réelle
         voice_path = None
         real_total_duration = float(total_duration)
 
@@ -1030,28 +1123,23 @@ async def _process_video(job_id: str, req: VideoRequest):
             if measured > 1.0:
                 real_total_duration = measured
 
-        # Durée de chaque clip = durée totale / nb clips totaux
         clip_duration = real_total_duration / nb_clips_total
 
-        # ── ÉTAPES 2-3 : Télécharger et normaliser
         raw_paths = [os.path.join(job_dir, f"raw_{i}.mp4")
                      for i in range(len(clip_urls))]
 
-        # Téléchargements EN PARALLÈLE
         await asyncio.gather(*[
             download_file(url, path)
             for url, path in zip(clip_urls, raw_paths)
             if url
         ])
 
-        # Normalisation EN PARALLÈLE — 4 workers
         from concurrent.futures import ThreadPoolExecutor
 
         norm_paths = [os.path.join(job_dir, f"seg_{i}.mp4")
                       for i in range(len(raw_paths))]
 
         def normalize_clip(args):
-            """Fonction synchrone — appelée dans ThreadPoolExecutor, pas en async."""
             src, dst = args
             if not os.path.exists(src):
                 return
@@ -1072,7 +1160,6 @@ async def _process_video(job_id: str, req: VideoRequest):
         if not norm_paths:
             raise RuntimeError("Aucun clip normalisé produit")
 
-        # ── ÉTAPE 4 : Concaténer
         concat_path = os.path.join(job_dir, "concat.txt")
         with open(concat_path, "w") as f:
             for p in norm_paths:
@@ -1087,7 +1174,6 @@ async def _process_video(job_id: str, req: VideoRequest):
             stitched_raw
         ])
 
-        # ── ÉTAPE 5 : Ajuster durée à celle de la voix
         stitched_dur = get_audio_duration(stitched_raw)
         stitched_path = os.path.join(job_dir, "stitched.mp4")
 
@@ -1106,10 +1192,8 @@ async def _process_video(job_id: str, req: VideoRequest):
                 "-c:v", "copy", "-an", stitched_path
             ])
 
-        # Variable attendue par les étapes suivantes
         real_segment_duration = clip_duration
 
-        # ── ÉTAPE 6 : Préparer l'audio final (voix + musique optionnelle)
         final_audio_path = None
 
         if voice_url and voice_path:
@@ -1131,14 +1215,11 @@ async def _process_video(job_id: str, req: VideoRequest):
                 ])
                 final_audio_path = mixed_path
             else:
-                # Pas de musique → on garde la voix telle quelle sans la couper
                 final_audio_path = voice_path
 
-        # ── ÉTAPE 7 : SRT avec synchronisation EXACTE via timepoints Google TTS
         srt_path = os.path.join(job_dir, "subtitles.srt")
         srt_built = False
 
-        # Essayer d'utiliser les timepoints exacts de Google TTS
         sync_url = (req.sync_url or "").strip()
         if sync_url:
             try:
@@ -1154,7 +1235,6 @@ async def _process_video(job_id: str, req: VideoRequest):
             except Exception:
                 srt_built = False
 
-        # Fallback : estimation par mots si pas de timepoints disponibles
         if not srt_built:
             nb_subtitles = len([t for t in subtitle_texts if t.strip()])
             srt_segment_duration = (
@@ -1163,15 +1243,10 @@ async def _process_video(job_id: str, req: VideoRequest):
             )
             write_srt(subtitle_texts, srt_segment_duration, srt_path)
 
-        # ── ÉTAPE 8 : Rendu final avec sous-titres brûlés
         output_filename = f"{job_id}.mp4"
         output_path = os.path.join(VIDEO_DIR, output_filename)
 
         srt_escaped = escape_srt_path(os.path.abspath(srt_path))
-        # Alignment=2  = centré horizontalement, ancrage en BAS du texte
-        # MarginV=30   = 30px depuis le bas — valeur petite et stable
-        # PlayResY=720 = dit à FFmpeg que la vidéo fait 720px de haut
-        #                pour que MarginV soit interprété correctement
         subtitle_filter = (
             f"subtitles='{srt_escaped}':"
             "force_style='Alignment=2,MarginV=70,"
@@ -1195,7 +1270,6 @@ async def _process_video(job_id: str, req: VideoRequest):
                 "-c:a", "aac", "-b:a", "128k",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
-                # PAS de -shortest : la vidéo dure exactement comme la voix
                 output_path
             ])
         else:
@@ -1210,7 +1284,6 @@ async def _process_video(job_id: str, req: VideoRequest):
                 output_path
             ])
 
-        # Nettoyage du dossier temporaire de travail
         shutil.rmtree(job_dir, ignore_errors=True)
 
         video_url = f"{PUBLIC_BASE_URL}/video/{output_filename}"
@@ -1229,7 +1302,6 @@ async def _process_video(job_id: str, req: VideoRequest):
 
 @app.post("/create-video")
 async def create_video(req: VideoRequest):
-    """Lance le rendu vidéo en arrière-plan et retourne immédiatement un job_id."""
     if not PUBLIC_BASE_URL:
         return JSONResponse(status_code=400, content={"error": "PUBLIC_BASE_URL manquante"})
     if not ffmpeg_exists():
@@ -1238,7 +1310,6 @@ async def create_video(req: VideoRequest):
     job_id = uuid.uuid4().hex
     VIDEO_JOBS[job_id] = {"status": "processing"}
 
-    # Lancer le traitement en arrière-plan
     asyncio.create_task(_process_video(job_id, req))
 
     return JSONResponse(status_code=200, content={
@@ -1250,7 +1321,6 @@ async def create_video(req: VideoRequest):
 
 @app.get("/video-status/{job_id}")
 async def video_status(job_id: str):
-    """Retourne le statut d'un job de rendu vidéo."""
     job = VIDEO_JOBS.get(job_id)
     if not job:
         return JSONResponse(status_code=404, content={"error": "Job introuvable"})
