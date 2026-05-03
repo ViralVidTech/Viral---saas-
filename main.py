@@ -326,20 +326,26 @@ async def generate_audio_fish(req: FishTTSRequest):
         return {"error": "Le texte est vide"}
 
     try:
+        # Construire le payload — ne pas envoyer reference_id si vide
+        payload = {
+            "text": req.text,
+            "format": req.format,
+            "latency": req.latency,
+            "normalize": True,
+            "chunk_length": 300,
+        }
+        if req.voice_id:
+            payload["reference_id"] = req.voice_id
+
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 "https://api.fish.audio/v1/tts",
                 headers={
                     "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
                     "Content-Type": "application/json",
+                    "model": "s2-pro",
                 },
-                json={
-                    "text": req.text,
-                    "reference_id": req.voice_id,
-                    "format": req.format,
-                    "latency": req.latency,
-                    "normalize": True,
-                },
+                json=payload,
             )
 
         if response.status_code != 200:
