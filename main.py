@@ -30,7 +30,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 FAL_API_KEY = os.getenv("FAL_API_KEY", "")
 FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")
-WAN_API_URL = os.getenv("WAN_API_URL", "")
+WAN_API_URL = os.getenv("WAN_API_URL", "").rstrip("/")
 
 AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
@@ -140,6 +140,9 @@ class VideoRequest(BaseModel):
     sync_url: str = ""
     music_url: str = ""
     wan_video: str = ""
+    image_url: str = ""
+    video_type: str = "objects"
+    pipeline_mode: str = "ai_wan"
     duration: int = 30
 
 
@@ -384,6 +387,8 @@ async def generate_audio_fish(req: FishTTSRequest):
 
     except Exception as e:
         return {"error": f"Erreur Fish Audio: {str(e)}"}
+
+
 @app.post("/generate-image")
 async def generate_image(req: FluxImageRequest):
     if not FAL_API_KEY:
@@ -1078,19 +1083,28 @@ async def _process_video(job_id: str, req: VideoRequest):
             (req.text8 or "").strip()[:200],
         ]
 
-        if req.wan_video:
+        pipeline_mode = (req.pipeline_mode or ("ai_wan" if req.wan_video else "stock")).lower().strip()
+        use_wan = pipeline_mode == "ai_wan"
+
+        if use_wan:
+            if not req.wan_video:
+                VIDEO_JOBS[job_id] = {
+                    "status": "failed",
+                    "error": "Mode AI WAN sélectionné, mais aucune vidéo WAN n'a été fournie. Vérifiez que WAN_API_URL est bien configurée sur Render et que le pod RunPod est allumé."
+                }
+                return
             valid_video_urls_raw = [req.wan_video]
         else:
             valid_video_urls_raw = [u for u in all_video_urls if u]
-        if not valid_video_urls_raw:
-            VIDEO_JOBS[job_id] = {"status": "failed", "error": "Aucune vidéo fournie"}
-            return
+            if not valid_video_urls_raw:
+                VIDEO_JOBS[job_id] = {"status": "failed", "error": "Mode Stock sélectionné, mais aucune vidéo Pexels/Pixabay n'a été fournie"}
+                return
 
-        # MODE WAN : 1 clip par scene, MODE PEXELS : 5 clips par scene
-        if req.wan_video:
-            CLIPS_PER_SCENE = 1
-            nb_clips_total = nb_scenes * CLIPS_PER_SCENE
-            clip_urls = [req.wan_video] * nb_scenes
+        # Mode AI WAN : on utilise uniquement la vidéo produite par WAN.
+        # Mode Stock : on utilise uniquement les vidéos Pexels/Pixabay.
+        if use_wan:
+            nb_clips_total = 1
+            clip_urls = [req.wan_video]
             subtitle_texts = [
                 all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
                 for i in range(nb_scenes)
@@ -1103,12 +1117,11 @@ async def _process_video(job_id: str, req: VideoRequest):
             for i in range(nb_scenes):
                 scene_text = all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
                 collected = []
-                for slot_offset in range(len(all_video_urls)):
-                    slot = i * CLIPS_PER_SCENE + slot_offset
+                base_slot = i * CLIPS_PER_SCENE
+                for slot_offset in range(CLIPS_PER_SCENE):
+                    slot = base_slot + slot_offset
                     if slot < len(all_video_urls) and all_video_urls[slot]:
                         collected.append(all_video_urls[slot])
-                    if len(collected) >= CLIPS_PER_SCENE:
-                        break
                 while len(collected) < CLIPS_PER_SCENE and valid_video_urls_raw:
                     collected.append(valid_video_urls_raw[
                         (i * CLIPS_PER_SCENE + len(collected)) % len(valid_video_urls_raw)
@@ -1300,7 +1313,7 @@ async def _process_video(job_id: str, req: VideoRequest):
         shutil.rmtree(job_dir, ignore_errors=True)
 
         video_url = f"{PUBLIC_BASE_URL}/video/{output_filename}"
-        VIDEO_JOBS[job_id] = {"status": "done", "video_url": video_url}
+        VIDEO_JOBS[job_id] = {"status": "done", "video_url": video_url, "pipeline_mode": (req.pipeline_mode or "")}
 
     except httpx.HTTPError as e:
         shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
