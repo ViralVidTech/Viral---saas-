@@ -119,6 +119,11 @@
     .close-btn { width:40px; height:40px; border-radius:999px; background:transparent; color:var(--text); border:1px solid var(--border); }
     .user-badge { display:none; align-items:center; gap:8px; padding:10px 12px; border-radius:999px; background:rgba(0,0,0,0.48); border:1px solid var(--border); }
     .user-badge.show { display:inline-flex; }
+
+    .mode-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px; }
+    .mode-card { background:rgba(255,255,255,0.035); border:1px solid var(--border); border-radius:14px; padding:14px; display:grid; gap:8px; }
+    .mode-card strong { font-size:0.95rem; }
+    .mode-card small { color:var(--muted); line-height:1.4; }
     @media (max-width:1180px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } .workspace { grid-template-columns:1fr; } .pricing-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr 1fr; } .pipeline-steps { grid-template-columns:repeat(2,1fr); } }
     @media (max-width:980px) { .app-shell { grid-template-columns:1fr; } .sidebar { border-right:none; border-bottom:1px solid rgba(255,255,255,0.08); } }
     @media (max-width:720px) { .main { padding:18px; } .kpi-grid, .mini-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr; } .headline h2 { max-width:none; } .pipeline-steps { grid-template-columns:1fr 1fr; } }
@@ -211,12 +216,35 @@
     <!-- AI PIPELINE -->
     <section class="panel detector-panel" id="videoCreation">
       <h2 class="section-title">AI Video Pipeline</h2>
-      <p class="section-subtitle">Claude → Flux 2 Pro → Fish Audio → Wan → FFmpeg</p>
+      <p class="section-subtitle">Choose the production mode before creating the final video.</p>
+
+      <div class="mode-grid">
+        <div class="mode-card">
+          <strong>Pipeline mode</strong>
+          <select id="pipelineMode">
+            <option value="ai_wan" selected>🎨 AI Mode — Claude → Flux → Google TTS → WAN → FFmpeg</option>
+            <option value="stock">📹 Stock Mode — Claude → Google TTS → Pexels/Pixabay → FFmpeg</option>
+          </select>
+          <small>AI Mode is the default. Stock Mode is the secondary backup.</small>
+        </div>
+        <div class="mode-card">
+          <strong>Video type</strong>
+          <select id="videoType">
+            <option value="animated_objects" selected>🍎 Animated objects / talking food</option>
+            <option value="human_avatars">🧑 Realistic human avatars</option>
+            <option value="cartoon">🎨 Cartoon / colorful animation</option>
+            <option value="realistic">🎥 Realistic cinematic video</option>
+            <option value="faceless_business">💼 Faceless business / finance</option>
+            <option value="motivation_lifestyle">🎭 Motivation / lifestyle</option>
+          </select>
+          <small>This automatically prepares the Flux prompt for the right visual style.</small>
+        </div>
+      </div>
 
       <div class="pipeline-steps">
         <div class="pipeline-step" id="step1"><div class="step-icon">📝</div><div class="step-label">Step 1</div><div style="font-weight:700;font-size:0.9rem;">Claude</div><div class="step-status" id="step1Status" style="color:var(--muted);">Script</div></div>
         <div class="pipeline-step" id="step2"><div class="step-icon">🎨</div><div class="step-label">Step 2</div><div style="font-weight:700;font-size:0.9rem;">Flux 2 Pro</div><div class="step-status" id="step2Status" style="color:var(--muted);">Image</div></div>
-        <div class="pipeline-step" id="step3"><div class="step-icon">🎙</div><div class="step-label">Step 3</div><div style="font-weight:700;font-size:0.9rem;">Fish Audio</div><div class="step-status" id="step3Status" style="color:var(--muted);">Voice</div></div>
+        <div class="pipeline-step" id="step3"><div class="step-icon">🎙</div><div class="step-label">Step 3</div><div style="font-weight:700;font-size:0.9rem;">Google TTS</div><div class="step-status" id="step3Status" style="color:var(--muted);">Voice</div></div>
         <div class="pipeline-step" id="step4"><div class="step-icon">🎬</div><div class="step-label">Step 4</div><div style="font-weight:700;font-size:0.9rem;">Wan + FFmpeg</div><div class="step-status" id="step4Status" style="color:var(--muted);">Video</div></div>
       </div>
 
@@ -324,7 +352,7 @@
             <p style="margin:8px 0 0;color:var(--muted);font-size:0.88rem;">
               1. Claude generates the script<br>
               2. Flux 2 Pro creates the character image<br>
-              3. Fish Audio generates the multilingual voice<br>
+              3. Google TTS generates the voice for testing<br>
               4. Wan animates the image → FFmpeg assembles + music + subtitles
             </p>
           </div>
@@ -441,6 +469,43 @@ function markStep(n,done){
   else{el.classList.add('active');st.style.color='var(--emerald)';st.textContent='⏳ Running...';}
 }
 
+function getPipelineMode(){
+  const el=document.getElementById('pipelineMode');
+  return el ? el.value : 'ai_wan';
+}
+function getVideoType(){
+  const el=document.getElementById('videoType');
+  return el ? el.value : 'animated_objects';
+}
+function buildFluxPrompt(niche){
+  const type=getVideoType();
+  const subject=niche || 'viral short video';
+  const prompts={
+    human_avatars:`A realistic human presenter avatar talking about "${subject}", expressive face, natural mouth shape, professional studio lighting, vertical short video style, clean background, cinematic realism`,
+    animated_objects:`A funny 3D animated object or talking food character representing "${subject}", big expressive eyes, open mouth ready to speak, cute viral style, colorful kitchen or studio background, vertical video`,
+    cartoon:`A colorful cartoon character scene about "${subject}", expressive face, dynamic pose, bold clean outlines, vibrant viral animation style, vertical composition`,
+    realistic:`A realistic cinematic scene about "${subject}", professional lighting, dramatic composition, high detail, viral short video look, vertical frame`,
+    faceless_business:`A faceless business and finance visual about "${subject}", modern desk, charts, phone screen, money symbols, clean premium lighting, vertical short video`,
+    motivation_lifestyle:`A motivational lifestyle scene about "${subject}", inspiring atmosphere, confident person, cinematic lighting, emotional viral short video style, vertical frame`
+  };
+  return prompts[type] || prompts.animated_objects;
+}
+function updateFluxPromptFromType(force=false){
+  const fp=document.getElementById('fluxPrompt');
+  const niche=(document.getElementById('niche')?.value||'').trim();
+  if(!fp)return;
+  if(force || !fp.value.trim()) fp.value=buildFluxPrompt(niche);
+}
+function updateModeText(){
+  const mode=getPipelineMode();
+  const subtitle=document.querySelector('#videoCreation .section-subtitle');
+  if(subtitle){
+    subtitle.textContent = mode==='ai_wan'
+      ? 'Default AI Mode: Claude → Flux 2 Pro → Google TTS → WAN → FFmpeg'
+      : 'Stock Mode: Claude → Google TTS → Pexels/Pixabay → FFmpeg';
+  }
+}
+
 const apiUrlInput=document.getElementById('apiUrl');
 const nicheInput=document.getElementById('niche');
 const scriptOutput=document.getElementById('scriptOutput');
@@ -460,6 +525,8 @@ const videoDownloadLink=document.getElementById('videoDownloadLink');
 const authModal=document.getElementById('authModal');
 const userBadge=document.getElementById('userBadge');
 const userBadgeText=document.getElementById('userBadgeText');
+const pipelineModeSelect=document.getElementById('pipelineMode');
+const videoTypeSelect=document.getElementById('videoType');
 
 // STEP 1 - Claude
 async function generateContent(){
@@ -486,10 +553,13 @@ async function generateContent(){
     for(let i=1;i<=32;i++)window[`_pexelsVideoUrl${i===1?'':i}`]=data[`video_url${i===1?'':i}`]||'';
     for(let i=1;i<=8;i++)window[`_scene${i}`]=data[`scene${i}`]||'';
     window._nb_scenes=data.nb_scenes||4;window._duration=data.duration||30;
-    const fp=document.getElementById('fluxPrompt');
-    if(fp&&!fp.value.trim())fp.value=`A cute cartoon character representing "${niche}", expressive big eyes, open mouth smiling, vibrant colors, clean background, studio lighting`;
+    updateFluxPromptFromType(true);
     markStep(1,true);
-    setStatus('status','✅ Script generated! Now generate your image with Flux 2 Pro.','success');
+    if(getPipelineMode()==='ai_wan'){
+      setStatus('status','✅ Script generated! AI Mode selected: generate your Flux image, then Google voice, then final video.','success');
+    }else{
+      setStatus('status','✅ Script generated! Stock Mode selected: generate Google voice, then final video.','success');
+    }
     const s=getState();s.scripts+=1;s.revenue+=19;s.topNiche=niche;s.growth=Math.min(99,s.growth+7);saveState(s);updateDashboard();
     addActivity('Script generated',`Claude generated a script for "${niche}".`);
     document.getElementById('videoCreation').scrollIntoView({behavior:'smooth'});
@@ -502,6 +572,7 @@ async function generateImage(){
   const apiUrl=normalizeApiUrl(apiUrlInput.value);
   const prompt=document.getElementById('fluxPrompt').value.trim();
   if(!apiUrl)return setStatus('imageStatus','Enter your API URL first.','error');
+  if(getPipelineMode()==='stock')return setStatus('imageStatus','Flux is only needed in AI Mode. Stock Mode uses Pexels/Pixabay.','error');
   if(!prompt)return setStatus('imageStatus','Enter an image prompt first.','error');
   document.getElementById('generateImageBtn').disabled=true;
   markStep(2,false);setStatus('imageStatus','⏳ Flux 2 Pro is generating your image...','ready');
@@ -576,26 +647,59 @@ async function generateVoice(){
   }
 }
 
-// STEP 4 - Wan + FFmpeg
+// STEP 4 - WAN/Stock + FFmpeg
 async function createVideo(){
   const apiUrl=normalizeApiUrl(apiUrlInput.value);
   const chosenDuration=parseInt(videoDuration.value)||30;
   const chosenMusicUrl=document.getElementById('musicSelect')?.value||'';
+  const mode=getPipelineMode();
+
   if(!apiUrl)return setStatus('videoStatus','Enter your API URL first.','error');
-  if(!window._pexelsVideoUrl&&!window._pexelsVideoUrl2)return setStatus('videoStatus','Generate your script first (Step 1).','error');
+  if(!scriptOutput.value.trim())return setStatus('videoStatus','Generate your script first (Step 1).','error');
+  if(!window._generatedVoiceUrl)return setStatus('videoStatus','Generate the Google TTS voice first (Step 3).','error');
+
+  if(mode==='ai_wan' && !window._wanVideoUrl){
+    return setStatus('videoStatus','AI Mode needs a WAN video. Check that RunPod is ON and WAN_API_URL is set in Render, then click Generate again.','error');
+  }
+  if(mode==='stock' && !window._pexelsVideoUrl && !window._pexelsVideoUrl2){
+    return setStatus('videoStatus','Stock Mode needs Pexels/Pixabay videos. Click Generate again or check your stock video API keys.','error');
+  }
+
   document.getElementById('createVideoBtn').disabled=true;
-  markStep(4,false);setStatus('videoStatus',`⏳ Wan animating + FFmpeg assembling (~${chosenDuration*2}s)...`,'ready');
+  markStep(4,false);
+  setStatus('videoStatus',mode==='ai_wan'
+    ? `⏳ AI Mode: FFmpeg assembling WAN video + Google voice + music + subtitles...`
+    : `⏳ Stock Mode: FFmpeg assembling Pexels/Pixabay + Google voice + music + subtitles...`,'ready');
   videoDownloadBlock.classList.remove('show');
-  const body={text1:window._scene1||'',text2:window._scene2||'',text3:window._scene3||'',text4:window._scene4||'',text5:window._scene5||'',text6:window._scene6||'',text7:window._scene7||'',text8:window._scene8||'',audio_url:window._generatedVoiceUrl||'',sync_url:window._syncUrl||'',music_url:chosenMusicUrl,duration:chosenDuration,wan_video:window._wanVideoUrl||''};
-  for(let i=1;i<=32;i++)body[`video_url${i===1?'':i}`]=window[`_pexelsVideoUrl${i===1?'':i}`]||'';
+
+  const body={
+    text1:window._scene1||'',text2:window._scene2||'',text3:window._scene3||'',text4:window._scene4||'',
+    text5:window._scene5||'',text6:window._scene6||'',text7:window._scene7||'',text8:window._scene8||'',
+    audio_url:window._generatedVoiceUrl||'',
+    sync_url:window._syncUrl||'',
+    music_url:chosenMusicUrl,
+    duration:chosenDuration,
+    pipeline_mode:mode,
+    video_type:getVideoType()
+  };
+
+  if(mode==='ai_wan'){
+    body.wan_video=window._wanVideoUrl||'';
+    for(let i=1;i<=40;i++)body[`video_url${i===1?'':i}`]='';
+  }else{
+    body.wan_video='';
+    for(let i=1;i<=40;i++)body[`video_url${i===1?'':i}`]=window[`_pexelsVideoUrl${i===1?'':i}`]||'';
+  }
+
   try{
     const res=await fetch(`${apiUrl}/create-video`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const ct=res.headers.get('content-type')||'';
-    if(!ct.includes('application/json')){setStatus('videoStatus','Server error — retry.','error');return;}
+    if(!ct.includes('application/json')){setStatus('videoStatus','Server error — retry.','error');document.getElementById('createVideoBtn').disabled=false;return;}
     const data=await res.json();
-    if(!res.ok||data.error){setStatus('videoStatus',`Error: ${data.error}`,'error');return;}
+    if(!res.ok||data.error){setStatus('videoStatus',`Error: ${data.error}`,'error');document.getElementById('createVideoBtn').disabled=false;return;}
     const jobId=data.job_id;
-    if(!jobId){setStatus('videoStatus','No job ID returned.','error');return;}
+    if(!jobId){setStatus('videoStatus','No job ID returned.','error');document.getElementById('createVideoBtn').disabled=false;return;}
+
     let tries=0,consErrors=0;
     const poll=setInterval(async()=>{
       tries++;
@@ -609,7 +713,7 @@ async function createVideo(){
           videoPlayer.src=sd.video_url;videoDownloadLink.href=sd.video_url;
           videoDownloadBlock.classList.add('show');videoPlayer.load();previewPlaceholder.style.display='none';
           markStep(4,true);setStatus('videoStatus','✅ Video ready! Download or share it.','success');
-          addActivity('Video ready','Your AI video pipeline completed successfully!');
+          addActivity('Video ready',mode==='ai_wan'?'AI Mode video completed with WAN.':'Stock Mode video completed with Pexels/Pixabay.');
           const s=getState();s.scripts+=1;saveState(s);updateDashboard();
           document.getElementById('createVideoBtn').disabled=false;
         }else if(sd.status==='failed'){
@@ -704,10 +808,12 @@ document.getElementById('closeModalBtn').addEventListener('click',()=>authModal.
 document.getElementById('loginBtn').addEventListener('click',loginUser);
 document.getElementById('logoutBtn').addEventListener('click',logoutUser);
 authModal.addEventListener('click',e=>{if(e.target===authModal)authModal.classList.remove('open');});
+if(pipelineModeSelect){pipelineModeSelect.addEventListener('change',()=>{updateModeText();updateFluxPromptFromType(false);});}
+if(videoTypeSelect){videoTypeSelect.addEventListener('change',()=>updateFluxPromptFromType(true));}
 document.getElementById('plan1Btn').addEventListener('click',()=>addActivity('Plan selected','Starter plan clicked.'));
 document.getElementById('plan2Btn').addEventListener('click',()=>addActivity('Plan selected','Pro plan clicked.'));
 document.getElementById('plan3Btn').addEventListener('click',()=>addActivity('Plan selected','Business plan clicked.'));
-updateDashboard();updateAuthUI();renderDetector([]);
+updateModeText();updateFluxPromptFromType(false);updateDashboard();updateAuthUI();renderDetector([]);
 </script>
 </body>
 </html>
