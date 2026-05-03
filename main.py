@@ -723,8 +723,8 @@ TITLES:
         if WAN_API_URL:
             try:
                 wan_video_url = await generate_wan_video(script)
-            except Exception as e:
-                wan_video_url = f"Erreur WAN: {str(e)}"
+            except Exception:
+                wan_video_url = ""
         # ───────────────────────────────────────────────────────────────────
 
         return {
