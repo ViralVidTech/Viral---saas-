@@ -1080,28 +1080,37 @@ async def _process_video(job_id: str, req: VideoRequest):
             VIDEO_JOBS[job_id] = {"status": "failed", "error": "Aucune vidéo fournie"}
             return
 
-        CLIPS_PER_SCENE = 5
-        nb_clips_total = nb_scenes * CLIPS_PER_SCENE
-
-        clip_urls = []
-        subtitle_texts = []
-        for i in range(nb_scenes):
-            scene_text = all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
-            collected = []
-            for slot_offset in range(len(all_video_urls)):
-                slot = i * CLIPS_PER_SCENE + slot_offset
-                if slot < len(all_video_urls) and all_video_urls[slot]:
-                    collected.append(all_video_urls[slot])
-                if len(collected) >= CLIPS_PER_SCENE:
-                    break
-            while len(collected) < CLIPS_PER_SCENE and valid_video_urls_raw:
-                collected.append(valid_video_urls_raw[
-                    (i * CLIPS_PER_SCENE + len(collected)) % len(valid_video_urls_raw)
-                ])
-            clip_urls.extend(collected[:CLIPS_PER_SCENE])
-            subtitle_texts.append(scene_text)
-            for _ in range(CLIPS_PER_SCENE - 1):
-                subtitle_texts.append("")
+        # MODE WAN : 1 clip par scene, MODE PEXELS : 5 clips par scene
+        if req.wan_video:
+            CLIPS_PER_SCENE = 1
+            nb_clips_total = nb_scenes * CLIPS_PER_SCENE
+            clip_urls = [req.wan_video] * nb_scenes
+            subtitle_texts = [
+                all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
+                for i in range(nb_scenes)
+            ]
+        else:
+            CLIPS_PER_SCENE = 5
+            nb_clips_total = nb_scenes * CLIPS_PER_SCENE
+            clip_urls = []
+            subtitle_texts = []
+            for i in range(nb_scenes):
+                scene_text = all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
+                collected = []
+                for slot_offset in range(len(all_video_urls)):
+                    slot = i * CLIPS_PER_SCENE + slot_offset
+                    if slot < len(all_video_urls) and all_video_urls[slot]:
+                        collected.append(all_video_urls[slot])
+                    if len(collected) >= CLIPS_PER_SCENE:
+                        break
+                while len(collected) < CLIPS_PER_SCENE and valid_video_urls_raw:
+                    collected.append(valid_video_urls_raw[
+                        (i * CLIPS_PER_SCENE + len(collected)) % len(valid_video_urls_raw)
+                    ])
+                clip_urls.extend(collected[:CLIPS_PER_SCENE])
+                subtitle_texts.append(scene_text)
+                for _ in range(CLIPS_PER_SCENE - 1):
+                    subtitle_texts.append("")
 
         total_duration = chosen_duration
 
