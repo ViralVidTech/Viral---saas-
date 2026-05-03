@@ -319,81 +319,71 @@ async def serve_video(filename: str):
 @app.post("/generate-audio-fish")
 async def generate_audio_fish(req: FishTTSRequest):
     if not FISH_AUDIO_API_KEY:
-        return {"error": "FISH_AUDIO_API_KEY manquante — ajoutez-la dans les variables d'environnement Render"}
+        return {"error": "FISH_AUDIO_API_KEY manquante dans Render"}
     if not PUBLIC_BASE_URL:
         return {"error": "PUBLIC_BASE_URL manquante"}
     if not req.text.strip():
         return {"error": "Le texte est vide"}
 
     try:
-        # Payload Fish Audio — reference_id optionnel
         payload = {
             "text": req.text,
             "format": "mp3",
-            "mp3_bitrate": 128,
-            "latency": req.latency,
+            "latency": "balanced",
             "normalize": True,
-            "chunk_length": 300,
         }
+
         if req.voice_id:
             payload["reference_id"] = req.voice_id
 
-        filename = f"fish_{uuid.uuid4().hex}.mp3"
-        filepath = os.path.join(AUDIO_DIR, filename)
-
-        # Fish Audio retourne un stream audio binaire — on lit chunk par chunk
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
-            async with client.stream(
-                "POST",
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
                 "https://api.fish.audio/v1/tts",
                 headers={
                     "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
                     "Content-Type": "application/json",
-                    "model": "s2-pro",
                 },
                 json=payload,
-            ) as response:
-                if response.status_code != 200:
-                    # Lire le corps de l erreur
-                    error_body = await response.aread()
-                    try:
-                        error_detail = json.loads(error_body)
-                    except Exception:
-                        error_detail = error_body.decode("utf-8", errors="replace")
-                    return {"error": f"Fish Audio API erreur {response.status_code}", "details": error_detail}
+            )
 
-                with open(filepath, "wb") as f:
-                    async for chunk in response.aiter_bytes(chunk_size=4096):
-                        f.write(chunk)
+        if response.status_code != 200:
+            try:
+                details = response.json()
+            except Exception:
+                details = response.text
+            return {
+                "error": f"Fish Audio API erreur {response.status_code}",
+                "details": details
+            }
 
-        # Vérifier que le fichier audio n est pas vide
+        filename = f"fish_{uuid.uuid4().hex}.mp3"
+        filepath = os.path.join(AUDIO_DIR, filename)
+
+        with open(filepath, "wb") as f:
+            f.write(response.content)
+
         if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
-            return {"error": "Fish Audio a retourné un fichier audio vide"}
+            return {"error": "Fish Audio a retourné un fichier vide"}
 
         audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
 
-        words = req.text.strip().split()
         sync_filename = filename.replace(".mp3", "_sync.json")
         sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
+
+        words = req.text.strip().split()
         with open(sync_filepath, "w", encoding="utf-8") as f:
             json.dump({"words": words, "timepoints": []}, f)
-
-        sync_url = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
 
         return {
             "success": True,
             "audio_url": audio_url,
-            "sync_url": sync_url,
+            "sync_url": f"{PUBLIC_BASE_URL}/audio/{sync_filename}",
             "filename": filename,
-            "provider": "fish_audio",
-            "characters_used": len(req.text)
+            "provider": "fish_audio"
         }
 
     except Exception as e:
         return {"error": f"Erreur Fish Audio: {str(e)}"}
-
-
-# ── FLUX 2 PRO — GÉNÉRATION D'IMAGE ────────────────────────────────────────
 @app.post("/generate-image")
 async def generate_image(req: FluxImageRequest):
     if not FAL_API_KEY:
