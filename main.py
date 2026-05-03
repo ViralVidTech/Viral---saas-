@@ -43,17 +43,28 @@ os.makedirs(WORK_DIR, exist_ok=True)
 
 # ── FONCTION WAN 2.2 ────────────────────────────────────────────────────────
 async def generate_wan_video(prompt: str) -> str:
-    """Appelle Wan 2.2 sur RunPod pour animer une vidéo à partir d'un prompt."""
+    """Appelle Wan 2.2 sur RunPod via POST avec un prompt court et visuel."""
     if not WAN_API_URL:
         return ""
-    async with httpx.AsyncClient(timeout=600) as client:
-        response = await client.get(
+
+    async with httpx.AsyncClient(timeout=900) as client:
+        response = await client.post(
             f"{WAN_API_URL}/generate",
             params={"prompt": prompt}
         )
-        response.raise_for_status()
-        data = response.json()
-        return f"{WAN_API_URL}{data['video_url']}"
+
+    if response.status_code != 200:
+        print("WAN ERROR:", response.status_code, response.text)
+        return ""
+
+    data = response.json()
+    video_url = data.get("video_url", "")
+
+    if not video_url:
+        print("WAN RESPONSE WITHOUT VIDEO:", data)
+        return ""
+
+    return f"{WAN_API_URL}{video_url}"
 
 
 # MODELS
