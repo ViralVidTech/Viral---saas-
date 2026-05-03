@@ -6,531 +6,266 @@
   <title>ViralVidTech</title>
   <style>
     :root {
-      --gold: #c9a646;
-      --gold-strong: #b88f28;
-      --emerald: #00d084;
-      --emerald-dark: #00b36f;
-      --cyan: #00a3ff;
-      --text: #ffffff;
-      --muted: #d8d8d8;
-      --panel: rgba(0, 0, 0, 0.68);
-      --panel-2: rgba(8, 8, 8, 0.6);
-      --border: rgba(255,255,255,0.08);
-      --radius: 20px;
+      --gold: #c9a646; --gold-strong: #b88f28; --emerald: #00d084; --emerald-dark: #00b36f;
+      --cyan: #00a3ff; --text: #ffffff; --muted: #d8d8d8; --panel: rgba(0,0,0,0.68);
+      --panel-2: rgba(8,8,8,0.6); --border: rgba(255,255,255,0.08); --radius: 20px;
       --shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 0 20px rgba(255,255,255,0.02);
-      --danger: #ff7b7b;
-      --success: #8ef0c6;
+      --danger: #ff7b7b; --success: #8ef0c6;
     }
-
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
-
     body {
-      margin: 0;
-      padding: 0;
+      margin: 0; padding: 0;
       font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at 14% 10%, rgba(229, 201, 122, 0.95), transparent 26%),
-        radial-gradient(circle at 86% 12%, rgba(0, 208, 132, 0.92), transparent 24%),
+      background: radial-gradient(circle at 14% 10%, rgba(229,201,122,0.95), transparent 26%),
+        radial-gradient(circle at 86% 12%, rgba(0,208,132,0.92), transparent 24%),
         linear-gradient(135deg, var(--gold-strong) 0%, var(--emerald) 100%);
-      color: var(--text);
-      min-height: 100vh;
-      overflow-x: hidden;
-      position: relative;
+      color: var(--text); min-height: 100vh; overflow-x: hidden; position: relative;
     }
-
-    body::after {
-      content: "";
-      position: fixed;
-      top: -180px; left: -180px;
-      width: 620px; height: 620px;
-      background: radial-gradient(circle, rgba(0,208,132,0.24), transparent 60%);
-      filter: blur(120px);
-      z-index: 0; pointer-events: none;
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      bottom: -220px; right: -120px;
-      width: 520px; height: 520px;
-      background: radial-gradient(circle, rgba(201,166,70,0.2), transparent 60%);
-      filter: blur(110px);
-      z-index: 0; pointer-events: none;
-    }
-
-    .app-shell {
-      position: relative; z-index: 1;
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      min-height: 100vh;
-    }
-
-    .sidebar {
-      background: rgba(0,0,0,0.75);
-      backdrop-filter: blur(14px);
-      border-right: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 0 40px rgba(0,0,0,0.4);
-      padding: 28px 20px;
-      display: flex; flex-direction: column; gap: 24px;
-    }
-
-    .brand { display: grid; gap: 8px; }
-    .brand h1 { margin: 0; font-size: 2rem; line-height: 1; letter-spacing: -0.04em; }
-    .brand p  { margin: 0; color: var(--muted); font-size: 0.95rem; }
-
-    .nav-section { display: grid; gap: 10px; }
-    .nav-label {
-      color: rgba(255,255,255,0.58); font-size: 0.78rem;
-      text-transform: uppercase; letter-spacing: 0.14em; padding: 0 10px;
-    }
-
-    .sidebar a {
-      display: block; padding: 12px 14px; border-radius: 12px;
-      color: #E0E0E0; text-decoration: none;
-      transition: all 0.2s ease; border: 1px solid transparent;
-    }
-    .sidebar a:hover, .sidebar a.active {
-      background: linear-gradient(90deg, rgba(0,208,132,0.15), rgba(201,166,70,0.15));
-      transform: translateX(4px); border-color: rgba(255,255,255,0.08);
-    }
-
-    .side-card {
-      margin-top: auto;
-      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
-      border: 1px solid var(--border); border-radius: 18px; padding: 18px;
-      box-shadow: var(--shadow); display: grid; gap: 12px;
-    }
-    .side-card h3, .side-card p { margin: 0; }
-    .side-card p { color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
-
-    button {
-      border: none; border-radius: 12px; padding: 12px 14px;
-      cursor: pointer; font: inherit;
-      transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
-    }
-    button:hover { transform: translateY(-1px); }
-    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-
-    .gold-btn { background: linear-gradient(135deg, var(--gold), var(--gold-strong)); color: #0b0b0b; font-weight: 800; }
-    .primary-btn {
-      background: linear-gradient(135deg, #00D084, #00b36f);
-      color: #000000; font-weight: 800; letter-spacing: 0.5px;
-      box-shadow: 0 10px 25px rgba(0,208,132,0.4), 0 0 15px rgba(0,208,132,0.2);
-    }
-    .primary-btn:hover { transform: translateY(-1px) scale(1.03); }
-    .secondary-btn { background: transparent; color: var(--text); border: 1px solid var(--border); }
-    .auth-btn { background: rgba(0,0,0,0.52); color: var(--text); border: 1px solid var(--border); }
-    .plan-btn { width: 100%; font-weight: 800; background: linear-gradient(135deg, var(--gold), var(--gold-strong)); color: #0a0a0a; }
-
-    .main { padding: 28px; display: grid; gap: 22px; }
-
-    .topbar {
-      display: flex; justify-content: space-between;
-      align-items: center; gap: 16px; flex-wrap: wrap;
-    }
-    .headline { display: grid; gap: 8px; }
-    .headline h2 {
-      margin: 0; font-size: clamp(2rem, 4vw, 3.3rem);
-      line-height: 0.96; letter-spacing: -0.05em; max-width: 11ch;
-    }
-    .headline p { margin: 0; color: var(--muted); max-width: 68ch; font-size: 1rem; }
-
-    .top-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-
-    .badge-pill {
-      background: rgba(0,0,0,0.5); border: 1px solid var(--border);
-      border-radius: 999px; padding: 10px 14px; color: var(--muted);
-      display: inline-flex; align-items: center; gap: 8px;
-    }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 16px rgba(0,208,132,0.7); }
-
-    select, input, textarea {
-      width: 100%; background: rgba(10,10,10,0.55); color: var(--text);
-      border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px;
-      outline: none; transition: border-color 0.18s ease, box-shadow 0.18s ease;
-    }
-    select:focus, input:focus, textarea:focus {
-      border-color: rgba(0,163,255,0.55); box-shadow: 0 0 0 3px rgba(0,163,255,0.12);
-    }
-
-    .lang-switcher {
-      display: flex; align-items: center; gap: 10px;
-      background: rgba(0,0,0,0.48); border: 1px solid var(--border);
-      border-radius: 999px; padding: 10px 14px;
-    }
-    .lang-switcher label { color: var(--muted); font-size: 0.92rem; }
-
-    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-    .panel { background: var(--panel); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; box-shadow: var(--shadow); }
-    .kpi-card { padding: 18px; display: grid; gap: 8px; }
-    .kpi-card span  { color: var(--muted); font-size: 0.92rem; }
-    .kpi-card strong { font-size: 1.55rem; }
-    .kpi-card small  { color: var(--cyan); font-size: 0.85rem; }
-
-    .workspace { display: grid; grid-template-columns: 0.94fr 1.06fr; gap: 22px; }
-    .form-panel, .results-panel, .pricing-panel, .detector-panel { padding: 22px; }
-    .section-title    { margin: 0 0 6px; font-size: 1.25rem; letter-spacing: -0.03em; }
-    .section-subtitle { margin: 0 0 18px; color: var(--muted); font-size: 0.95rem; }
-    .form-grid, .result-block, .activity-feed { display: grid; gap: 14px; }
-    .field  { display: grid; gap: 8px; }
-    .field label { font-size: 0.93rem; }
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
-
-    .status { min-height: 24px; color: var(--muted); font-size: 0.93rem; }
-    .status.error   { color: var(--danger); }
-    .status.success { color: var(--cyan); }
-
-    .result-card, .detector-item, .plan-card {
-      background: var(--panel-2); border: 1px solid var(--border);
-      border-radius: 16px; padding: 18px;
-    }
-    .result-card h3, .detector-item h3, .plan-card h3 { margin: 0 0 12px; font-size: 1.02rem; }
-
-    .titles-list { margin: 0; padding-left: 18px; display: grid; gap: 10px; }
-    .script-box  { min-height: 290px; resize: vertical; line-height: 1.56; }
-    .footer-note { margin-top: 18px; color: var(--muted); font-size: 0.9rem; }
-    .link-accent { color: var(--cyan); }
-
-    .chart-box {
-      height: 190px; border-radius: 18px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-      border: 1px solid var(--border); position: relative; overflow: hidden;
-    }
-    .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-
-    .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    .plan-card.featured {
-      border-color: rgba(0,208,132,0.35); box-shadow: 0 14px 40px rgba(0,208,132,0.14);
-      transform: translateY(-4px);
-    }
-    .plan-price { font-size: 2rem; font-weight: 800; margin-bottom: 12px; }
-    .plan-list  { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 10px; color: var(--muted); }
-
-    .detector-controls {
-      display: grid; grid-template-columns: 1fr 180px 160px auto;
-      gap: 12px; margin-bottom: 18px;
-    }
-    .detector-grid { display: grid; gap: 12px; }
-    .detector-meta { display: flex; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
-    .score-pill {
-      display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 999px; padding: 8px 12px;
-      background: rgba(0,208,132,0.14); color: var(--success);
-      font-weight: 700; border: 1px solid rgba(0,208,132,0.18);
-    }
-
-    /* ── VIDEO DOWNLOAD BLOCK ── */
-    .video-download-block {
-      display: none;
-      background: rgba(0,208,132,0.08);
-      border: 1px solid rgba(0,208,132,0.3);
-      border-radius: 16px;
-      padding: 18px;
-      gap: 14px;
-      flex-direction: column;
-    }
-    .video-download-block.show { display: flex; }
-    .video-download-block video { width: 100%; border-radius: 10px; max-height: 340px; background: #000; }
-    .video-download-block a {
-      display: inline-block;
-      background: linear-gradient(135deg, var(--emerald), var(--emerald-dark));
-      color: #000; font-weight: 800; padding: 12px 20px;
-      border-radius: 12px; text-decoration: none; text-align: center;
-    }
-    .video-download-block a:hover { opacity: 0.88; }
-
-    .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-      display: none; align-items: center; justify-content: center;
-      z-index: 20; padding: 20px;
-    }
-    .modal-overlay.open { display: flex; }
-    .modal {
-      width: min(460px, 100%); background: rgba(0,0,0,0.86);
-      border: 1px solid var(--border); border-radius: 22px;
-      box-shadow: var(--shadow); padding: 24px; display: grid; gap: 14px;
-    }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-    .close-btn { width: 40px; height: 40px; border-radius: 999px; background: transparent; color: var(--text); border: 1px solid var(--border); }
-
-    .user-badge { display: none; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 999px; background: rgba(0,0,0,0.48); border: 1px solid var(--border); }
-    .user-badge.show { display: inline-flex; }
-
-    @media (max-width: 1180px) {
-      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-      .workspace { grid-template-columns: 1fr; }
-      .pricing-grid { grid-template-columns: 1fr; }
-      .detector-controls { grid-template-columns: 1fr 1fr; }
-    }
-    @media (max-width: 980px) {
-      .app-shell { grid-template-columns: 1fr; }
-      .sidebar { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); }
-    }
-    @media (max-width: 720px) {
-      .main { padding: 18px; }
-      .kpi-grid, .mini-grid { grid-template-columns: 1fr; }
-      .detector-controls { grid-template-columns: 1fr; }
-      .headline h2 { max-width: none; }
-    }
+    body::after { content:""; position:fixed; top:-180px; left:-180px; width:620px; height:620px; background:radial-gradient(circle,rgba(0,208,132,0.24),transparent 60%); filter:blur(120px); z-index:0; pointer-events:none; }
+    body::before { content:""; position:fixed; bottom:-220px; right:-120px; width:520px; height:520px; background:radial-gradient(circle,rgba(201,166,70,0.2),transparent 60%); filter:blur(110px); z-index:0; pointer-events:none; }
+    .app-shell { position:relative; z-index:1; display:grid; grid-template-columns:280px 1fr; min-height:100vh; }
+    .sidebar { background:rgba(0,0,0,0.75); backdrop-filter:blur(14px); border-right:1px solid rgba(255,255,255,0.08); box-shadow:0 0 40px rgba(0,0,0,0.4); padding:28px 20px; display:flex; flex-direction:column; gap:24px; }
+    .brand { display:grid; gap:8px; }
+    .brand h1 { margin:0; font-size:2rem; line-height:1; letter-spacing:-0.04em; }
+    .brand p { margin:0; color:var(--muted); font-size:0.95rem; }
+    .nav-section { display:grid; gap:10px; }
+    .nav-label { color:rgba(255,255,255,0.58); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.14em; padding:0 10px; }
+    .sidebar a { display:block; padding:12px 14px; border-radius:12px; color:#E0E0E0; text-decoration:none; transition:all 0.2s ease; border:1px solid transparent; }
+    .sidebar a:hover, .sidebar a.active { background:linear-gradient(90deg,rgba(0,208,132,0.15),rgba(201,166,70,0.15)); transform:translateX(4px); border-color:rgba(255,255,255,0.08); }
+    .side-card { margin-top:auto; background:linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02)); border:1px solid var(--border); border-radius:18px; padding:18px; box-shadow:var(--shadow); display:grid; gap:12px; }
+    .side-card h3, .side-card p { margin:0; }
+    .side-card p { color:var(--muted); font-size:0.92rem; line-height:1.5; }
+    button { border:none; border-radius:12px; padding:12px 14px; cursor:pointer; font:inherit; transition:transform 0.15s ease, opacity 0.15s ease; }
+    button:hover { transform:translateY(-1px); }
+    button:disabled { opacity:0.6; cursor:not-allowed; transform:none; }
+    .gold-btn { background:linear-gradient(135deg,var(--gold),var(--gold-strong)); color:#0b0b0b; font-weight:800; }
+    .primary-btn { background:linear-gradient(135deg,#00D084,#00b36f); color:#000; font-weight:800; letter-spacing:0.5px; box-shadow:0 10px 25px rgba(0,208,132,0.4); }
+    .flux-btn { background:linear-gradient(135deg,#7c3aed,#5b21b6); color:#fff; font-weight:800; }
+    .fish-btn { background:linear-gradient(135deg,#0ea5e9,#0369a1); color:#fff; font-weight:800; }
+    .wan-btn { background:linear-gradient(135deg,var(--gold),var(--gold-strong)); color:#000; font-weight:800; }
+    .secondary-btn { background:transparent; color:var(--text); border:1px solid var(--border); }
+    .auth-btn { background:rgba(0,0,0,0.52); color:var(--text); border:1px solid var(--border); }
+    .plan-btn { width:100%; font-weight:800; background:linear-gradient(135deg,var(--gold),var(--gold-strong)); color:#0a0a0a; }
+    .main { padding:28px; display:grid; gap:22px; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
+    .headline { display:grid; gap:8px; }
+    .headline h2 { margin:0; font-size:clamp(2rem,4vw,3.3rem); line-height:0.96; letter-spacing:-0.05em; max-width:11ch; }
+    .headline p { margin:0; color:var(--muted); max-width:68ch; font-size:1rem; }
+    .top-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .badge-pill { background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:999px; padding:10px 14px; color:var(--muted); display:inline-flex; align-items:center; gap:8px; }
+    .dot { width:10px; height:10px; border-radius:50%; background:var(--emerald); box-shadow:0 0 16px rgba(0,208,132,0.7); }
+    select, input, textarea { width:100%; background:rgba(10,10,10,0.55); color:var(--text); border:1px solid var(--border); border-radius:14px; padding:13px 14px; outline:none; transition:border-color 0.18s ease; }
+    select:focus, input:focus, textarea:focus { border-color:rgba(0,163,255,0.55); box-shadow:0 0 0 3px rgba(0,163,255,0.12); }
+    .lang-switcher { display:flex; align-items:center; gap:10px; background:rgba(0,0,0,0.48); border:1px solid var(--border); border-radius:999px; padding:10px 14px; }
+    .lang-switcher label { color:var(--muted); font-size:0.92rem; }
+    .kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+    .panel { background:var(--panel); backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.08); border-radius:18px; box-shadow:var(--shadow); }
+    .kpi-card { padding:18px; display:grid; gap:8px; }
+    .kpi-card span { color:var(--muted); font-size:0.92rem; }
+    .kpi-card strong { font-size:1.55rem; }
+    .kpi-card small { color:var(--cyan); font-size:0.85rem; }
+    .workspace { display:grid; grid-template-columns:0.94fr 1.06fr; gap:22px; }
+    .form-panel, .results-panel, .pricing-panel, .detector-panel { padding:22px; }
+    .section-title { margin:0 0 6px; font-size:1.25rem; letter-spacing:-0.03em; }
+    .section-subtitle { margin:0 0 18px; color:var(--muted); font-size:0.95rem; }
+    .form-grid, .result-block, .activity-feed { display:grid; gap:14px; }
+    .field { display:grid; gap:8px; }
+    .field label { font-size:0.93rem; }
+    .actions { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+    .status { min-height:24px; color:var(--muted); font-size:0.93rem; }
+    .status.error { color:var(--danger); }
+    .status.success { color:var(--cyan); }
+    .result-card, .detector-item, .plan-card { background:var(--panel-2); border:1px solid var(--border); border-radius:16px; padding:18px; }
+    .result-card h3, .detector-item h3, .plan-card h3 { margin:0 0 12px; font-size:1.02rem; }
+    .titles-list { margin:0; padding-left:18px; display:grid; gap:10px; }
+    .script-box { min-height:200px; resize:vertical; line-height:1.56; }
+    .footer-note { margin-top:18px; color:var(--muted); font-size:0.9rem; }
+    .link-accent { color:var(--cyan); }
+    .chart-box { height:190px; border-radius:18px; background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01)); border:1px solid var(--border); position:relative; overflow:hidden; }
+    .mini-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+    .pricing-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+    .plan-card.featured { border-color:rgba(0,208,132,0.35); box-shadow:0 14px 40px rgba(0,208,132,0.14); transform:translateY(-4px); }
+    .plan-price { font-size:2rem; font-weight:800; margin-bottom:12px; }
+    .plan-list { list-style:none; padding:0; margin:0 0 18px; display:grid; gap:10px; color:var(--muted); }
+    .detector-controls { display:grid; grid-template-columns:1fr 180px 160px auto; gap:12px; margin-bottom:18px; }
+    .detector-grid { display:grid; gap:12px; }
+    .detector-meta { display:flex; gap:10px; flex-wrap:wrap; color:var(--muted); font-size:0.9rem; margin-bottom:10px; }
+    /* Pipeline steps */
+    .pipeline-steps { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+    .pipeline-step { background:var(--panel-2); border:1px solid var(--border); border-radius:14px; padding:14px; display:grid; gap:6px; text-align:center; }
+    .pipeline-step.active { border-color:var(--emerald); box-shadow:0 0 20px rgba(0,208,132,0.15); }
+    .pipeline-step.done { border-color:var(--gold); }
+    .step-icon { font-size:1.6rem; }
+    .step-label { font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; }
+    .step-status { font-size:0.82rem; font-weight:700; }
+    /* Image preview */
+    .flux-image-preview { display:none; border:1px solid rgba(124,58,237,0.4); background:rgba(124,58,237,0.06); border-radius:14px; padding:14px; gap:12px; flex-direction:column; }
+    .flux-image-preview.show { display:flex; }
+    .flux-image-preview img { width:100%; border-radius:10px; max-height:280px; object-fit:contain; background:#000; }
+    /* Video blocks */
+    .video-download-block { display:none; background:rgba(0,208,132,0.08); border:1px solid rgba(0,208,132,0.3); border-radius:16px; padding:18px; gap:14px; flex-direction:column; }
+    .video-download-block.show { display:flex; }
+    .video-download-block video { width:100%; border-radius:10px; max-height:340px; background:#000; }
+    .video-download-block a { display:inline-block; background:linear-gradient(135deg,var(--emerald),var(--emerald-dark)); color:#000; font-weight:800; padding:12px 20px; border-radius:12px; text-decoration:none; text-align:center; }
+    .wan-video-block { display:none; background:rgba(201,166,70,0.08); border:1px solid rgba(201,166,70,0.3); border-radius:16px; padding:18px; gap:14px; flex-direction:column; }
+    .wan-video-block.show { display:flex; }
+    .wan-video-block video { width:100%; border-radius:10px; max-height:340px; background:#000; }
+    .wan-video-block a { display:inline-block; background:linear-gradient(135deg,var(--gold),var(--gold-strong)); color:#000; font-weight:800; padding:12px 20px; border-radius:12px; text-decoration:none; text-align:center; }
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:20; padding:20px; }
+    .modal-overlay.open { display:flex; }
+    .modal { width:min(460px,100%); background:rgba(0,0,0,0.86); border:1px solid var(--border); border-radius:22px; box-shadow:var(--shadow); padding:24px; display:grid; gap:14px; }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .close-btn { width:40px; height:40px; border-radius:999px; background:transparent; color:var(--text); border:1px solid var(--border); }
+    .user-badge { display:none; align-items:center; gap:8px; padding:10px 12px; border-radius:999px; background:rgba(0,0,0,0.48); border:1px solid var(--border); }
+    .user-badge.show { display:inline-flex; }
+    @media (max-width:1180px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } .workspace { grid-template-columns:1fr; } .pricing-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr 1fr; } .pipeline-steps { grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:980px) { .app-shell { grid-template-columns:1fr; } .sidebar { border-right:none; border-bottom:1px solid rgba(255,255,255,0.08); } }
+    @media (max-width:720px) { .main { padding:18px; } .kpi-grid, .mini-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr; } .headline h2 { max-width:none; } .pipeline-steps { grid-template-columns:1fr 1fr; } }
   </style>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <h1>ViralVidTech</h1>
-        <p id="brandSlogan">Turn trends into profitable multilingual content.</p>
-      </div>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><h1>ViralVidTech</h1><p>Turn trends into profitable multilingual content.</p></div>
+    <div class="nav-section">
+      <div class="nav-label">Main</div>
+      <a href="#dashboard" class="active">Dashboard</a>
+      <a href="#generator">Generator</a>
+      <a href="#videoCreation">AI Pipeline</a>
+      <a href="#detector">Viral Detector</a>
+      <a href="#pricing">Pricing</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">System</div>
+      <a href="#overview">Revenue</a>
+      <a href="#login">Login</a>
+    </div>
+    <div class="side-card">
+      <h3>Brand promise</h3>
+      <p>Build faster. Publish smarter. Grow globally with an English-first SaaS your users can switch into their own language.</p>
+      <button class="gold-btn">Upgrade UI</button>
+    </div>
+  </aside>
 
-      <div class="nav-section">
-        <div class="nav-label" id="navMainLabel">Main</div>
-        <a href="#dashboard" class="active" id="navDashboard">Dashboard</a>
-        <a href="#generator" id="navGenerator">Generator</a>
-        <a href="#detector" id="navAnalytics">Viral Detector</a>
-        <a href="#pricing" id="navLibrary">Pricing</a>
+  <main class="main" id="dashboard">
+    <div class="topbar">
+      <div class="headline">
+        <h2>Generate viral titles and scripts in seconds.</h2>
+        <p>Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.</p>
       </div>
-
-      <div class="nav-section">
-        <div class="nav-label" id="navSystemLabel">System</div>
-        <a href="#overview" id="navBilling">Revenue</a>
-        <a href="#login" id="navSettings">Login</a>
-      </div>
-
-      <div class="side-card">
-        <h3 id="sideCardTitle">Brand promise</h3>
-        <p id="sideCardText">Build faster. Publish smarter. Grow globally with an English-first SaaS your users can switch into their own language.</p>
-        <button class="gold-btn" id="sideCardButton">Upgrade UI</button>
-      </div>
-    </aside>
-
-    <main class="main" id="dashboard">
-      <div class="topbar">
-        <div class="headline">
-          <h2 id="headlineTitle">Generate viral titles and scripts in seconds.</h2>
-          <p id="headlineText">Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.</p>
+      <div class="top-actions">
+        <div class="badge-pill"><span class="dot"></span><span>API status</span></div>
+        <div class="user-badge" id="userBadge"><span>👤</span><span id="userBadgeText">Guest</span></div>
+        <button class="auth-btn" id="openLoginBtn">Login</button>
+        <button class="auth-btn" id="logoutBtn" style="display:none;">Logout</button>
+        <div class="lang-switcher">
+          <label for="uiLanguage">Interface language</label>
+          <select id="uiLanguage"><option value="en">English</option><option value="fr">Français</option><option value="es">Español</option><option value="pt">Português</option></select>
         </div>
-        <div class="top-actions">
-          <div class="badge-pill">
-            <span class="dot"></span>
-            <span id="apiStatusLabel">API status</span>
+      </div>
+    </div>
+
+    <section class="kpi-grid">
+      <div class="panel kpi-card"><span>Estimated revenue</span><strong id="kpiRevenue">$0</strong><small>+18.4% this month</small></div>
+      <div class="panel kpi-card"><span>Generated scripts</span><strong id="kpiScripts">0</strong><small>+312 this week</small></div>
+      <div class="panel kpi-card"><span>Viral score alerts</span><strong id="kpiAlerts">0</strong><small>8 trending niches</small></div>
+      <div class="panel kpi-card"><span>Active languages</span><strong>4</strong><small>English-first experience</small></div>
+    </section>
+
+    <!-- GENERATOR -->
+    <section class="workspace" id="generator">
+      <div class="panel form-panel">
+        <h2 class="section-title">Content Generator</h2>
+        <p class="section-subtitle">Use the live API deployed on Render.</p>
+        <div class="form-grid">
+          <div class="field"><label>API base URL</label><input id="apiUrl" type="text" placeholder="https://your-service.onrender.com" /></div>
+          <div class="field"><label>Niche</label><input id="niche" type="text" placeholder="money" /></div>
+          <div class="field">
+            <label>Content language</label>
+            <select id="contentLanguage"><option value="en">English</option><option value="fr">French</option><option value="es">Spanish</option><option value="pt">Portuguese</option></select>
           </div>
-          <div class="user-badge" id="userBadge">
-            <span>👤</span>
-            <span id="userBadgeText">Guest</span>
+          <div class="actions">
+            <button class="primary-btn" id="generateBtn">Generate</button>
+            <button class="secondary-btn" id="copyBtn">Copy script</button>
           </div>
-          <button class="auth-btn" id="openLoginBtn">Login</button>
-          <button class="auth-btn" id="logoutBtn" style="display:none;">Logout</button>
-          <div class="lang-switcher">
-            <label for="uiLanguage" id="uiLanguageLabel">Interface language</label>
-            <select id="uiLanguage">
-              <option value="en">English</option>
-              <option value="fr">Français</option>
-              <option value="es">Español</option>
-              <option value="pt">Português</option>
-            </select>
+          <div class="status" id="status"></div>
+        </div>
+        <p class="footer-note">Tip: paste your Render URL above, without /docs. Example: <span class="link-accent">https://your-service.onrender.com</span></p>
+      </div>
+      <div class="panel results-panel">
+        <h2 class="section-title">Results</h2>
+        <p class="section-subtitle">Your generated titles and script will appear here.</p>
+        <div class="result-block">
+          <div class="result-card"><h3>Viral Titles</h3><ol class="titles-list" id="titlesList"><li>—</li><li>—</li><li>—</li></ol></div>
+          <div class="result-card"><h3>Script</h3><textarea id="scriptOutput" class="script-box" readonly placeholder="Your script will appear here..."></textarea></div>
+          <div class="wan-video-block" id="wanVideoBlock">
+            <strong style="color:var(--gold);">🎬 Wan 2.2 — AI Video Preview</strong>
+            <video id="wanVideoPlayer" controls playsinline></video>
+            <a id="wanVideoDownloadLink" href="#" download="wan_video.mp4">⬇ Download Wan Video</a>
           </div>
         </div>
       </div>
+    </section>
 
-      <section class="kpi-grid">
-        <div class="panel kpi-card">
-          <span id="kpi1Label">Estimated revenue</span>
-          <strong id="kpiRevenue">$0</strong>
-          <small id="kpi1Trend">+18.4% this month</small>
-        </div>
-        <div class="panel kpi-card">
-          <span id="kpi2Label">Generated scripts</span>
-          <strong id="kpiScripts">0</strong>
-          <small id="kpi2Trend">+312 this week</small>
-        </div>
-        <div class="panel kpi-card">
-          <span id="kpi3Label">Viral score alerts</span>
-          <strong id="kpiAlerts">0</strong>
-          <small id="kpi3Trend">8 trending niches</small>
-        </div>
-        <div class="panel kpi-card">
-          <span id="kpi4Label">Active languages</span>
-          <strong id="kpiLanguages">4</strong>
-          <small id="kpi4Trend">English-first experience</small>
-        </div>
-      </section>
+    <!-- AI PIPELINE -->
+    <section class="panel detector-panel" id="videoCreation">
+      <h2 class="section-title">AI Video Pipeline</h2>
+      <p class="section-subtitle">Claude → Wan 2.2 → Fish Audio → FFmpeg</p>
 
-      <section class="workspace" id="generator">
-        <div class="panel form-panel">
-          <h2 class="section-title" id="generatorTitle">Content Generator</h2>
-          <p class="section-subtitle" id="generatorSubtitle">Use the live API deployed on Render.</p>
+      <div class="pipeline-steps">
+        <div class="pipeline-step" id="step1"><div class="step-icon">📝</div><div class="step-label">Step 1</div><div style="font-weight:700;font-size:0.9rem;">Claude</div><div class="step-status" id="step1Status" style="color:var(--muted);">Script</div></div>
+        <div class="pipeline-step" id="step2"><div class="step-icon">🎨</div><div class="step-label">Step 2</div><div style="font-weight:700;font-size:0.9rem;">Flux 2 Pro</div><div class="step-status" id="step2Status" style="color:var(--muted);">Image</div></div>
+        <div class="pipeline-step" id="step3"><div class="step-icon">🎙</div><div class="step-label">Step 3</div><div style="font-weight:700;font-size:0.9rem;">Fish Audio</div><div class="step-status" id="step3Status" style="color:var(--muted);">Voice</div></div>
+        <div class="pipeline-step" id="step4"><div class="step-icon">🎬</div><div class="step-label">Step 4</div><div style="font-weight:700;font-size:0.9rem;">Wan + FFmpeg</div><div class="step-status" id="step4Status" style="color:var(--muted);">Video</div></div>
+      </div>
 
-          <div class="form-grid">
-            <div class="field">
-              <label for="apiUrl" id="apiUrlLabel">API base URL</label>
-              <input id="apiUrl" type="text" placeholder="https://your-service.onrender.com" />
+      <div class="workspace" style="grid-template-columns:0.95fr 1.05fr; gap:18px;">
+        <div class="result-card" style="display:grid; gap:18px;">
+
+          <div style="border-left:3px solid var(--emerald); padding-left:12px;">
+            <strong style="color:var(--emerald);">① Claude — Script</strong>
+            <p style="margin:6px 0 0; color:var(--muted); font-size:0.9rem;">Generate your script above in the Content Generator section, then come back here.</p>
+          </div>
+
+          <div style="border-left:3px solid #7c3aed; padding-left:12px;">
+            <strong style="color:#a78bfa;">② Flux 2 Pro — Image</strong>
+            <div class="field" style="margin-top:10px;">
+              <label>Image prompt</label>
+              <textarea id="fluxPrompt" rows="3" placeholder="A cute smiling apple character with big eyes, cartoon style, colorful background, open mouth ready to speak"></textarea>
             </div>
             <div class="field">
-              <label for="niche" id="nicheLabel">Niche</label>
-              <input id="niche" type="text" placeholder="money" />
+              <label>Image format</label>
+              <select id="fluxImageSize"><option value="portrait_4_3">Portrait 4:3 (recommended)</option><option value="square_hd">Square HD</option><option value="landscape_4_3">Landscape 4:3</option></select>
             </div>
-            <div class="field">
-              <label for="contentLanguage" id="contentLanguageLabel">Content language</label>
-              <select id="contentLanguage">
-                <option value="en">English</option>
-                <option value="fr">French</option>
-                <option value="es">Spanish</option>
-                <option value="pt">Portuguese</option>
+            <div class="actions"><button class="flux-btn" id="generateImageBtn">🎨 Generate Image</button></div>
+            <div class="status" id="imageStatus"></div>
+          </div>
+
+          <div style="border-left:3px solid #0ea5e9; padding-left:12px;">
+            <strong style="color:#38bdf8;">③ Fish Audio — Voice</strong>
+            <div class="field" style="margin-top:10px;">
+              <label>Voice</label>
+              <select id="fishVoiceId">
+                <option value="a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1">Male — English</option>
+                <option value="54a5170264694bfc8e411096a1353246">Female — English</option>
+                <option value="0f6c01e4c6a14f7e9b7a2c5d3e8f9a1b">Male — French</option>
+                <option value="7b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f">Female — French</option>
               </select>
             </div>
-            <div class="actions">
-              <button class="primary-btn" id="generateBtn">Generate</button>
-              <button class="secondary-btn" id="copyBtn">Copy script</button>
-            </div>
-            <div class="status" id="status"></div>
+            <div class="actions"><button class="fish-btn" id="generateVoiceBtn">🎙 Generate Voice</button></div>
+            <div class="field" style="margin-top:8px;"><label>Voice preview</label><audio id="voicePreview" controls style="width:100%;"></audio></div>
+            <div class="status" id="voiceStatus"></div>
           </div>
 
-          <p class="footer-note" id="helpText">Tip: paste your Render URL above, without /docs. Example: <span class="link-accent">https://your-service.onrender.com</span></p>
-        </div>
-
-        <div class="panel results-panel">
-          <h2 class="section-title" id="resultsTitle">Results</h2>
-          <p class="section-subtitle" id="resultsSubtitle">Your generated titles and script will appear here.</p>
-          <div class="result-block">
-            <div class="result-card">
-              <h3 id="titlesHeading">Viral Titles</h3>
-              <ol class="titles-list" id="titlesList"><li>—</li><li>—</li><li>—</li></ol>
+          <div style="border-left:3px solid var(--gold); padding-left:12px;">
+            <strong style="color:var(--gold);">④ FFmpeg — Final Video from Wan</strong>
+            <div class="field" style="margin-top:10px;">
+              <label>Duration</label>
+              <select id="videoDuration"><option value="30">30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select>
             </div>
-            <div class="result-card">
-              <h3 id="scriptHeading">Script</h3>
-              <textarea id="scriptOutput" class="script-box" readonly placeholder="Your script will appear here..."></textarea>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="workspace" id="overview" style="grid-template-columns: 1.08fr 0.92fr;">
-        <div class="panel results-panel">
-          <h2 class="section-title" id="overviewTitle">Performance Overview</h2>
-          <p class="section-subtitle" id="overviewSubtitle">A premium dashboard preview for revenue, growth, and viral momentum.</p>
-          <div class="result-card" style="min-height: 280px; display: grid; gap: 18px; align-content: start;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-              <h3 id="chartTitle" style="margin:0;">Revenue Trend</h3>
-              <span class="badge-pill"><span id="chartBadge">Live preview</span></span>
-            </div>
-            <div class="chart-box">
-              <div style="position:absolute; inset:0; background: linear-gradient(180deg, transparent 0%, rgba(0,163,255,0.12) 100%);"></div>
-              <svg viewBox="0 0 600 190" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true">
-                <polyline fill="none" stroke="rgba(0,163,255,0.95)" stroke-width="4" points="20,150 95,132 170,140 245,96 320,108 395,68 470,78 545,36" />
-                <polyline fill="none" stroke="rgba(0,208,132,0.82)" stroke-width="3" points="20,160 95,150 170,145 245,134 320,126 395,110 470,94 545,72" />
-              </svg>
-            </div>
-            <div class="mini-grid">
-              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
-                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat1Label">Projected MRR</h3>
-                <strong style="font-size:1.35rem;" id="miniStat1Value">$0</strong>
-              </div>
-              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
-                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat2Label">Top Niche</h3>
-                <strong style="font-size:1.35rem;" id="miniStat2Value">—</strong>
-              </div>
-              <div class="result-card" style="padding:14px; background: rgba(255,255,255,0.03);">
-                <h3 style="margin:0 0 6px; font-size:0.95rem;" id="miniStat3Label">Growth Rate</h3>
-                <strong style="font-size:1.35rem;" id="miniStat3Value">0%</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel results-panel">
-          <h2 class="section-title" id="activityTitle">Recent Activity</h2>
-          <p class="section-subtitle" id="activitySubtitle">A clean SaaS-style feed for the next stage of the product.</p>
-          <div class="activity-feed" id="activityFeed">
-            <div class="result-card">
-              <h3 id="activity1Title">Viral script generated</h3>
-              <p style="margin:0; color:var(--muted);" id="activity1Text">A new script was generated for the finance niche in English.</p>
-            </div>
-            <div class="result-card">
-              <h3 id="activity2Title">Trend alert triggered</h3>
-              <p style="margin:0; color:var(--muted);" id="activity2Text">A high-momentum content opportunity was detected in the AI niche.</p>
-            </div>
-            <div class="result-card">
-              <h3 id="activity3Title">Multilingual mode ready</h3>
-              <p style="margin:0; color:var(--muted);" id="activity3Text">Your interface is prepared for English, French, Spanish, and Portuguese.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel detector-panel" id="detector">
-        <h2 class="section-title" id="detectorTitle">Viral Video Detector</h2>
-        <p class="section-subtitle" id="detectorSubtitle">Scan by keyword, niche, and platform to surface high-potential video ideas.</p>
-        <div class="detector-controls">
-          <input id="detectorKeyword" type="text" placeholder="AI money" />
-          <select id="detectorPlatform">
-            <option value="YouTube Shorts">YouTube Shorts</option>
-            <option value="TikTok">TikTok</option>
-            <option value="Instagram Reels">Instagram Reels</option>
-            <option value="Facebook Reels">Facebook Reels</option>
-          </select>
-          <select id="detectorLanguage">
-            <option value="en">English</option>
-            <option value="fr">French</option>
-            <option value="es">Spanish</option>
-            <option value="pt">Portuguese</option>
-          </select>
-          <button class="primary-btn" id="scanBtn">Scan trends</button>
-        </div>
-        <div class="detector-grid" id="detectorResults"></div>
-      </section>
-
-      <!-- ══════════════════════════════════════════════════════════
-           VIDEO CREATION — pipeline FFmpeg (plus Shotstack)
-           ══════════════════════════════════════════════════════════ -->
-      <section class="panel detector-panel" id="videoCreation">
-        <h2 class="section-title" id="videoTitle">Video Creation</h2>
-        <p class="section-subtitle" id="videoSubtitle">Build 30 to 60 second faceless videos from your script with FFmpeg.</p>
-
-        <div class="workspace" style="grid-template-columns: 0.95fr 1.05fr; gap:18px;">
-          <div class="result-card" style="display:grid; gap:14px;">
-
             <div class="field">
-              <label for="videoType" id="videoTypeLabel">Video type</label>
-              <select id="videoType">
-                <option value="faceless-business">Faceless Business</option>
-                <option value="faceless-education">Faceless Education</option>
-                <option value="faceless-motivation">Faceless Motivation</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="videoDuration" id="videoDurationLabel">Duration</label>
-              <select id="videoDuration">
-                <option value="30">30 seconds</option>
-                <option value="45">45 seconds</option>
-                <option value="60">60 seconds</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="videoVoice" id="videoVoiceLabel">Voice</label>
-              <select id="videoVoice">
-                <option value="en-US-Neural2-A">Male - American (Neural)</option>
-                <option value="en-US-Neural2-C">Female - American (Neural)</option>
-                <option value="en-US-Neural2-D">Male - Deep American (Neural)</option>
-                <option value="en-US-Neural2-F">Female - Soft American (Neural)</option>
-                <option value="en-GB-Neural2-A">Female - British (Neural)</option>
-                <option value="en-GB-Neural2-B">Male - British (Neural)</option>
-                <option value="fr-FR-Neural2-A">Female - French (Neural)</option>
-                <option value="fr-FR-Neural2-B">Male - French (Neural)</option>
-              </select>
-              <div class="actions">
-                <button class="primary-btn" id="generateVoiceBtn">Generate Voice</button>
-              </div>
-              <div class="field">
-                <label>Voice preview</label>
-                <audio id="voicePreview" controls style="width:100%;"></audio>
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="musicSelect">Background music</label>
+              <label>Background music</label>
               <select id="musicSelect">
                 <option value="">No music</option>
                 <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option>
@@ -539,810 +274,415 @@
                 <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3">Music 4</option>
               </select>
             </div>
-
             <div class="field">
-              <label for="subtitleStyle" id="subtitleStyleLabel">Subtitle style</label>
-              <select id="subtitleStyle">
-                <option value="bold-center">Bold Center</option>
-                <option value="bottom-clean">Bottom Clean</option>
-                <option value="highlight-words">Highlight Words</option>
-              </select>
+              <label>Subtitle style</label>
+              <select id="subtitleStyle"><option value="bold-center">Bold Center</option><option value="bottom-clean">Bottom Clean</option><option value="highlight-words">Highlight Words</option></select>
             </div>
-
-            <div class="field">
-              <label for="templatePack" id="templatePackLabel">Template pack</label>
-              <select id="templatePack">
-                <option value="money">Money / Business</option>
-                <option value="ai">AI / Tech</option>
-                <option value="motivation">Motivation</option>
-              </select>
-            </div>
-
-            <div class="actions">
-              <button class="primary-btn" id="buildVideoPlanBtn">Build Video Plan</button>
-              <button class="primary-btn" id="createVideoBtn" style="background: linear-gradient(135deg, var(--gold), var(--gold-strong)); color:#000;">Create Video</button>
-            </div>
-
+            <div class="actions"><button class="wan-btn" id="createVideoBtn">🎬 Create Video</button></div>
             <div class="status" id="videoStatus"></div>
           </div>
 
-          <div class="result-card" style="display:grid; gap:14px;">
-            <h3 id="videoWorkflowTitle">Video Workflow Preview</h3>
+        </div>
 
-            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
-              <strong id="videoSpecTitle">Production spec</strong>
-              <p id="videoSpecText" style="margin:8px 0 0; color:var(--muted);">Vertical 9:16 video, 30–60 seconds, faceless structure, FFmpeg rendering pipeline, subtitle-ready.</p>
-            </div>
-
-            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
-              <strong id="scenePlanTitle">Scene plan</strong>
-              <ol id="scenePlanList" class="titles-list">
-                <li>Hook scene</li>
-                <li>Problem / opportunity scene</li>
-                <li>Solution / insight scene</li>
-                <li>CTA scene</li>
-              </ol>
-            </div>
-
-            <div class="result-card" style="background:rgba(255,255,255,0.03); padding:14px;">
-              <strong id="renderQueueTitle">Render queue</strong>
-              <p id="renderQueueText" style="margin:8px 0 0; color:var(--muted);">FFmpeg renders locally on Render.com — no polling needed. Video URL returned instantly.</p>
-            </div>
-
-            <!-- BLOC TÉLÉCHARGEMENT VIDÉO — affiché seulement quand la vidéo est prête -->
-            <div class="video-download-block" id="videoDownloadBlock">
-              <strong style="color:var(--success);">✅ Video ready!</strong>
-              <video id="videoPlayer" controls playsinline></video>
-              <a id="videoDownloadLink" href="#" download="viralvidtech.mp4">⬇ Download Video</a>
-            </div>
+        <div class="result-card" style="display:grid; gap:14px; align-content:start;">
+          <h3>Preview</h3>
+          <div class="flux-image-preview" id="fluxImagePreview">
+            <strong style="color:#a78bfa;">🎨 Flux 2 Pro — Generated Image</strong>
+            <img id="fluxGeneratedImage" src="" alt="Generated character" />
+            <a id="fluxImageDownload" href="#" download="character.jpg" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;font-weight:800;padding:10px 18px;border-radius:12px;text-decoration:none;text-align:center;">⬇ Download Image</a>
+          </div>
+          <div class="video-download-block" id="videoDownloadBlock">
+            <strong style="color:var(--success);">✅ Final Video Ready!</strong>
+            <video id="videoPlayer" controls playsinline></video>
+            <a id="videoDownloadLink" href="#" download="viralvidtech.mp4">⬇ Download Video</a>
+          </div>
+          <div id="previewPlaceholder" class="result-card" style="background:rgba(255,255,255,0.02);padding:24px;text-align:center;color:var(--muted);">
+            <div style="font-size:2.5rem;margin-bottom:12px;">🎬</div>
+            <p style="margin:0;">Your generated image and final video will appear here after each step.</p>
+          </div>
+          <div class="result-card" style="background:rgba(255,255,255,0.03);padding:14px;">
+            <strong>Pipeline</strong>
+            <p style="margin:8px 0 0;color:var(--muted);font-size:0.88rem;">
+              1. Claude generates the script<br>
+              2. Flux 2 Pro creates the character image<br>
+              3. Fish Audio generates the multilingual voice<br>
+              4. FFmpeg assembles the Wan video + Fish voice + music + subtitles
+            </p>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="panel pricing-panel" id="pricing">
-        <h2 class="section-title" id="pricingTitle">Pricing</h2>
-        <p class="section-subtitle" id="pricingSubtitle">Launch with simple plans, then expand as your SaaS grows.</p>
-        <div class="pricing-grid">
-          <div class="plan-card">
-            <h3 id="plan1Name">Starter</h3>
-            <div class="plan-price">$19<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
-            <ul class="plan-list">
-              <li id="plan1f1">50 script generations</li>
-              <li id="plan1f2">Basic viral detector</li>
-              <li id="plan1f3">4 interface languages</li>
-            </ul>
-            <button class="plan-btn" id="plan1Btn">Choose Starter</button>
+    <!-- OVERVIEW -->
+    <section class="workspace" id="overview" style="grid-template-columns:1.08fr 0.92fr;">
+      <div class="panel results-panel">
+        <h2 class="section-title">Performance Overview</h2>
+        <p class="section-subtitle">A premium dashboard preview for revenue, growth, and viral momentum.</p>
+        <div class="result-card" style="min-height:280px;display:grid;gap:18px;align-content:start;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <h3 style="margin:0;">Revenue Trend</h3><span class="badge-pill">Live preview</span>
           </div>
-          <div class="plan-card featured">
-            <h3 id="plan2Name">Pro</h3>
-            <div class="plan-price">$49<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
-            <ul class="plan-list">
-              <li id="plan2f1">Unlimited scripts</li>
-              <li id="plan2f2">Advanced detector</li>
-              <li id="plan2f3">Priority support</li>
-            </ul>
-            <button class="plan-btn" id="plan2Btn">Choose Pro</button>
+          <div class="chart-box">
+            <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 0%,rgba(0,163,255,0.12) 100%);"></div>
+            <svg viewBox="0 0 600 190" width="100%" height="100%" preserveAspectRatio="none" aria-hidden="true">
+              <polyline fill="none" stroke="rgba(0,163,255,0.95)" stroke-width="4" points="20,150 95,132 170,140 245,96 320,108 395,68 470,78 545,36"/>
+              <polyline fill="none" stroke="rgba(0,208,132,0.82)" stroke-width="3" points="20,160 95,150 170,145 245,134 320,126 395,110 470,94 545,72"/>
+            </svg>
           </div>
-          <div class="plan-card">
-            <h3 id="plan3Name">Business</h3>
-            <div class="plan-price">$99<span style="font-size:1rem; color:var(--muted);">/mo</span></div>
-            <ul class="plan-list">
-              <li id="plan3f1">Team seats</li>
-              <li id="plan3f2">Analytics dashboard</li>
-              <li id="plan3f3">Multiplatform workflow</li>
-            </ul>
-            <button class="plan-btn" id="plan3Btn">Choose Business</button>
+          <div class="mini-grid">
+            <div class="result-card" style="padding:14px;background:rgba(255,255,255,0.03);"><h3 style="margin:0 0 6px;font-size:0.95rem;">Projected MRR</h3><strong style="font-size:1.35rem;" id="miniStat1Value">$0</strong></div>
+            <div class="result-card" style="padding:14px;background:rgba(255,255,255,0.03);"><h3 style="margin:0 0 6px;font-size:0.95rem;">Top Niche</h3><strong style="font-size:1.35rem;" id="miniStat2Value">—</strong></div>
+            <div class="result-card" style="padding:14px;background:rgba(255,255,255,0.03);"><h3 style="margin:0 0 6px;font-size:0.95rem;">Growth Rate</h3><strong style="font-size:1.35rem;" id="miniStat3Value">0%</strong></div>
           </div>
         </div>
-      </section>
-    </main>
-  </div>
-
-  <div class="modal-overlay" id="authModal">
-    <div class="modal" id="login">
-      <div class="modal-header">
-        <div>
-          <h2 id="loginTitle" style="margin:0;">User Login</h2>
-          <p id="loginSubtitle" style="margin:6px 0 0; color:var(--muted);">Create a local demo account to unlock the dashboard experience.</p>
+      </div>
+      <div class="panel results-panel">
+        <h2 class="section-title">Recent Activity</h2>
+        <p class="section-subtitle">A clean SaaS-style feed for the next stage of the product.</p>
+        <div class="activity-feed" id="activityFeed">
+          <div class="result-card"><h3>Viral script generated</h3><p style="margin:0;color:var(--muted);">A new script was generated for the finance niche in English.</p></div>
+          <div class="result-card"><h3>Trend alert triggered</h3><p style="margin:0;color:var(--muted);">A high-momentum content opportunity was detected in the AI niche.</p></div>
+          <div class="result-card"><h3>Multilingual mode ready</h3><p style="margin:0;color:var(--muted);">Your interface is prepared for English, French, Spanish, and Portuguese.</p></div>
         </div>
-        <button class="close-btn" id="closeModalBtn">✕</button>
       </div>
-      <div class="field">
-        <label for="authName" id="authNameLabel">Name</label>
-        <input id="authName" type="text" placeholder="John Creator" />
+    </section>
+
+    <!-- DETECTOR -->
+    <section class="panel detector-panel" id="detector">
+      <h2 class="section-title">Viral Video Detector</h2>
+      <p class="section-subtitle">Scan by keyword, niche, and platform to surface high-potential video ideas.</p>
+      <div class="detector-controls">
+        <input id="detectorKeyword" type="text" placeholder="AI money"/>
+        <select id="detectorPlatform"><option value="YouTube Shorts">YouTube Shorts</option><option value="TikTok">TikTok</option><option value="Instagram Reels">Instagram Reels</option><option value="Facebook Reels">Facebook Reels</option></select>
+        <select id="detectorLanguage"><option value="en">English</option><option value="fr">French</option><option value="es">Spanish</option><option value="pt">Portuguese</option></select>
+        <button class="primary-btn" id="scanBtn">Scan trends</button>
       </div>
-      <div class="field">
-        <label for="authEmail" id="authEmailLabel">Email</label>
-        <input id="authEmail" type="email" placeholder="john@example.com" />
+      <div class="detector-grid" id="detectorResults"></div>
+    </section>
+
+    <!-- PRICING -->
+    <section class="panel pricing-panel" id="pricing">
+      <h2 class="section-title">Pricing</h2>
+      <p class="section-subtitle">Launch with simple plans, then expand as your SaaS grows.</p>
+      <div class="pricing-grid">
+        <div class="plan-card"><h3>Starter</h3><div class="plan-price">$19<span style="font-size:1rem;color:var(--muted);">/mo</span></div><ul class="plan-list"><li>50 script generations</li><li>Basic viral detector</li><li>4 interface languages</li></ul><button class="plan-btn" id="plan1Btn">Choose Starter</button></div>
+        <div class="plan-card featured"><h3>Pro</h3><div class="plan-price">$49<span style="font-size:1rem;color:var(--muted);">/mo</span></div><ul class="plan-list"><li>Unlimited scripts</li><li>Advanced detector</li><li>Priority support</li></ul><button class="plan-btn" id="plan2Btn">Choose Pro</button></div>
+        <div class="plan-card"><h3>Business</h3><div class="plan-price">$99<span style="font-size:1rem;color:var(--muted);">/mo</span></div><ul class="plan-list"><li>Team seats</li><li>Analytics dashboard</li><li>Multiplatform workflow</li></ul><button class="plan-btn" id="plan3Btn">Choose Business</button></div>
       </div>
-      <div class="field">
-        <label for="authPassword" id="authPasswordLabel">Password</label>
-        <input id="authPassword" type="password" placeholder="••••••••" />
-      </div>
-      <div class="actions">
-        <button class="primary-btn" id="loginBtn">Login / Register</button>
-      </div>
-      <div class="status" id="authStatus"></div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-overlay" id="authModal">
+  <div class="modal" id="login">
+    <div class="modal-header">
+      <div><h2 style="margin:0;">User Login</h2><p style="margin:6px 0 0;color:var(--muted);">Create a local demo account to unlock the dashboard experience.</p></div>
+      <button class="close-btn" id="closeModalBtn">✕</button>
     </div>
+    <div class="field"><label>Name</label><input id="authName" type="text" placeholder="John Creator"/></div>
+    <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="john@example.com"/></div>
+    <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="••••••••"/></div>
+    <div class="actions"><button class="primary-btn" id="loginBtn">Login / Register</button></div>
+    <div class="status" id="authStatus"></div>
   </div>
+</div>
 
-  <script>
-  const translations = {
-    en: {
-      brandSlogan: 'Turn trends into profitable multilingual content.',
-      navMainLabel: 'Main', navDashboard: 'Dashboard', navGenerator: 'Generator', navAnalytics: 'Viral Detector', navLibrary: 'Pricing',
-      navSystemLabel: 'System', navBilling: 'Revenue', navSettings: 'Login',
-      sideCardTitle: 'Brand promise', sideCardText: 'Build faster. Publish smarter. Grow globally with an English-first SaaS your users can switch into their own language.', sideCardButton: 'Upgrade UI',
-      headlineTitle: 'Generate viral titles and scripts in seconds.', headlineText: 'Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.',
-      apiStatusLabel: 'API status', uiLanguageLabel: 'Interface language',
-      kpi1Label: 'Estimated revenue', kpi1Trend: '+18.4% this month', kpi2Label: 'Generated scripts', kpi2Trend: '+312 this week', kpi3Label: 'Viral score alerts', kpi3Trend: 'Live signal count', kpi4Label: 'Active languages', kpi4Trend: 'English-first experience',
-      generatorTitle: 'Content Generator', generatorSubtitle: 'Use the live API deployed on Render.', apiUrlLabel: 'API base URL', nicheLabel: 'Niche', nichePlaceholder: 'money', contentLanguageLabel: 'Content language', generateBtn: 'Generate', copyBtn: 'Copy script',
-      helpPrefix: 'Tip: paste your Render URL above, without /docs. Example: ',
-      resultsTitle: 'Results', resultsSubtitle: 'Your generated titles and script will appear here.', titlesHeading: 'Viral Titles', scriptHeading: 'Script', scriptPlaceholder: 'Your script will appear here...',
-      overviewTitle: 'Performance Overview', overviewSubtitle: 'A premium dashboard preview for revenue, growth, and viral momentum.', chartTitle: 'Revenue Trend', chartBadge: 'Live preview', miniStat1Label: 'Projected MRR', miniStat2Label: 'Top Niche', miniStat3Label: 'Growth Rate',
-      activityTitle: 'Recent Activity', activitySubtitle: 'A clean SaaS-style feed for the next stage of the product.', activity1Title: 'Viral script generated', activity1Text: 'A new script was generated for the finance niche in English.', activity2Title: 'Trend alert triggered', activity2Text: 'A high-momentum content opportunity was detected in the AI niche.', activity3Title: 'Multilingual mode ready', activity3Text: 'Your interface is prepared for English, French, Spanish, and Portuguese.',
-      detectorTitle: 'Viral Video Detector', detectorSubtitle: 'Scan by keyword, niche, and platform to surface high-potential video ideas.', detectorKeywordPlaceholder: 'AI money', scanBtn: 'Scan trends',
-      videoTitle: 'Video Creation', videoSubtitle: 'Build 30 to 60 second faceless videos from your script with FFmpeg.', videoTypeLabel: 'Video type', videoDurationLabel: 'Duration', videoVoiceLabel: 'Voice style', subtitleStyleLabel: 'Subtitle style', templatePackLabel: 'Template pack',
-      buildVideoPlanBtn: 'Build Video Plan', videoWorkflowTitle: 'Video Workflow Preview', videoSpecTitle: 'Production spec',
-      videoSpecText: 'Vertical 9:16 video, 30–60 seconds, faceless structure, FFmpeg rendering pipeline, subtitle-ready.',
-      scenePlanTitle: 'Scene plan', renderQueueTitle: 'Render queue',
-      renderQueueText: 'FFmpeg renders locally on Render.com — no polling needed. Video URL returned instantly.',
-      pricingTitle: 'Pricing', pricingSubtitle: 'Launch with simple plans, then expand as your SaaS grows.',
-      plan1Name: 'Starter', plan1f1: '50 script generations', plan1f2: 'Basic viral detector', plan1f3: '4 interface languages', plan1Btn: 'Choose Starter',
-      plan2Name: 'Pro', plan2f1: 'Unlimited scripts', plan2f2: 'Advanced detector', plan2f3: 'Priority support', plan2Btn: 'Choose Pro',
-      plan3Name: 'Business', plan3f1: 'Team seats', plan3f2: 'Analytics dashboard', plan3f3: 'Multiplatform workflow', plan3Btn: 'Choose Business',
-      loginTitle: 'User Login', loginSubtitle: 'Create a local demo account to unlock the dashboard experience.', authNameLabel: 'Name', authEmailLabel: 'Email', authPasswordLabel: 'Password', loginBtn: 'Login / Register',
-      authMissing: 'Please fill in all login fields.', authSuccess: 'You are now logged in.', authLogout: 'You have been logged out.',
-      statusReady: 'Ready.', statusGenerating: 'Generating content...', statusMissingUrl: 'Please enter your Render API URL.', statusMissingNiche: 'Please enter a niche.', statusSuccess: 'Content generated successfully.', statusCopyEmpty: 'There is no script to copy yet.', statusCopied: 'Script copied.', statusError: 'Something went wrong. Check your API URL and try again.'
-    },
-    fr: {
-      brandSlogan: 'Transformez les tendances en contenu multilingue rentable.',
-      navMainLabel: 'Principal', navDashboard: 'Tableau de bord', navGenerator: 'Générateur', navAnalytics: 'Détecteur viral', navLibrary: 'Tarifs',
-      navSystemLabel: 'Système', navBilling: 'Revenus', navSettings: 'Connexion',
-      sideCardTitle: 'Promesse de marque', sideCardText: 'Construisez plus vite. Publiez plus intelligemment.', sideCardButton: 'Améliorer l\'UI',
-      headlineTitle: 'Generate viral titles and scripts in seconds.', headlineText: 'Start with a niche, choose a content language, and instantly get viral-ready title ideas plus a draft script.',
-      apiStatusLabel: 'Statut API', uiLanguageLabel: 'Langue de l\'interface',
-      kpi1Label: 'Revenu estimé', kpi1Trend: '+18,4 % ce mois-ci', kpi2Label: 'Scripts générés', kpi2Trend: '+312 cette semaine', kpi3Label: 'Alertes score viral', kpi3Trend: 'Nombre de signaux en direct', kpi4Label: 'Langues actives', kpi4Trend: 'Expérience d\'abord en anglais',
-      generatorTitle: 'Générateur de contenu', generatorSubtitle: 'Utilisez l\'API en ligne déployée sur Render.', apiUrlLabel: 'URL de base de l\'API', nicheLabel: 'Niche', nichePlaceholder: 'argent', contentLanguageLabel: 'Langue du contenu', generateBtn: 'Générer', copyBtn: 'Copier le script',
-      helpPrefix: 'Conseil : colle ton URL Render ci-dessus, sans /docs. Exemple : ',
-      resultsTitle: 'Résultats', resultsSubtitle: 'Tes titres et ton script générés apparaîtront ici.', titlesHeading: 'Titres viraux', scriptHeading: 'Script', scriptPlaceholder: 'Ton script apparaîtra ici...',
-      overviewTitle: 'Vue d\'ensemble des performances', overviewSubtitle: 'Un aperçu premium du tableau de bord.', chartTitle: 'Tendance des revenus', chartBadge: 'Aperçu en direct', miniStat1Label: 'MRR projeté', miniStat2Label: 'Meilleure niche', miniStat3Label: 'Taux de croissance',
-      activityTitle: 'Activité récente', activitySubtitle: 'Un flux propre de style SaaS.', activity1Title: 'Script viral généré', activity1Text: 'Un nouveau script a été généré pour la niche finance en anglais.', activity2Title: 'Alerte de tendance déclenchée', activity2Text: 'Une opportunité détectée dans la niche IA.', activity3Title: 'Mode multilingue prêt', activity3Text: 'Interface prête pour 4 langues.',
-      detectorTitle: 'Détecteur de vidéos virales', detectorSubtitle: 'Scanne par mot-clé, niche et plateforme.', detectorKeywordPlaceholder: 'IA argent', scanBtn: 'Scanner les tendances',
-      videoTitle: 'Création vidéo', videoSubtitle: 'Construis des vidéos faceless avec FFmpeg.', videoTypeLabel: 'Type de vidéo', videoDurationLabel: 'Durée', videoVoiceLabel: 'Style de voix', subtitleStyleLabel: 'Style de sous-titres', templatePackLabel: 'Pack de template',
-      buildVideoPlanBtn: 'Construire le plan vidéo', videoWorkflowTitle: 'Aperçu du workflow vidéo', videoSpecTitle: 'Spécification de production',
-      videoSpecText: 'Vidéo verticale 9:16, 30–60 secondes, structure faceless, pipeline FFmpeg, sous-titres prêts.',
-      scenePlanTitle: 'Plan des scènes', renderQueueTitle: 'File de rendu',
-      renderQueueText: 'FFmpeg rend localement sur Render.com — pas de polling. URL vidéo retournée instantanément.',
-      pricingTitle: 'Tarifs', pricingSubtitle: 'Lance avec des plans simples, puis élargis ton SaaS.',
-      plan1Name: 'Starter', plan1f1: '50 générations de scripts', plan1f2: 'Détecteur viral basique', plan1f3: '4 langues d\'interface', plan1Btn: 'Choisir Starter',
-      plan2Name: 'Pro', plan2f1: 'Scripts illimités', plan2f2: 'Détecteur avancé', plan2f3: 'Support prioritaire', plan2Btn: 'Choisir Pro',
-      plan3Name: 'Business', plan3f1: 'Comptes équipe', plan3f2: 'Dashboard analytique', plan3f3: 'Workflow multiplateforme', plan3Btn: 'Choisir Business',
-      loginTitle: 'Connexion utilisateur', loginSubtitle: 'Crée un compte local de démonstration.', authNameLabel: 'Nom', authEmailLabel: 'Email', authPasswordLabel: 'Mot de passe', loginBtn: 'Connexion / Inscription',
-      authMissing: 'Merci de remplir tous les champs.', authSuccess: 'Tu es maintenant connecté.', authLogout: 'Tu as été déconnecté.',
-      statusReady: 'Prêt.', statusGenerating: 'Génération en cours...', statusMissingUrl: 'Entre l\'URL de ton API Render.', statusMissingNiche: 'Entre une niche.', statusSuccess: 'Contenu généré avec succès.', statusCopyEmpty: 'Il n\'y a pas encore de script à copier.', statusCopied: 'Script copié.', statusError: 'Une erreur est survenue. Vérifie l\'URL de l\'API.'
+<script>
+function normalizeApiUrl(u){return u.trim().replace(/\/$/,'').replace(/\/docs$/,'');}
+function getState(){try{return JSON.parse(localStorage.getItem('viral_dashboard_state')||'{}');}catch(e){return{};}}
+function saveState(s){localStorage.setItem('viral_dashboard_state',JSON.stringify(s));}
+function updateDashboard(){
+  const s=getState();
+  document.getElementById('kpiRevenue').textContent=`$${Number(s.revenue)||0}`;
+  document.getElementById('kpiScripts').textContent=String(Number(s.scripts)||0);
+  document.getElementById('kpiAlerts').textContent=String(Number(s.alerts)||0);
+  document.getElementById('miniStat1Value').textContent=`$${Number(s.revenue)||0}`;
+  document.getElementById('miniStat2Value').textContent=s.topNiche||'—';
+  document.getElementById('miniStat3Value').textContent=`${Number(s.growth)||0}%`;
+}
+function addActivity(title,text){
+  const feed=document.getElementById('activityFeed');
+  const card=document.createElement('div');card.className='result-card';
+  const h3=document.createElement('h3');h3.textContent=title;
+  const p=document.createElement('p');p.style.cssText='margin:0;color:var(--muted);';p.textContent=text;
+  card.appendChild(h3);card.appendChild(p);feed.prepend(card);
+  while(feed.children.length>5)feed.removeChild(feed.lastChild);
+}
+function setStatus(elId,msg,state){
+  const el=document.getElementById(elId);if(!el)return;
+  el.textContent=msg;el.className='status';
+  if(state==='error')el.classList.add('error');
+  if(state==='success')el.classList.add('success');
+}
+function markStep(n,done){
+  const el=document.getElementById(`step${n}`);const st=document.getElementById(`step${n}Status`);
+  if(!el||!st)return;
+  el.classList.remove('active','done');
+  if(done){el.classList.add('done');st.style.color='var(--gold)';st.textContent='✅ Done';}
+  else{el.classList.add('active');st.style.color='var(--emerald)';st.textContent='⏳ Running...';}
+}
+
+const apiUrlInput=document.getElementById('apiUrl');
+const nicheInput=document.getElementById('niche');
+const scriptOutput=document.getElementById('scriptOutput');
+const titlesList=document.getElementById('titlesList');
+const voicePreview=document.getElementById('voicePreview');
+const videoDuration=document.getElementById('videoDuration');
+const wanVideoBlock=document.getElementById('wanVideoBlock');
+const wanVideoPlayer=document.getElementById('wanVideoPlayer');
+const wanVideoDownloadLink=document.getElementById('wanVideoDownloadLink');
+const fluxImagePreview=document.getElementById('fluxImagePreview');
+const fluxGeneratedImage=document.getElementById('fluxGeneratedImage');
+const fluxImageDownload=document.getElementById('fluxImageDownload');
+const previewPlaceholder=document.getElementById('previewPlaceholder');
+const videoDownloadBlock=document.getElementById('videoDownloadBlock');
+const videoPlayer=document.getElementById('videoPlayer');
+const videoDownloadLink=document.getElementById('videoDownloadLink');
+const authModal=document.getElementById('authModal');
+const userBadge=document.getElementById('userBadge');
+const userBadgeText=document.getElementById('userBadgeText');
+
+// STEP 1 - Claude
+async function generateContent(){
+  const apiUrl=normalizeApiUrl(apiUrlInput.value);
+  const niche=nicheInput.value.trim();
+  if(!apiUrl)return setStatus('status','Enter your Render API URL first.','error');
+  if(!niche)return setStatus('status','Enter a niche first.','error');
+  document.getElementById('generateBtn').disabled=true;
+  markStep(1,false);
+  setStatus('status','⏳ Claude is generating your script...','ready');
+  wanVideoBlock.classList.remove('show');
+  window._wanVideoUrl='';
+  try{
+    const res=await fetch(`${apiUrl}/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({niche,langue:document.getElementById('contentLanguage').value,duration:parseInt(videoDuration.value)||30})});
+    const ct=res.headers.get('content-type')||'';
+    if(!ct.includes('application/json'))throw new Error('Server waking up — please retry in a few seconds.');
+    const data=await res.json();
+    if(!res.ok||data.error)throw new Error(data.error||`HTTP ${res.status}`);
+    titlesList.innerHTML='';
+    (data.titles||[]).forEach(t=>{const li=document.createElement('li');li.textContent=t;titlesList.appendChild(li);});
+    scriptOutput.value=data.script||'';
+    const wanVideo=data.wan_video||'';
+    window._wanVideoUrl=wanVideo;
+    if(wanVideo){
+      wanVideoPlayer.src=wanVideo;
+      wanVideoDownloadLink.href=wanVideo;
+      wanVideoBlock.classList.add('show');
+      wanVideoPlayer.load();
+      addActivity('Wan 2.2 video ready','An AI-animated video was generated by Wan 2.2.');
+    } else {
+      setStatus('status','✅ Script generated, but Wan video was not returned. Check WAN_API_URL and RunPod.','error');
     }
+    for(let i=1;i<=8;i++)window[`_scene${i}`]=data[`scene${i}`]||'';
+    window._nb_scenes=data.nb_scenes||4;window._duration=data.duration||30;
+    const fp=document.getElementById('fluxPrompt');
+    if(fp&&!fp.value.trim())fp.value=`A cute cartoon character representing "${niche}", expressive big eyes, open mouth smiling, vibrant colors, clean background, studio lighting`;
+    markStep(1,true);
+    setStatus('status','✅ Script + Wan video generated! Now generate your voice with Fish Audio.','success');
+    const s=getState();s.scripts=(Number(s.scripts)||0)+1;s.revenue=(Number(s.revenue)||0)+19;s.topNiche=niche;s.growth=Math.min(99,(Number(s.growth)||0)+7);saveState(s);updateDashboard();
+    addActivity('Script generated',`Claude generated a script for "${niche}".`);
+    document.getElementById('videoCreation').scrollIntoView({behavior:'smooth'});
+  }catch(e){setStatus('status',e.message,'error');document.getElementById('step1Status').textContent='❌ Failed';document.getElementById('step1Status').style.color='var(--danger)';}
+  finally{document.getElementById('generateBtn').disabled=false;}
+}
+
+// STEP 2 - Flux 2 Pro
+async function generateImage(){
+  const apiUrl=normalizeApiUrl(apiUrlInput.value);
+  const prompt=document.getElementById('fluxPrompt').value.trim();
+  if(!apiUrl)return setStatus('imageStatus','Enter your API URL first.','error');
+  if(!prompt)return setStatus('imageStatus','Enter an image prompt first.','error');
+  document.getElementById('generateImageBtn').disabled=true;
+  markStep(2,false);setStatus('imageStatus','⏳ Flux 2 Pro is generating your image...','ready');
+  try{
+    const res=await fetch(`${apiUrl}/generate-image`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,image_size:document.getElementById('fluxImageSize').value,num_inference_steps:28,guidance_scale:3.5,num_images:1})});
+    const ct=res.headers.get('content-type')||'';
+    if(!ct.includes('application/json'))throw new Error('Server waking up — please retry.');
+    const data=await res.json();
+    if(!res.ok||data.error)throw new Error(data.error||'Flux failed');
+    if(!data.image_url)throw new Error('No image URL returned');
+    window._generatedImageUrl=data.image_url;
+    fluxGeneratedImage.src=data.image_url;fluxImageDownload.href=data.image_url;
+    fluxImagePreview.classList.add('show');previewPlaceholder.style.display='none';
+    markStep(2,true);setStatus('imageStatus','✅ Image generated! Now generate your voice with Fish Audio.','success');
+    addActivity('Image generated',`Flux 2 Pro created a character image.`);
+  }catch(e){setStatus('imageStatus',`❌ ${e.message}`,'error');document.getElementById('step2Status').textContent='❌ Failed';document.getElementById('step2Status').style.color='var(--danger)';}
+  finally{document.getElementById('generateImageBtn').disabled=false;}
+}
+
+// STEP 3 - Fish Audio
+async function generateVoice(){
+  const apiUrl=normalizeApiUrl(apiUrlInput.value);
+  const text=scriptOutput.value.trim();
+  const voiceId=document.getElementById('fishVoiceId').value;
+  if(!apiUrl)return setStatus('voiceStatus','Enter your API URL first.','error');
+  if(!text)return setStatus('voiceStatus','Generate your script first (Step 1).','error');
+  document.getElementById('generateVoiceBtn').disabled=true;
+  markStep(3,false);setStatus('voiceStatus','⏳ Fish Audio is generating your voice...','ready');
+  try{
+    const res=await fetch(`${apiUrl}/generate-audio-fish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,voice_id:voiceId,format:'mp3',latency:'normal'})});
+    const ct=res.headers.get('content-type')||'';
+    if(!ct.includes('application/json'))throw new Error('Server waking up — please retry.');
+    const data=await res.json();
+    if(!res.ok||data.error)throw new Error(data.error||'Fish Audio failed');
+    if(!data.audio_url)throw new Error('No audio URL returned');
+    window._generatedVoiceUrl=data.audio_url;window._syncUrl=data.sync_url||'';
+    voicePreview.src=data.audio_url;voicePreview.load();
+    markStep(3,true);setStatus('voiceStatus','✅ Voice generated! Now create your video.','success');
+    addActivity('Voice generated','Fish Audio created a multilingual voice track.');
+  }catch(e){setStatus('voiceStatus',`❌ ${e.message}`,'error');document.getElementById('step3Status').textContent='❌ Failed';document.getElementById('step3Status').style.color='var(--danger)';}
+  finally{document.getElementById('generateVoiceBtn').disabled=false;}
+}
+
+// STEP 4 - Wan video + Fish Audio + FFmpeg
+async function createVideo(){
+  const apiUrl=normalizeApiUrl(apiUrlInput.value);
+  const chosenDuration=parseInt(videoDuration.value)||30;
+  const chosenMusicUrl=document.getElementById('musicSelect')?.value||'';
+  if(!apiUrl)return setStatus('videoStatus','Enter your API URL first.','error');
+  if(!window._wanVideoUrl)return setStatus('videoStatus','Generate your script first. Wan video is required.','error');
+  if(!window._generatedVoiceUrl)return setStatus('videoStatus','Generate your Fish Audio voice first.','error');
+  document.getElementById('createVideoBtn').disabled=true;
+  markStep(4,false);
+  setStatus('videoStatus','⏳ FFmpeg is assembling Wan video + Fish voice + music + subtitles...','ready');
+  videoDownloadBlock.classList.remove('show');
+
+  const body={
+    wan_video:window._wanVideoUrl||'',
+    text1:window._scene1||'',
+    text2:window._scene2||'',
+    text3:window._scene3||'',
+    text4:window._scene4||'',
+    text5:window._scene5||'',
+    text6:window._scene6||'',
+    text7:window._scene7||'',
+    text8:window._scene8||'',
+    audio_url:window._generatedVoiceUrl||'',
+    sync_url:window._syncUrl||'',
+    music_url:chosenMusicUrl,
+    duration:chosenDuration
   };
 
-  const ids = ['brandSlogan','navMainLabel','navDashboard','navGenerator','navAnalytics','navLibrary','navSystemLabel','navBilling','navSettings','sideCardTitle','sideCardText','sideCardButton','headlineTitle','headlineText','apiStatusLabel','uiLanguageLabel','kpi1Label','kpi1Trend','kpi2Label','kpi2Trend','kpi3Label','kpi3Trend','kpi4Label','kpi4Trend','generatorTitle','generatorSubtitle','apiUrlLabel','nicheLabel','contentLanguageLabel','generateBtn','copyBtn','resultsTitle','resultsSubtitle','titlesHeading','scriptHeading','overviewTitle','overviewSubtitle','chartTitle','chartBadge','miniStat1Label','miniStat2Label','miniStat3Label','activityTitle','activitySubtitle','activity1Title','activity1Text','activity2Title','activity2Text','activity3Title','activity3Text','detectorTitle','detectorSubtitle','scanBtn','pricingTitle','pricingSubtitle','plan1Name','plan1f1','plan1f2','plan1f3','plan1Btn','plan2Name','plan2f1','plan2f2','plan2f3','plan2Btn','plan3Name','plan3f1','plan3f2','plan3f3','plan3Btn','loginTitle','loginSubtitle','authNameLabel','authEmailLabel','authPasswordLabel','loginBtn','videoTitle','videoSubtitle','videoTypeLabel','videoDurationLabel','videoVoiceLabel','subtitleStyleLabel','templatePackLabel','buildVideoPlanBtn','videoWorkflowTitle','videoSpecTitle','videoSpecText','scenePlanTitle','renderQueueTitle','renderQueueText'];
-
-  // ── REFS ──
-  const uiLanguage        = document.getElementById('uiLanguage');
-  const apiUrlInput       = document.getElementById('apiUrl');
-  const nicheInput        = document.getElementById('niche');
-  const contentLanguage   = document.getElementById('contentLanguage');
-  const generateBtn       = document.getElementById('generateBtn');
-  const copyBtn           = document.getElementById('copyBtn');
-  const statusEl          = document.getElementById('status');
-  const titlesList        = document.getElementById('titlesList');
-  const scriptOutput      = document.getElementById('scriptOutput');
-  const helpTextEl        = document.getElementById('helpText');
-  const detectorKeyword   = document.getElementById('detectorKeyword');
-  const detectorPlatform  = document.getElementById('detectorPlatform');
-  const scanBtn           = document.getElementById('scanBtn');
-  const detectorResults   = document.getElementById('detectorResults');
-  const detectorLanguage  = document.getElementById('detectorLanguage');
-  const openLoginBtn      = document.getElementById('openLoginBtn');
-  const logoutBtn         = document.getElementById('logoutBtn');
-  const authModal         = document.getElementById('authModal');
-  const closeModalBtn     = document.getElementById('closeModalBtn');
-  const loginBtn          = document.getElementById('loginBtn');
-  const authName          = document.getElementById('authName');
-  const authEmail         = document.getElementById('authEmail');
-  const authPassword      = document.getElementById('authPassword');
-  const authStatus        = document.getElementById('authStatus');
-  const userBadge         = document.getElementById('userBadge');
-  const userBadgeText     = document.getElementById('userBadgeText');
-  const videoStatus       = document.getElementById('videoStatus');
-  const buildVideoPlanBtn = document.getElementById('buildVideoPlanBtn');
-  const scenePlanList     = document.getElementById('scenePlanList');
-  const videoDuration     = document.getElementById('videoDuration');
-  const videoType         = document.getElementById('videoType');
-  const videoVoice        = document.getElementById('videoVoice');
-  const generateVoiceBtn  = document.getElementById('generateVoiceBtn');
-  const voicePreview      = document.getElementById('voicePreview');
-  const createVideoBtn    = document.getElementById('createVideoBtn');
-  // Bloc téléchargement vidéo (FFmpeg)
-  const videoDownloadBlock = document.getElementById('videoDownloadBlock');
-  const videoPlayer        = document.getElementById('videoPlayer');
-  const videoDownloadLink  = document.getElementById('videoDownloadLink');
-
-  // ── HELPERS ──
-  // Detector — données de démarrage vides, remplies par l'IA au scan
-  const detectorSeed = [];
-
-  function getState() {
-    try {
-      return JSON.parse(localStorage.getItem('viral_dashboard_state') || '{}');
-    } catch(e) {
-      return {scripts:0, alerts:0, revenue:0, topNiche:'—', growth:0};
-    }
-  }
-  function saveState(s) { localStorage.setItem('viral_dashboard_state', JSON.stringify(s)); }
-
-  function updateDashboard() {
-    const s = getState();
-    const revenue  = Number(s.revenue)  || 0;
-    const scripts  = Number(s.scripts)  || 0;
-    const alerts   = Number(s.alerts)   || 0;
-    const growth   = Number(s.growth)   || 0;
-    const topNiche = s.topNiche || '—';
-    document.getElementById('kpiRevenue').textContent     = `$${revenue}`;
-    document.getElementById('kpiScripts').textContent     = String(scripts);
-    document.getElementById('kpiAlerts').textContent      = String(alerts);
-    document.getElementById('miniStat1Value').textContent = `$${revenue}`;
-    document.getElementById('miniStat2Value').textContent = topNiche;
-    document.getElementById('miniStat3Value').textContent = `${growth}%`;
-  }
-
-  function addActivity(title, text) {
-    const feed = document.getElementById('activityFeed');
-    const card = document.createElement('div');
-    card.className = 'result-card';
-    // Utiliser textContent au lieu de innerHTML pour éviter tout risque XSS
-    const h3 = document.createElement('h3');
-    h3.textContent = title;
-    const p = document.createElement('p');
-    p.style.cssText = 'margin:0; color:var(--muted);';
-    p.textContent = text;
-    card.appendChild(h3);
-    card.appendChild(p);
-    feed.prepend(card);
-    while (feed.children.length > 5) feed.removeChild(feed.lastChild);
-  }
-
-  function setStatus(msg, state = 'ready') {
-    statusEl.textContent = msg;
-    statusEl.dataset.state = state;
-    statusEl.className = 'status';
-    if (state === 'error')   statusEl.classList.add('error');
-    if (state === 'success') statusEl.classList.add('success');
-  }
-
-  function setVideoStatus(msg, state = 'ready') {
-    videoStatus.textContent = msg;
-    videoStatus.className = 'status';
-    if (state === 'error')   videoStatus.classList.add('error');
-    if (state === 'success') videoStatus.classList.add('success');
-  }
-
-  function applyTranslations(lang) {
-    const t = translations[lang] || translations.en;
-    ids.forEach(id => { const el = document.getElementById(id); if (el && t[id]) el.textContent = t[id]; });
-    nicheInput.placeholder       = t.nichePlaceholder || 'money';
-    scriptOutput.placeholder     = t.scriptPlaceholder || '';
-    detectorKeyword.placeholder  = t.detectorKeywordPlaceholder || 'AI money';
-    while (helpTextEl.firstChild) helpTextEl.removeChild(helpTextEl.firstChild);
-    if (t.helpPrefix) helpTextEl.appendChild(document.createTextNode(t.helpPrefix));
-    const helpLink = document.createElement('span');
-    helpLink.className = 'link-accent';
-    helpLink.textContent = 'https://your-service.onrender.com';
-    helpTextEl.appendChild(helpLink);
-    if (!statusEl.textContent || statusEl.dataset.state === 'ready') setStatus(t.statusReady, 'ready');
-  }
-
-  function normalizeApiUrl(url) { return url.trim().replace(/\/$/, '').replace(/\/docs$/, ''); }
-
-  function getLanguageCodeFromVoice(v) {
-    if (!v) return 'en-US';
-    if (v.startsWith('fr-FR')) return 'fr-FR';
-    if (v.startsWith('en-GB')) return 'en-GB';
-    return 'en-US';
-  }
-
-  // Helper : message bilingue selon la langue choisie
-  function t2(fr, en) { return uiLanguage.value === 'fr' ? fr : en; }
-
-  // ── GENERATE CONTENT ──
-  async function generateContent() {
-    const lang = uiLanguage.value;
-    const t    = translations[lang] || translations.en;
-    const apiUrl = normalizeApiUrl(apiUrlInput.value);
-    const niche  = nicheInput.value.trim();
-    const outputLang = contentLanguage.value;
-
-    if (!apiUrl) return setStatus(t.statusMissingUrl, 'error');
-    if (!niche)  return setStatus(t.statusMissingNiche, 'error');
-
-    generateBtn.disabled = true;
-    setStatus(t.statusGenerating, 'ready');
-
-    try {
-      const res  = await fetch(`${apiUrl}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ niche, langue: outputLang, duration: parseInt(document.getElementById('videoDuration').value) || 30 }) });
-      const ct = res.headers.get('content-type') || '';
-      if (!ct.includes('application/json')) {
-        throw new Error('Server waking up — please retry in a few seconds.');
-      }
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-
-      titlesList.innerHTML = '';
-      (data.titles || []).forEach(title => { const li = document.createElement('li'); li.textContent = title; titlesList.appendChild(li); });
-      scriptOutput.value = data.script || '';
-
-      // Stocker les 24 URLs vidéo (3 par scène)
-      window._pexelsVideoUrl= data.video_url || '';
-      window._pexelsVideoUrl2= data.video_url2 || '';
-      window._pexelsVideoUrl3= data.video_url3 || '';
-      window._pexelsVideoUrl4= data.video_url4 || '';
-      window._pexelsVideoUrl5= data.video_url5 || '';
-      window._pexelsVideoUrl6= data.video_url6 || '';
-      window._pexelsVideoUrl7= data.video_url7 || '';
-      window._pexelsVideoUrl8= data.video_url8 || '';
-      window._pexelsVideoUrl9= data.video_url9 || '';
-      window._pexelsVideoUrl10= data.video_url10 || '';
-      window._pexelsVideoUrl11= data.video_url11 || '';
-      window._pexelsVideoUrl12= data.video_url12 || '';
-      window._pexelsVideoUrl13= data.video_url13 || '';
-      window._pexelsVideoUrl14= data.video_url14 || '';
-      window._pexelsVideoUrl15= data.video_url15 || '';
-      window._pexelsVideoUrl16= data.video_url16 || '';
-      window._pexelsVideoUrl17= data.video_url17 || '';
-      window._pexelsVideoUrl18= data.video_url18 || '';
-      window._pexelsVideoUrl19= data.video_url19 || '';
-      window._pexelsVideoUrl20= data.video_url20 || '';
-      window._pexelsVideoUrl21= data.video_url21 || '';
-      window._pexelsVideoUrl22= data.video_url22 || '';
-      window._pexelsVideoUrl23= data.video_url23 || '';
-      window._pexelsVideoUrl24= data.video_url24 || '';
-      window._pexelsVideoUrl25= data.video_url25 || '';
-      window._pexelsVideoUrl26= data.video_url26 || '';
-      window._pexelsVideoUrl27= data.video_url27 || '';
-      window._pexelsVideoUrl28= data.video_url28 || '';
-      window._pexelsVideoUrl29= data.video_url29 || '';
-      window._pexelsVideoUrl30= data.video_url30 || '';
-      window._pexelsVideoUrl31= data.video_url31 || '';
-      window._pexelsVideoUrl32= data.video_url32 || '';
-
-      // Stocker chaque scène individuellement pour les sous-titres
-      window._scene1 = data.scene1 || '';
-      window._scene2 = data.scene2 || '';
-      window._scene3 = data.scene3 || '';
-      window._scene4 = data.scene4 || '';
-      window._scene5 = data.scene5 || '';
-      window._scene6 = data.scene6 || '';
-      window._scene7 = data.scene7 || '';
-      window._scene8 = data.scene8 || '';
-      window._nb_scenes = data.nb_scenes || 4;
-      window._duration  = data.duration  || 30;
-
-      setStatus(t.statusSuccess, 'success');
-      const s = getState(); s.scripts += 1; s.revenue += 19; s.topNiche = niche; s.growth = Math.min(99, s.growth + 7); saveState(s); updateDashboard();
-      addActivity('Content generated', `A new content batch was generated for "${niche}" in ${outputLang.toUpperCase()}.`);
-    } catch (e) {
-      setStatus(e.message || t.statusError, 'error');
-    } finally {
-      generateBtn.disabled = false;
-    }
-  }
-
-  // ── COPY SCRIPT ──
-  async function copyScript() {
-    const t = translations[uiLanguage.value] || translations.en;
-    if (!scriptOutput.value.trim()) return setStatus(t.statusCopyEmpty, 'error');
-    try { await navigator.clipboard.writeText(scriptOutput.value); } catch { scriptOutput.select(); document.execCommand('copy'); }
-    setStatus(t.statusCopied, 'success');
-  }
-
-  // ── DETECTOR ──
-  // Stockage global des résultats du détecteur pour éviter JSON.stringify dans onclick
-  window._detectorResults = [];
-
-  function renderDetector(results) {
-    while (detectorResults.firstChild) detectorResults.removeChild(detectorResults.firstChild);
-    window._detectorResults = results || [];
-    if (!results || results.length === 0) {
-      const msg = document.createElement('p');
-      msg.style.cssText = 'color:var(--muted); text-align:center; padding:20px;';
-      msg.textContent = 'No results yet. Enter a keyword and click Scan.';
-      detectorResults.appendChild(msg);
-      return;
-    }
-    results.forEach((item, index) => {
-      const score = item.viralScore || 0;
-      const scoreColor = score >= 80 ? '#22c55e' : score >= 60 ? '#f59e0b' : '#ef4444';
-      const el = document.createElement('div');
-      el.className = 'detector-item';
-      el.style.cursor = 'pointer';
-      // Construire le DOM proprement sans innerHTML pour les données API
-      const header = document.createElement('div');
-      header.style.cssText = 'display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;';
-      const h3 = document.createElement('h3');
-      h3.style.cssText = 'margin:0; flex:1;';
-      h3.textContent = item.title;
-      const pill = document.createElement('span');
-      pill.className = 'score-pill';
-      pill.style.cssText = `background:${scoreColor}20; color:${scoreColor}; border:1px solid ${scoreColor}40; padding:4px 12px; border-radius:20px; font-weight:700; white-space:nowrap;`;
-      pill.textContent = `🔥 Score ${score}/100`;
-      header.appendChild(h3);
-      header.appendChild(pill);
-
-      const meta = document.createElement('div');
-      meta.className = 'detector-meta';
-      meta.style.cssText = 'margin:10px 0 8px;';
-      [['📱', item.platform], ['🎯', item.niche], ['⏱', item.bestDuration], ['🌍', item.targetAudience]].forEach(([icon, val]) => {
-        const span = document.createElement('span');
-        span.textContent = `${icon} ${val}`;
-        meta.appendChild(span);
-      });
-
-      const makeP = (label, val, muted) => {
-        const p = document.createElement('p');
-        p.style.cssText = `margin:6px 0 4px; font-size:0.9rem;${muted ? ' color:var(--muted);' : ''}`;
-        const strong = document.createElement('strong');
-        strong.textContent = label;
-        p.appendChild(strong);
-        p.appendChild(document.createTextNode(' ' + (val || '')));
-        return p;
-      };
-
-      const btn = document.createElement('button');
-      btn.className = 'primary-btn';
-      btn.style.cssText = 'font-size:0.82rem; padding:6px 14px; margin-top:10px;';
-      btn.textContent = '✨ Use this idea';
-      btn.onclick = () => useDetectorResult(index);
-
-      el.appendChild(header);
-      el.appendChild(meta);
-      el.appendChild(makeP('Why it goes viral:', item.whyViral, false));
-      el.appendChild(makeP('Hook idea:', item.hookIdea, true));
-      el.appendChild(makeP('Best hashtags:', item.hashtags, true));
-      el.appendChild(btn);
-      detectorResults.appendChild(el);
-    });
-  }
-
-  function useDetectorResult(index) {
-    // Récupérer l'item depuis le tableau global (évite JSON.stringify dans onclick)
-    const item = window._detectorResults[index];
-    if (!item) return;
-    const nicheInput = document.getElementById('niche');
-    if (nicheInput) {
-      nicheInput.value = item.niche || item.title;
-    }
-    document.getElementById('generator').scrollIntoView({ behavior: 'smooth' });
-    addActivity('Idea applied', `"${item.title}" applied to the generator.`);
-  }
-
-  async function scanTrends() {
-    const keyword  = detectorKeyword.value.trim() || 'money';
-    const platform = detectorPlatform.value;
-    const language = detectorLanguage.value;
-    const apiUrl   = normalizeApiUrl(apiUrlInput.value);
-
-    scanBtn.disabled = true;
-    scanBtn.textContent = uiLanguage.value === 'fr' ? '⏳ Analyse...' : '⏳ Analyzing...';
-    while (detectorResults.firstChild) detectorResults.removeChild(detectorResults.firstChild);
-    const loadingMsg = document.createElement('p');
-    loadingMsg.style.cssText = 'color:var(--muted); text-align:center; padding:20px;';
-    loadingMsg.textContent = '🔍 Claude AI is analyzing viral trends for you...';
-    detectorResults.appendChild(loadingMsg);
-
-    try {
-      if (!apiUrl) {
-        while (detectorResults.firstChild) detectorResults.removeChild(detectorResults.firstChild);
-        const noUrl = document.createElement('p');
-        noUrl.style.cssText = 'color:#ef4444; text-align:center; padding:20px;';
-        noUrl.textContent = uiLanguage.value === 'fr' ? "Entrez l'URL API d'abord." : 'Enter API URL first.';
-        detectorResults.appendChild(noUrl);
-        return;
-      }
-
-      // Appel au backend qui gère Claude de façon sécurisée
-      const response = await fetch(`${apiUrl}/scan-trends`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword, platform, language })
-      });
-
-      const scanCt = response.headers.get('content-type') || '';
-      if (!scanCt.includes('application/json')) {
-        throw new Error('Server waking up — please retry in a few seconds.');
-      }
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      const results = data.results || [];
-
-      renderDetector(results);
-
-      const s = getState();
-      s.alerts += results.length;
-      s.growth = Math.min(99, s.growth + 5);
-      saveState(s);
-      updateDashboard();
-      addActivity('Viral scan completed', `Claude AI found ${results.length} viral ideas for "${keyword}" on ${platform}.`);
-
-    } catch (e) {
-      while (detectorResults.firstChild) detectorResults.removeChild(detectorResults.firstChild);
-      const errMsg = document.createElement('p');
-      errMsg.style.cssText = 'color:#ef4444; text-align:center; padding:20px;';
-      errMsg.textContent = `Error: ${e.message}. Check your API URL and try again.`;
-      detectorResults.appendChild(errMsg);
-    } finally {
-      scanBtn.disabled = false;
-      scanBtn.textContent = uiLanguage.value === 'fr' ? 'Scanner les tendances' : 'Scan trends';
-    }
-  }
-
-  // ── AUTH ──
-  function updateAuthUI() {
-    let user = null;
-    try { user = JSON.parse(localStorage.getItem('viral_user') || 'null'); } catch(e) { user = null; }
-    if (user) { userBadge.classList.add('show'); userBadgeText.textContent = user.name; openLoginBtn.style.display = 'none'; logoutBtn.style.display = 'inline-flex'; }
-    else { userBadge.classList.remove('show'); openLoginBtn.style.display = 'inline-flex'; logoutBtn.style.display = 'none'; }
-  }
-
-  function loginUser() {
-    const t = translations[uiLanguage.value] || translations.en;
-    if (!authName.value.trim() || !authEmail.value.trim() || !authPassword.value.trim()) { authStatus.textContent = t.authMissing; authStatus.className = 'status error'; return; }
-    localStorage.setItem('viral_user', JSON.stringify({ name: authName.value.trim(), email: authEmail.value.trim() }));
-    authStatus.textContent = t.authSuccess; authStatus.className = 'status success'; updateAuthUI();
-    setTimeout(() => authModal.classList.remove('open'), 500);
-  }
-
-  function logoutUser() {
-    const t = translations[uiLanguage.value] || translations.en;
-    localStorage.removeItem('viral_user'); updateAuthUI(); setStatus(t.authLogout, 'success');
-  }
-
-  // ── VIDEO PLAN ──
-  function buildVideoPlan() {
-    const duration = videoDuration.value;
-    const type     = videoType.value;
-    const voice    = videoVoice.value;
-    const subtitles = document.getElementById('subtitleStyle').value;
-    const template  = document.getElementById('templatePack').value;
-    const niche     = nicheInput.value.trim() || 'general niche';
-
-    const scenes = duration === '60'
-      ? ['Hook scene','Problem scene','Opportunity scene','Main solution scene','Proof / reinforcement scene','CTA scene']
-      : duration === '45'
-      ? ['Hook scene','Problem scene','Solution scene','Proof scene','CTA scene']
-      : ['Hook scene','Problem / opportunity scene','Solution / insight scene','CTA scene'];
-
-    scenePlanList.innerHTML = '';
-    scenes.forEach((scene, i) => { const li = document.createElement('li'); li.textContent = `${i+1}. ${scene} — ${niche}`; scenePlanList.appendChild(li); });
-    document.getElementById('videoSpecText').textContent = `${duration}-second vertical 9:16 ${type} video, voice: ${voice}, subtitles: ${subtitles}, template: ${template}.`;
-    setVideoStatus(t2('Plan vidéo prêt.', 'Video plan ready.'), 'success');
-    addActivity('Video plan created', `A ${duration}-second ${type} video plan was prepared for ${niche}.`);
-  }
-
-  // ── GENERATE VOICE ──
-  async function generateVoice() {
-    const apiUrl = normalizeApiUrl(apiUrlInput.value);
-    const text   = scriptOutput.value.trim();
-    const selectedVoice  = videoVoice.value;
-    const languageCode   = getLanguageCodeFromVoice(selectedVoice);
-
-    if (!apiUrl) { setVideoStatus(t2('Entrez l\'URL API d\'abord.', 'Enter API URL first.'), 'error'); return; }
-    if (!text)   { setVideoStatus(t2('Générez d\'abord le script.', 'Generate script first.'), 'error'); return; }
-
-    setVideoStatus(t2('Génération de la voix...', 'Generating voice...'), 'ready');
-    generateVoiceBtn.disabled = true;
-
-    try {
-      const res  = await fetch(`${apiUrl}/generate-audio`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, languageCode, voiceName: selectedVoice, speakingRate: 1.0 }) });
-      const contentTypeV = res.headers.get('content-type') || '';
-      if (!contentTypeV.includes('application/json')) {
-        setVideoStatus(t2('Serveur en démarrage, réessayez dans quelques secondes.', 'Server waking up, please retry in a few seconds.'), 'error');
-        return;
-      }
-      const data = await res.json();
-      if (!res.ok || data.error) { setVideoStatus(t2(`Voix échouée : ${data.error || 'erreur inconnue'}`, `Voice failed: ${data.error || 'unknown error'}`), 'error'); return; }
-      if (!data.audio_url) { setVideoStatus(t2('Voix échouée : aucune URL audio.', 'Voice failed: no audio URL returned.'), 'error'); return; }
-      window._generatedVoiceUrl = data.audio_url;
-      window._syncUrl = data.sync_url || '';  // timestamps exacts Google TTS
-      voicePreview.src = data.audio_url; voicePreview.load();
-      setVideoStatus(t2('Voix générée avec succès.', 'Voice generated successfully.'), 'success');
-      addActivity('Voice generated', `A voice track was created with ${selectedVoice}.`);
-    } catch (e) {
-      setVideoStatus(t2(`Voix échouée : ${e.message}`, `Voice failed: ${e.message}`), 'error');
-    } finally {
-      generateVoiceBtn.disabled = false;
-    }
-  }
-
-  // ── CREATE VIDEO (FFmpeg — retourne video_url directement) ──
-  async function createVideo() {
-    const apiUrl = normalizeApiUrl(apiUrlInput.value);
-    const chosenDuration = parseInt(document.getElementById('videoDuration').value) || 30;
-    const chosenMusicUrl = document.getElementById('musicSelect')?.value || '';
-
-    if (!apiUrl) { setVideoStatus(t2('Entrez l\'URL API d\'abord.', 'Enter API URL first.'), 'error'); return; }
-    if (!window._pexelsVideoUrl && !window._pexelsVideoUrl2 && !window._pexelsVideoUrl3 && !window._pexelsVideoUrl4 && !window._pexelsVideoUrl5 && !window._pexelsVideoUrl6 && !window._pexelsVideoUrl7 && !window._pexelsVideoUrl8) {
-      setVideoStatus(t2('Générez d\'abord le contenu.', 'Generate content first so source videos are available.'), 'error'); return;
-    }
-
-    setVideoStatus(t2(`Envoi au moteur FFmpeg... environ ${chosenDuration * 2} secondes.`, `Sending to FFmpeg renderer... this may take ${chosenDuration * 2} seconds.`), 'ready');
-    createVideoBtn.disabled = true;
-
-    // Masquer le bloc vidéo précédent pendant le rendu
-    videoDownloadBlock.classList.remove('show');
-
-    // Utiliser les scènes stockées après /generate (une par phrase prononcée)
-    const text1 = window._scene1 || '';
-    const text2 = window._scene2 || '';
-    const text3 = window._scene3 || '';
-    const text4 = window._scene4 || '';
-    const text5 = window._scene5 || '';
-    const text6 = window._scene6 || '';
-    const text7 = window._scene7 || '';
-    const text8 = window._scene8 || '';
-
-    try {
-      const res  = await fetch(`${apiUrl}/create-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text1, text2, text3, text4, text5, text6, text7, text8,
-          video_url:   window._pexelsVideoUrl   || '',
-          video_url2:  window._pexelsVideoUrl2  || '',
-          video_url3:  window._pexelsVideoUrl3  || '',
-          video_url4:  window._pexelsVideoUrl4  || '',
-          video_url5:  window._pexelsVideoUrl5  || '',
-          video_url6:  window._pexelsVideoUrl6  || '',
-          video_url7:  window._pexelsVideoUrl7  || '',
-          video_url8:  window._pexelsVideoUrl8  || '',
-          video_url9:  window._pexelsVideoUrl9  || '',
-          video_url10: window._pexelsVideoUrl10 || '',
-          video_url11: window._pexelsVideoUrl11 || '',
-          video_url12: window._pexelsVideoUrl12 || '',
-          video_url13: window._pexelsVideoUrl13 || '',
-          video_url14: window._pexelsVideoUrl14 || '',
-          video_url15: window._pexelsVideoUrl15 || '',
-          video_url16: window._pexelsVideoUrl16 || '',
-          video_url17: window._pexelsVideoUrl17 || '',
-          video_url18: window._pexelsVideoUrl18 || '',
-          video_url19: window._pexelsVideoUrl19 || '',
-          video_url20: window._pexelsVideoUrl20 || '',
-          video_url21: window._pexelsVideoUrl21 || '',
-          video_url22: window._pexelsVideoUrl22 || '',
-          video_url23: window._pexelsVideoUrl23 || '',
-          video_url24: window._pexelsVideoUrl24 || '',
-          video_url25: window._pexelsVideoUrl25 || '',
-          video_url26: window._pexelsVideoUrl26 || '',
-          video_url27: window._pexelsVideoUrl27 || '',
-          video_url28: window._pexelsVideoUrl28 || '',
-          video_url29: window._pexelsVideoUrl29 || '',
-          video_url30: window._pexelsVideoUrl30 || '',
-          video_url31: window._pexelsVideoUrl31 || '',
-          video_url32: window._pexelsVideoUrl32 || '',
-          audio_url:  window._generatedVoiceUrl || '',
-          sync_url:   window._syncUrl || '',
-          music_url:  chosenMusicUrl,
-          duration:   chosenDuration
-        })
-      });
-
-      // Vérifier que la réponse est bien du JSON
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        setVideoStatus(t2('Erreur serveur — réessayez dans quelques secondes.', 'Server error — please try again in a few seconds.'), 'error');
-        return;
-      }
-
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        setVideoStatus(`Video error: ${data.error || 'unknown error'}`, 'error');
-        return;
-      }
-
-      // Le serveur retourne un job_id immédiatement — on poll le statut
-      const jobId = data.job_id;
-      if (!jobId) {
-        setVideoStatus(t2('Erreur : pas d\'identifiant de job.', 'Video error: no job ID returned.'), 'error');
-        return;
-      }
-
-      setVideoStatus(t2('⏳ Rendu en cours...', '⏳ Rendering in progress...'), 'ready');
-
-      // Poller /video-status/{jobId} toutes les 5 secondes
-      let tries = 0;
-      let consecutiveErrors = 0;
-      const maxTries = 240; // 20 minutes max
-      const pollInterval = setInterval(async () => {
-        tries++;
-        try {
-          const statusRes = await fetch(`${apiUrl}/video-status/${jobId}`);
-          const pollCt = statusRes.headers.get('content-type') || '';
-          if (!pollCt.includes('application/json')) {
-            consecutiveErrors = (consecutiveErrors || 0) + 1;
-            return; // Réessayer au prochain tick
-          }
-          const statusData = await statusRes.json();
-
-          consecutiveErrors = 0;  // reset au succès
-          if (statusData.status === 'done' && statusData.video_url) {
-            clearInterval(pollInterval);
-            const videoUrl = statusData.video_url;
-            videoPlayer.src        = videoUrl;
-            videoDownloadLink.href = videoUrl;
-            videoDownloadBlock.classList.add('show');
-            videoPlayer.load();
-            setVideoStatus(t2('✅ Vidéo prête !', '✅ Video ready!'), 'success');
-            addActivity('Video ready', 'Your FFmpeg video is ready to preview and download.');
-            const s = getState(); s.scripts += 1; saveState(s); updateDashboard();
-            createVideoBtn.disabled = false;
-
-          } else if (statusData.status === 'failed') {
-            clearInterval(pollInterval);
-            setVideoStatus(`Video error: ${statusData.error || 'rendering failed'}`, 'error');
-            createVideoBtn.disabled = false;
-
-          } else if (tries >= maxTries) {
-            clearInterval(pollInterval);
-            setVideoStatus(t2('Délai dépassé — rendu trop long.', 'Timeout — rendering took too long.'), 'error');
-            createVideoBtn.disabled = false;
-
-          } else {
-            setVideoStatus(`⏳ Rendering... (${tries * 5}s elapsed)`, 'ready');
-          }
-        } catch (pollErr) {
-          consecutiveErrors = (consecutiveErrors || 0) + 1;
-          if (consecutiveErrors >= 3) {
-            setVideoStatus(`⏳ Rendering... (${tries * 5}s) — connection issue, retrying...`, 'ready');
-          }
-        }
-      }, 5000);
-
-    } catch (e) {
-      setVideoStatus(`Video error: ${e.message}`, 'error');
-      createVideoBtn.disabled = false;
-    }
-  }
-
-  // ── INIT ──
-  const savedApiUrl = localStorage.getItem('viral_api_url');
-  if (savedApiUrl) apiUrlInput.value = savedApiUrl;
-  apiUrlInput.addEventListener('input', () => localStorage.setItem('viral_api_url', apiUrlInput.value.trim()));
-
-  uiLanguage.addEventListener('change', () => {
-    localStorage.setItem('viral_ui_lang', uiLanguage.value);
-    applyTranslations(uiLanguage.value);
+  try{
+    const res=await fetch(`${apiUrl}/create-video`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const ct=res.headers.get('content-type')||'';
+    if(!ct.includes('application/json')){setStatus('videoStatus','Server error — retry.','error');document.getElementById('createVideoBtn').disabled=false;return;}
+    const data=await res.json();
+    if(!res.ok||data.error){setStatus('videoStatus',`Error: ${data.error}`,'error');document.getElementById('createVideoBtn').disabled=false;return;}
+    const jobId=data.job_id;
+    if(!jobId){setStatus('videoStatus','No job ID returned.','error');document.getElementById('createVideoBtn').disabled=false;return;}
+    let tries=0,consErrors=0;
+    const poll=setInterval(async()=>{
+      tries++;
+      try{
+        const sr=await fetch(`${apiUrl}/video-status/${jobId}`);
+        const sct=sr.headers.get('content-type')||'';
+        if(!sct.includes('application/json')){consErrors++;return;}
+        const sd=await sr.json();consErrors=0;
+        if(sd.status==='done'&&sd.video_url){
+          clearInterval(poll);
+          videoPlayer.src=sd.video_url;videoDownloadLink.href=sd.video_url;
+          videoDownloadBlock.classList.add('show');videoPlayer.load();previewPlaceholder.style.display='none';
+          markStep(4,true);setStatus('videoStatus','✅ Final video ready! Download or share it.','success');
+          addActivity('Final video ready','FFmpeg assembled Wan video with Fish Audio, music, and subtitles.');
+          const s=getState();s.scripts=(Number(s.scripts)||0)+1;saveState(s);updateDashboard();
+          document.getElementById('createVideoBtn').disabled=false;
+        }else if(sd.status==='failed'){
+          clearInterval(poll);setStatus('videoStatus',`Error: ${sd.error||'failed'}`,'error');
+          document.getElementById('step4Status').textContent='❌ Failed';document.getElementById('step4Status').style.color='var(--danger)';
+          document.getElementById('createVideoBtn').disabled=false;
+        }else if(tries>=240){
+          clearInterval(poll);setStatus('videoStatus','Timeout.','error');document.getElementById('createVideoBtn').disabled=false;
+        }else{setStatus('videoStatus',`⏳ Rendering... (${tries*5}s)`,'ready');}
+      }catch(pe){consErrors++;if(consErrors>=3)setStatus('videoStatus',`⏳ Rendering... (${tries*5}s) — retrying...`,'ready');}
+    },5000);
+  }catch(e){setStatus('videoStatus',`Error: ${e.message}`,'error');document.getElementById('createVideoBtn').disabled=false;}
+}
+
+// COPY
+async function copyScript(){
+  if(!scriptOutput.value.trim())return setStatus('status','No script to copy yet.','error');
+  try{await navigator.clipboard.writeText(scriptOutput.value);}catch{scriptOutput.select();document.execCommand('copy');}
+  setStatus('status','Script copied.','success');
+}
+
+// DETECTOR
+window._detectorResults=[];
+function renderDetector(results){
+  const det=document.getElementById('detectorResults');
+  while(det.firstChild)det.removeChild(det.firstChild);
+  window._detectorResults=results||[];
+  if(!results||results.length===0){const msg=document.createElement('p');msg.style.cssText='color:var(--muted);text-align:center;padding:20px;';msg.textContent='No results yet. Enter a keyword and click Scan.';det.appendChild(msg);return;}
+  results.forEach((item,index)=>{
+    const score=item.viralScore||0;const scoreColor=score>=80?'#22c55e':score>=60?'#f59e0b':'#ef4444';
+    const el=document.createElement('div');el.className='detector-item';el.style.cursor='pointer';
+    const header=document.createElement('div');header.style.cssText='display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;';
+    const h3=document.createElement('h3');h3.style.cssText='margin:0;flex:1;';h3.textContent=item.title;
+    const pill=document.createElement('span');pill.style.cssText=`background:${scoreColor}20;color:${scoreColor};border:1px solid ${scoreColor}40;padding:4px 12px;border-radius:20px;font-weight:700;white-space:nowrap;`;pill.textContent=`🔥 Score ${score}/100`;
+    header.appendChild(h3);header.appendChild(pill);
+    const meta=document.createElement('div');meta.className='detector-meta';meta.style.cssText='margin:10px 0 8px;';
+    [['📱',item.platform],['🎯',item.niche],['⏱',item.bestDuration],['🌍',item.targetAudience]].forEach(([icon,val])=>{const span=document.createElement('span');span.textContent=`${icon} ${val}`;meta.appendChild(span);});
+    const makeP=(label,val,muted)=>{const p=document.createElement('p');p.style.cssText=`margin:6px 0 4px;font-size:0.9rem;${muted?' color:var(--muted);':''}`;const strong=document.createElement('strong');strong.textContent=label;p.appendChild(strong);p.appendChild(document.createTextNode(' '+(val||'')));return p;};
+    const btn=document.createElement('button');btn.className='primary-btn';btn.style.cssText='font-size:0.82rem;padding:6px 14px;margin-top:10px;';btn.textContent='✨ Use this idea';btn.onclick=()=>{const item=window._detectorResults[index];if(!item)return;document.getElementById('niche').value=item.niche||item.title;document.getElementById('generator').scrollIntoView({behavior:'smooth'});addActivity('Idea applied',`"${item.title}" applied.`);};
+    el.appendChild(header);el.appendChild(meta);el.appendChild(makeP('Why viral:',item.whyViral,false));el.appendChild(makeP('Hook:',item.hookIdea,true));el.appendChild(makeP('Hashtags:',item.hashtags,true));el.appendChild(btn);
+    det.appendChild(el);
   });
-  generateBtn.addEventListener('click', generateContent);
-  generateVoiceBtn.addEventListener('click', generateVoice);
-  copyBtn.addEventListener('click', copyScript);
-  scanBtn.addEventListener('click', scanTrends);
-  buildVideoPlanBtn.addEventListener('click', buildVideoPlan);
-  createVideoBtn.addEventListener('click', createVideo);
-  openLoginBtn.addEventListener('click', () => authModal.classList.add('open'));
-  closeModalBtn.addEventListener('click', () => authModal.classList.remove('open'));
-  loginBtn.addEventListener('click', loginUser);
-  logoutBtn.addEventListener('click', logoutUser);
-  authModal.addEventListener('click', e => { if (e.target === authModal) authModal.classList.remove('open'); });
+}
 
-  document.getElementById('plan1Btn').addEventListener('click', () => addActivity('Plan selected', 'Starter plan clicked.'));
-  document.getElementById('plan2Btn').addEventListener('click', () => addActivity('Plan selected', 'Pro plan clicked.'));
-  document.getElementById('plan3Btn').addEventListener('click', () => addActivity('Plan selected', 'Business plan clicked.'));
+async function scanTrends(){
+  const keyword=document.getElementById('detectorKeyword').value.trim()||'money';
+  const platform=document.getElementById('detectorPlatform').value;
+  const language=document.getElementById('detectorLanguage').value;
+  const apiUrl=normalizeApiUrl(apiUrlInput.value);
+  const scanBtn=document.getElementById('scanBtn');const det=document.getElementById('detectorResults');
+  scanBtn.disabled=true;scanBtn.textContent='⏳ Analyzing...';
+  while(det.firstChild)det.removeChild(det.firstChild);
+  const loadingMsg=document.createElement('p');loadingMsg.style.cssText='color:var(--muted);text-align:center;padding:20px;';loadingMsg.textContent='🔍 Claude AI is analyzing viral trends...';det.appendChild(loadingMsg);
+  try{
+    if(!apiUrl)throw new Error('Enter API URL first.');
+    const response=await fetch(`${apiUrl}/scan-trends`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keyword,platform,language})});
+    const ct=response.headers.get('content-type')||'';
+    if(!ct.includes('application/json'))throw new Error('Server waking up — please retry.');
+    const data=await response.json();if(data.error)throw new Error(data.error);
+    renderDetector(data.results||[]);
+    const s=getState();s.alerts=(Number(s.alerts)||0)+(data.results||[]).length;s.growth=Math.min(99,(Number(s.growth)||0)+5);saveState(s);updateDashboard();
+    addActivity('Viral scan completed',`Found ${(data.results||[]).length} ideas for "${keyword}".`);
+  }catch(e){while(det.firstChild)det.removeChild(det.firstChild);const errMsg=document.createElement('p');errMsg.style.cssText='color:#ef4444;text-align:center;padding:20px;';errMsg.textContent=`Error: ${e.message}.`;det.appendChild(errMsg);}
+  finally{scanBtn.disabled=false;scanBtn.textContent='Scan trends';}
+}
 
-  const savedLang = localStorage.getItem('viral_ui_lang') || 'en';
-  uiLanguage.value = savedLang;
-  applyTranslations(savedLang);
-  updateDashboard();
-  updateAuthUI();
-  renderDetector([]); // Le détecteur se remplit via Claude AI au scan
-  </script>
+// AUTH
+function updateAuthUI(){
+  let user=null;try{user=JSON.parse(localStorage.getItem('viral_user')||'null');}catch(e){user=null;}
+  if(user){userBadge.classList.add('show');userBadgeText.textContent=user.name;document.getElementById('openLoginBtn').style.display='none';document.getElementById('logoutBtn').style.display='inline-flex';}
+  else{userBadge.classList.remove('show');document.getElementById('openLoginBtn').style.display='inline-flex';document.getElementById('logoutBtn').style.display='none';}
+}
+function loginUser(){
+  const n=document.getElementById('authName'),e=document.getElementById('authEmail'),p=document.getElementById('authPassword'),s=document.getElementById('authStatus');
+  if(!n.value.trim()||!e.value.trim()||!p.value.trim()){s.textContent='Please fill in all fields.';s.className='status error';return;}
+  localStorage.setItem('viral_user',JSON.stringify({name:n.value.trim(),email:e.value.trim()}));
+  s.textContent='You are now logged in.';s.className='status success';updateAuthUI();setTimeout(()=>authModal.classList.remove('open'),500);
+}
+function logoutUser(){localStorage.removeItem('viral_user');updateAuthUI();setStatus('status','You have been logged out.','success');}
+
+// INIT
+const savedApiUrl=localStorage.getItem('viral_api_url');if(savedApiUrl)apiUrlInput.value=savedApiUrl;
+apiUrlInput.addEventListener('input',()=>localStorage.setItem('viral_api_url',apiUrlInput.value.trim()));
+document.getElementById('generateBtn').addEventListener('click',generateContent);
+document.getElementById('copyBtn').addEventListener('click',copyScript);
+document.getElementById('generateImageBtn').addEventListener('click',generateImage);
+document.getElementById('generateVoiceBtn').addEventListener('click',generateVoice);
+document.getElementById('createVideoBtn').addEventListener('click',createVideo);
+document.getElementById('scanBtn').addEventListener('click',scanTrends);
+document.getElementById('openLoginBtn').addEventListener('click',()=>authModal.classList.add('open'));
+document.getElementById('closeModalBtn').addEventListener('click',()=>authModal.classList.remove('open'));
+document.getElementById('loginBtn').addEventListener('click',loginUser);
+document.getElementById('logoutBtn').addEventListener('click',logoutUser);
+authModal.addEventListener('click',e=>{if(e.target===authModal)authModal.classList.remove('open');});
+document.getElementById('plan1Btn').addEventListener('click',()=>addActivity('Plan selected','Starter plan clicked.'));
+document.getElementById('plan2Btn').addEventListener('click',()=>addActivity('Plan selected','Pro plan clicked.'));
+document.getElementById('plan3Btn').addEventListener('click',()=>addActivity('Plan selected','Business plan clicked.'));
+updateDashboard();updateAuthUI();renderDetector([]);
+</script>
 </body>
 </html>
