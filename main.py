@@ -326,10 +326,11 @@ async def generate_audio_fish(req: FishTTSRequest):
         return {"error": "Le texte est vide"}
 
     try:
-        # Construire le payload — ne pas envoyer reference_id si vide
+        # Payload Fish Audio — reference_id optionnel
         payload = {
             "text": req.text,
-            "format": req.format,
+            "format": "mp3",
+            "mp3_bitrate": 128,
             "latency": req.latency,
             "normalize": True,
             "chunk_length": 300,
@@ -337,8 +338,13 @@ async def generate_audio_fish(req: FishTTSRequest):
         if req.voice_id:
             payload["reference_id"] = req.voice_id
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
+        filename = f"fish_{uuid.uuid4().hex}.mp3"
+        filepath = os.path.join(AUDIO_DIR, filename)
+
+        # Fish Audio retourne un stream audio binaire — on lit chunk par chunk
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+            async with client.stream(
+                "POST",
                 "https://api.fish.audio/v1/tts",
                 headers={
                     "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
@@ -346,19 +352,23 @@ async def generate_audio_fish(req: FishTTSRequest):
                     "model": "s2-pro",
                 },
                 json=payload,
-            )
+            ) as response:
+                if response.status_code != 200:
+                    # Lire le corps de l erreur
+                    error_body = await response.aread()
+                    try:
+                        error_detail = json.loads(error_body)
+                    except Exception:
+                        error_detail = error_body.decode("utf-8", errors="replace")
+                    return {"error": f"Fish Audio API erreur {response.status_code}", "details": error_detail}
 
-        if response.status_code != 200:
-            try:
-                error_detail = response.json()
-            except Exception:
-                error_detail = response.text
-            return {"error": f"Fish Audio API erreur {response.status_code}", "details": error_detail}
+                with open(filepath, "wb") as f:
+                    async for chunk in response.aiter_bytes(chunk_size=4096):
+                        f.write(chunk)
 
-        filename = f"fish_{uuid.uuid4().hex}.mp3"
-        filepath = os.path.join(AUDIO_DIR, filename)
-        with open(filepath, "wb") as f:
-            f.write(response.content)
+        # Vérifier que le fichier audio n est pas vide
+        if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
+            return {"error": "Fish Audio a retourné un fichier audio vide"}
 
         audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
 
