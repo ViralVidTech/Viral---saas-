@@ -43,28 +43,73 @@ os.makedirs(WORK_DIR, exist_ok=True)
 
 # ── FONCTION WAN 2.2 ────────────────────────────────────────────────────────
 async def generate_wan_video(prompt: str) -> str:
-    """Appelle Wan 2.2 sur RunPod via POST avec un prompt court et visuel."""
+    """
+    Appelle api_wan.py sur RunPod.
+    - Accepte GET et POST
+    - Logs clairs si erreur
+    - Retourne URL complète de la vidéo ou chaine vide
+    """
     if not WAN_API_URL:
+        print("WAN SKIP: WAN_API_URL non configuree dans Render")
         return ""
 
-    async with httpx.AsyncClient(timeout=900) as client:
-        response = await client.post(
-            f"{WAN_API_URL}/generate",
-            params={"prompt": prompt}
-        )
+    base = WAN_API_URL.rstrip("/")
 
-    if response.status_code != 200:
-        print("WAN ERROR:", response.status_code, response.text)
-        return ""
+    # Tentative 1 : POST
+    try:
+        async with httpx.AsyncClient(timeout=900) as client:
+            response = await client.post(
+                f"{base}/generate",
+                params={"prompt": prompt},
+                headers={"Content-Type": "application/json"}
+            )
 
-    data = response.json()
-    video_url = data.get("video_url", "")
+        print(f"WAN POST status: {response.status_code}")
 
-    if not video_url:
-        print("WAN RESPONSE WITHOUT VIDEO:", data)
-        return ""
+        if response.status_code == 200:
+            data = response.json()
+            video_url = data.get("video_url", "")
+            if video_url:
+                # Construire URL absolue si relative
+                if video_url.startswith("http"):
+                    return video_url
+                return f"{base}{video_url}"
+            else:
+                print(f"WAN POST: pas de video_url dans reponse: {data}")
 
-    return f"{WAN_API_URL}{video_url}"
+        else:
+            print(f"WAN POST erreur {response.status_code}: {response.text[:300]}")
+
+    except Exception as e:
+        print(f"WAN POST exception: {e}")
+
+    # Tentative 2 : GET (fallback)
+    try:
+        async with httpx.AsyncClient(timeout=900) as client:
+            response = await client.get(
+                f"{base}/generate",
+                params={"prompt": prompt}
+            )
+
+        print(f"WAN GET status: {response.status_code}")
+
+        if response.status_code == 200:
+            data = response.json()
+            video_url = data.get("video_url", "")
+            if video_url:
+                if video_url.startswith("http"):
+                    return video_url
+                return f"{base}{video_url}"
+            else:
+                print(f"WAN GET: pas de video_url dans reponse: {data}")
+        else:
+            print(f"WAN GET erreur {response.status_code}: {response.text[:300]}")
+
+    except Exception as e:
+        print(f"WAN GET exception: {e}")
+
+    print("WAN FINAL: echec total, retour chaine vide")
+    return ""
 
 
 # MODELS
