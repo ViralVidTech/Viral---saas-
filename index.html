@@ -243,9 +243,27 @@
           </div>
 
           <div style="border-left:3px solid #0ea5e9; padding-left:12px;">
-            <strong style="color:#38bdf8;">③ Fish Audio — Voice</strong>
+            <strong style="color:#38bdf8;">③ Google TTS — Voice</strong>
+            <div style="margin-top:6px; padding:8px 12px; background:rgba(0,163,255,0.08); border-radius:10px; font-size:0.82rem; color:var(--muted);">
+              🐟 Fish Audio sera activé prochainement (plan payant requis)
+            </div>
             <div class="field" style="margin-top:10px;">
-              <label>Voice</label>
+              <label>Voice (Google TTS)</label>
+              <select id="googleVoiceSelect">
+                <option value="en-US-Neural2-A|en-US">Male — American English (Neural)</option>
+                <option value="en-US-Neural2-C|en-US">Female — American English (Neural)</option>
+                <option value="en-US-Neural2-D|en-US">Male — Deep American (Neural)</option>
+                <option value="en-US-Neural2-F|en-US">Female — Soft American (Neural)</option>
+                <option value="en-GB-Neural2-B|en-GB">Male — British English (Neural)</option>
+                <option value="en-GB-Neural2-A|en-GB">Female — British English (Neural)</option>
+                <option value="fr-FR-Neural2-B|fr-FR">Male — French (Neural)</option>
+                <option value="fr-FR-Neural2-A|fr-FR">Female — French (Neural)</option>
+                <option value="es-ES-Neural2-B|es-ES">Male — Spanish (Neural)</option>
+                <option value="pt-BR-Neural2-B|pt-BR">Male — Portuguese (Neural)</option>
+              </select>
+            </div>
+            <!-- Fish Audio conservé pour activation future -->
+            <div id="fishVoiceSection" style="display:none;">
               <select id="fishVoiceId">
                 <option value="">Default voice (Fish Audio)</option>
                 <option value="54a5170264694bfc8e411096a1353246">Female — English (Rachel)</option>
@@ -507,24 +525,55 @@ async function generateImage(){
 async function generateVoice(){
   const apiUrl=normalizeApiUrl(apiUrlInput.value);
   const text=scriptOutput.value.trim();
-  const voiceId=document.getElementById('fishVoiceId').value;
+
   if(!apiUrl)return setStatus('voiceStatus','Enter your API URL first.','error');
   if(!text)return setStatus('voiceStatus','Generate your script first (Step 1).','error');
+
+  // Récupérer la voix Google TTS sélectionnée
+  const voiceSelect=document.getElementById('googleVoiceSelect');
+  const voiceParts=(voiceSelect?voiceSelect.value:'en-US-Neural2-C|en-US').split('|');
+  const voiceName=voiceParts[0];
+  const languageCode=voiceParts[1]||'en-US';
+
   document.getElementById('generateVoiceBtn').disabled=true;
-  markStep(3,false);setStatus('voiceStatus','⏳ Fish Audio is generating your voice...','ready');
+  markStep(3,false);setStatus('voiceStatus','⏳ Google TTS génère la voix...','ready');
+
   try{
-    const res=await fetch(`${apiUrl}/generate-audio-fish`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,voice_id:voiceId,format:'mp3',latency:'normal'})});
+    // Appel Google TTS (déjà configuré et fonctionnel)
+    const res=await fetch(`${apiUrl}/generate-audio`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text,voiceName,languageCode,speakingRate:1.0})
+    });
     const ct=res.headers.get('content-type')||'';
     if(!ct.includes('application/json'))throw new Error('Server waking up — please retry.');
     const data=await res.json();
-    if(!res.ok||data.error)throw new Error(data.error||'Fish Audio failed');
+    if(!res.ok||data.error)throw new Error(data.error||'Google TTS failed');
     if(!data.audio_url)throw new Error('No audio URL returned');
-    window._generatedVoiceUrl=data.audio_url;window._syncUrl=data.sync_url||'';
+
+    window._generatedVoiceUrl=data.audio_url;
+    window._syncUrl=data.sync_url||'';
     voicePreview.src=data.audio_url;voicePreview.load();
-    markStep(3,true);setStatus('voiceStatus','✅ Voice generated! Now create your video.','success');
-    addActivity('Voice generated','Fish Audio created a multilingual voice track.');
-  }catch(e){setStatus('voiceStatus',`❌ ${e.message}`,'error');document.getElementById('step3Status').textContent='❌ Failed';document.getElementById('step3Status').style.color='var(--danger)';}
-  finally{document.getElementById('generateVoiceBtn').disabled=false;}
+
+    markStep(3,true);setStatus('voiceStatus','✅ Voix générée ! Créez maintenant votre vidéo.','success');
+    addActivity('Voice generated','Google TTS created a voice track.');
+
+    /* ── Fish Audio — conservé pour activation future ──────────────────
+    const fishVoiceId=document.getElementById('fishVoiceId').value;
+    const resFish=await fetch(`${apiUrl}/generate-audio-fish`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text,voice_id:fishVoiceId,format:'mp3',latency:'balanced'})
+    });
+    ────────────────────────────────────────────────────────────────── */
+
+  }catch(e){
+    setStatus('voiceStatus',`❌ ${e.message}`,'error');
+    document.getElementById('step3Status').textContent='❌ Failed';
+    document.getElementById('step3Status').style.color='var(--danger)';
+  }finally{
+    document.getElementById('generateVoiceBtn').disabled=false;
+  }
 }
 
 // STEP 4 - Wan + FFmpeg
