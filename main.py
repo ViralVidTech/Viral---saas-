@@ -2,10 +2,10 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import os
 import uuid
 import base64
 import json
+import os
 import httpx
 import subprocess
 import shutil
@@ -13,8 +13,6 @@ import asyncio
 
 app = FastAPI()
 
-# Dictionnaire en mémoire pour suivre les jobs de rendu vidéo
-# { job_id: {"status": "processing"|"done"|"failed", "video_url": "...", "error": "..."} }
 VIDEO_JOBS = {}
 
 app.add_middleware(
@@ -30,11 +28,9 @@ PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
-
-# ── NOUVELLES CLÉS API ──────────────────────────────────────────────────────
-FAL_API_KEY = os.getenv("FAL_API_KEY", "")          # Flux 2 Pro via fal.ai
-FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")  # Fish Audio TTS
-# ────────────────────────────────────────────────────────────────────────────
+FAL_API_KEY = os.getenv("FAL_API_KEY", "")
+FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")
+WAN_API_URL = os.getenv("WAN_API_URL", "")
 
 AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
@@ -45,11 +41,26 @@ os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(WORK_DIR, exist_ok=True)
 
 
+# ── FONCTION WAN 2.2 ────────────────────────────────────────────────────────
+async def generate_wan_video(prompt: str) -> str:
+    """Appelle Wan 2.2 sur RunPod pour animer une vidéo à partir d'un prompt."""
+    if not WAN_API_URL:
+        return ""
+    async with httpx.AsyncClient(timeout=600) as client:
+        response = await client.get(
+            f"{WAN_API_URL}/generate",
+            params={"prompt": prompt}
+        )
+        response.raise_for_status()
+        data = response.json()
+        return f"{WAN_API_URL}{data['video_url']}"
+
+
 # MODELS
 class GenerateRequest(BaseModel):
     niche: str
     langue: str = "en"
-    duration: int = 30  # durée choisie : 30, 45 ou 60 secondes
+    duration: int = 30
 
 
 class TTSRequest(BaseModel):
@@ -59,25 +70,21 @@ class TTSRequest(BaseModel):
     speakingRate: float = 1.0
 
 
-# ── NOUVEAUX MODÈLES ────────────────────────────────────────────────────────
-
 class FishTTSRequest(BaseModel):
     text: str
-    voice_id: str = "a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1"  # voix par défaut Fish Audio
+    voice_id: str = "a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1"
     language: str = "en"
     format: str = "mp3"
-    latency: str = "normal"  # "normal" ou "balanced"
+    latency: str = "normal"
 
 
 class FluxImageRequest(BaseModel):
     prompt: str
-    image_size: str = "portrait_4_3"   # portrait_4_3, square_hd, landscape_4_3
+    image_size: str = "portrait_4_3"
     num_inference_steps: int = 28
     guidance_scale: float = 3.5
     num_images: int = 1
     enable_safety_checker: bool = True
-
-# ────────────────────────────────────────────────────────────────────────────
 
 
 class VideoRequest(BaseModel):
@@ -89,7 +96,6 @@ class VideoRequest(BaseModel):
     text6: str = ""
     text7: str = ""
     text8: str = ""
-    # 5 vidéos par scène × 8 scènes = 40 URLs vidéo
     video_url: str = ""
     video_url2: str = ""
     video_url3: str = ""
@@ -143,7 +149,6 @@ def ffmpeg_exists():
 
 
 def run_cmd(cmd):
-    """Exécute une commande FFmpeg de façon synchrone — à appeler via asyncio.to_thread."""
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(
@@ -154,7 +159,6 @@ def run_cmd(cmd):
 
 
 async def async_run_cmd(cmd):
-    """Wrapper async pour run_cmd — évite de bloquer la boucle d'événements."""
     return await asyncio.to_thread(run_cmd, cmd)
 
 
@@ -283,7 +287,6 @@ def get_audio_duration(audio_path: str) -> float:
 
 # ── ROUTES ──────────────────────────────────────────────────────────────────
 
-# HOME
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
     html_path = os.path.join(os.path.dirname(__file__), "index.html")
@@ -293,7 +296,6 @@ async def serve_ui():
     return "<h1>API is running</h1>"
 
 
-# SERVIR LES FICHIERS AUDIO ET SYNC JSON
 @app.get("/audio/{filename}")
 async def serve_audio(filename: str):
     file_path = os.path.join(AUDIO_DIR, filename)
@@ -304,7 +306,6 @@ async def serve_audio(filename: str):
     return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
 
 
-# SERVIR LES VIDÉOS GÉNÉRÉES
 @app.get("/video/{filename}")
 async def serve_video(filename: str):
     file_path = os.path.join(VIDEO_DIR, filename)
@@ -313,13 +314,9 @@ async def serve_video(filename: str):
     return FileResponse(file_path, media_type="video/mp4", filename=filename)
 
 
-# ── NOUVELLE ROUTE : FISH AUDIO TTS ────────────────────────────────────────
+# ── FISH AUDIO TTS ──────────────────────────────────────────────────────────
 @app.post("/generate-audio-fish")
 async def generate_audio_fish(req: FishTTSRequest):
-    """
-    Génère de l'audio via Fish Audio API (pay-as-you-go).
-    Retourne une URL audio accessible publiquement.
-    """
     if not FISH_AUDIO_API_KEY:
         return {"error": "FISH_AUDIO_API_KEY manquante — ajoutez-la dans les variables d'environnement Render"}
     if not PUBLIC_BASE_URL:
@@ -351,7 +348,6 @@ async def generate_audio_fish(req: FishTTSRequest):
                 error_detail = response.text
             return {"error": f"Fish Audio API erreur {response.status_code}", "details": error_detail}
 
-        # Sauvegarder l'audio
         filename = f"fish_{uuid.uuid4().hex}.mp3"
         filepath = os.path.join(AUDIO_DIR, filename)
         with open(filepath, "wb") as f:
@@ -359,7 +355,6 @@ async def generate_audio_fish(req: FishTTSRequest):
 
         audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
 
-        # Sauvegarder sync JSON vide (compatible avec le pipeline existant)
         words = req.text.strip().split()
         sync_filename = filename.replace(".mp3", "_sync.json")
         sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
@@ -381,13 +376,9 @@ async def generate_audio_fish(req: FishTTSRequest):
         return {"error": f"Erreur Fish Audio: {str(e)}"}
 
 
-# ── NOUVELLE ROUTE : FLUX 2 PRO — GÉNÉRATION D'IMAGE ───────────────────────
+# ── FLUX 2 PRO — GÉNÉRATION D'IMAGE ────────────────────────────────────────
 @app.post("/generate-image")
 async def generate_image(req: FluxImageRequest):
-    """
-    Génère une image via Flux 2 Pro sur fal.ai.
-    Idéal pour créer des personnages (fruits, cartoons, objets) pour ViralVidTech.
-    """
     if not FAL_API_KEY:
         return {"error": "FAL_API_KEY manquante — ajoutez-la dans les variables d'environnement Render"}
     if not req.prompt.strip():
@@ -425,7 +416,6 @@ async def generate_image(req: FluxImageRequest):
         if not images:
             return {"error": "Flux n'a retourné aucune image", "details": data}
 
-        # Retourner les URLs des images générées
         image_urls = [img.get("url", "") for img in images if img.get("url")]
 
         return {
@@ -441,13 +431,9 @@ async def generate_image(req: FluxImageRequest):
         return {"error": f"Erreur Flux: {str(e)}"}
 
 
-# ── NOUVELLE ROUTE : LISTE DES VOIX FISH AUDIO ─────────────────────────────
+# ── LISTE DES VOIX FISH AUDIO ───────────────────────────────────────────────
 @app.get("/fish-voices")
 async def list_fish_voices():
-    """
-    Retourne les voix populaires disponibles sur Fish Audio.
-    Utile pour choisir une voix dans l'interface ViralVidTech.
-    """
     if not FISH_AUDIO_API_KEY:
         return {"error": "FISH_AUDIO_API_KEY manquante"}
 
@@ -478,7 +464,7 @@ async def list_fish_voices():
         return {"error": f"Erreur Fish Audio voices: {str(e)}"}
 
 
-# ── GENERATE (EXISTANT — INCHANGÉ) ─────────────────────────────────────────
+# ── GENERATE : Claude + Wan 2.2 ─────────────────────────────────────────────
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     niche = req.niche.strip() or "general topic"
@@ -623,8 +609,6 @@ TITLES:
         script_parts = [scenes[key] for key in scene_keys if scenes[key]]
         script = "\n\n".join(script_parts)
 
-        video_urls = [""] * 32
-
         def extract_keywords(scene_text: str, fallback: str, scene_key: str = "") -> str:
             if not scene_text:
                 return fallback
@@ -734,9 +718,19 @@ TITLES:
 
         scene_list = [scenes[key] for key in scene_keys if scenes[key]]
 
+        # ── WAN 2.2 : animer le script en vidéo ────────────────────────────
+        wan_video_url = ""
+        if WAN_API_URL:
+            try:
+                wan_video_url = await generate_wan_video(script)
+            except Exception as e:
+                wan_video_url = f"Erreur WAN: {str(e)}"
+        # ───────────────────────────────────────────────────────────────────
+
         return {
             "titles": titles,
             "script": script,
+            "wan_video": wan_video_url,
             "scene1": scene_list[0] if len(scene_list) > 0 else "",
             "scene2": scene_list[1] if len(scene_list) > 1 else "",
             "scene3": scene_list[2] if len(scene_list) > 2 else "",
@@ -913,7 +907,7 @@ Focus on what is currently trending and has high viral potential. Be specific an
         return {"error": f"Erreur scan: {str(e)}"}
 
 
-# GOOGLE TTS (EXISTANT — INCHANGÉ)
+# GOOGLE TTS (CONSERVÉ POUR COMPATIBILITÉ)
 @app.post("/generate-audio")
 async def generate_audio(req: TTSRequest):
     if not GOOGLE_TTS_API_KEY:
@@ -1002,7 +996,7 @@ async def generate_audio(req: TTSRequest):
         return {"error": f"Erreur TTS: {str(e)}"}
 
 
-# FFMPEG: CRÉER LA VIDÉO FINALE (EXISTANT — INCHANGÉ)
+# FFMPEG: CRÉER LA VIDÉO FINALE
 async def _process_video(job_id: str, req: VideoRequest):
     job_dir = None
     try:
