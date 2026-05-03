@@ -139,6 +139,7 @@ class VideoRequest(BaseModel):
     audio_url: str = ""
     sync_url: str = ""
     music_url: str = ""
+    wan_video: str = ""
     duration: int = 30
 
 
@@ -1071,7 +1072,10 @@ async def _process_video(job_id: str, req: VideoRequest):
             (req.text8 or "").strip()[:200],
         ]
 
-        valid_video_urls_raw = [u for u in all_video_urls if u]
+        if req.wan_video:
+            valid_video_urls_raw = [req.wan_video]
+        else:
+            valid_video_urls_raw = [u for u in all_video_urls if u]
         if not valid_video_urls_raw:
             VIDEO_JOBS[job_id] = {"status": "failed", "error": "Aucune vidéo fournie"}
             return
