@@ -24,7 +24,7 @@ export const DownloadButton: React.FC<{
   }
 
   if (state.status !== "done") {
-    throw new Error("Download button should not be rendered when not done");
+    return null;
   }
 
   return (

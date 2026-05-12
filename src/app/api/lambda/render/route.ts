@@ -14,26 +14,33 @@ import {
 import { RenderRequest } from "../../../../../types/schema";
 import { executeApi } from "../../../../helpers/api-response";
 
+const validateEnvVars = () => {
+  const missing: string[] = [];
+  if (
+    !process.env.AWS_ACCESS_KEY_ID &&
+    !process.env.REMOTION_AWS_ACCESS_KEY_ID
+  ) {
+    missing.push("AWS_ACCESS_KEY_ID (or REMOTION_AWS_ACCESS_KEY_ID)");
+  }
+  if (
+    !process.env.AWS_SECRET_ACCESS_KEY &&
+    !process.env.REMOTION_AWS_SECRET_ACCESS_KEY
+  ) {
+    missing.push(
+      "AWS_SECRET_ACCESS_KEY (or REMOTION_AWS_SECRET_ACCESS_KEY)",
+    );
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing environment variables: ${missing.join(", ")}. Set up Remotion Lambda — see the README.md.`,
+    );
+  }
+};
+
 export const POST = executeApi<RenderMediaOnLambdaOutput, typeof RenderRequest>(
   RenderRequest,
   async (req, body) => {
-    if (
-      !process.env.AWS_ACCESS_KEY_ID &&
-      !process.env.REMOTION_AWS_ACCESS_KEY_ID
-    ) {
-      throw new TypeError(
-        "Set up Remotion Lambda to render videos. See the README.md for how to do so.",
-      );
-    }
-    if (
-      !process.env.AWS_SECRET_ACCESS_KEY &&
-      !process.env.REMOTION_AWS_SECRET_ACCESS_KEY
-    ) {
-      throw new TypeError(
-        "The environment variable REMOTION_AWS_SECRET_ACCESS_KEY is missing. Add it to your .env file.",
-      );
-    }
-
+    validateEnvVars();
     const result = await renderMediaOnLambda({
       codec: "h264",
       functionName: speculateFunctionName({

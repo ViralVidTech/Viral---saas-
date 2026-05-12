@@ -13,3 +13,6 @@ export const DURATION_IN_FRAMES = 200;
 export const VIDEO_WIDTH = 1280;
 export const VIDEO_HEIGHT = 720;
 export const VIDEO_FPS = 30;
+
+export const POLL_INTERVAL_MS = 1000;
+export const POLL_TIMEOUT_MS = 10 * 60 * 1000;

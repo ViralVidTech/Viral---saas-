@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { z } from "zod";
-import { CompositionProps } from "../../types/constants";
+import {
+  CompositionProps,
+  POLL_INTERVAL_MS,
+  POLL_TIMEOUT_MS,
+} from "../../types/constants";
 import { getProgress, renderVideo } from "../lambda/api";
 
 export type State =
@@ -57,8 +61,18 @@ export const useRendering = (
       });
 
       let pending = true;
+      const pollStart = Date.now();
 
       while (pending) {
+        if (Date.now() - pollStart > POLL_TIMEOUT_MS) {
+          setState({
+            status: "error",
+            renderId: renderId,
+            error: new Error("Render timed out after 10 minutes"),
+          });
+          break;
+        }
+
         const result = await getProgress({
           id: renderId,
           bucketName: bucketName,
@@ -89,14 +103,14 @@ export const useRendering = (
               progress: result.progress,
               renderId: renderId,
             });
-            await wait(1000);
+            await wait(POLL_INTERVAL_MS);
           }
         }
       }
     } catch (err) {
       setState({
         status: "error",
-        error: err as Error,
+        error: err instanceof Error ? err : new Error(String(err)),
         renderId: null,
       });
     }

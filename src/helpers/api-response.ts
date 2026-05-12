@@ -27,7 +27,10 @@ export const executeApi =
       });
     } catch (err) {
       return NextResponse.json(
-        { type: "error", message: (err as Error).message },
+        {
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        },
         {
           status: 500,
         },
