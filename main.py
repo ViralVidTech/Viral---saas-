@@ -1,5 +1,5 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi import FastAPI, File, UploadFile, Form
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
@@ -31,14 +31,109 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 FAL_API_KEY = os.getenv("FAL_API_KEY", "")
 FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")
 WAN_API_URL = os.getenv("WAN_API_URL", "")
+RUNPOD_API_URL = os.getenv("RUNPOD_API_URL", "")
+QWEN_API_URL = os.getenv("QWEN_API_URL", "")
+WAN_ANIMATE_API_URL = os.getenv("WAN_ANIMATE_API_URL", "")
+VOXTRAL_API_URL = os.getenv("VOXTRAL_API_URL", "")
 
 AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
 WORK_DIR = "work"
+MUSIC_DIR = "music"
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(WORK_DIR, exist_ok=True)
+os.makedirs(MUSIC_DIR, exist_ok=True)
+
+VIDEO_TYPES = [
+    "Vidéo stock",
+    "Paper cut-out",
+    "Personnage animé",
+    "Talking avatar",
+    "Vidéo explicative",
+    "Citation visuelle",
+    "Témoignage",
+    "Tutoriel",
+    "Révélation & Choc",
+    "Challenge",
+]
+
+NARRATIVE_STYLES = [
+    "Storytelling",
+    "Éducatif",
+    "Humoristique",
+    "Choc & Révélation",
+    "Inspirant",
+    "Informatif",
+    "Conversationnel",
+    "Dramatique",
+]
+
+VOICE_STYLES = {
+    "Lent et posé": ["narration", "méditation", "religion", "développement personnel"],
+    "Dynamique et rapide": ["motivation", "sport", "gaming", "challenge"],
+    "Doux et chaleureux": ["amour", "parentalité", "bien-être", "cuisine"],
+    "Autoritaire et confiant": ["finance", "business", "technologie"],
+    "Humoristique et léger": ["blagues", "entertainment"],
+    "Éducatif et clair": ["IA", "langues", "tutoriel"],
+}
+
+MUSIC_STYLES = {
+    "Épique et motivant": ["motivation", "sport", "finance"],
+    "Doux et apaisant": ["santé", "méditation", "religion"],
+    "Rythmé et énergique": ["gaming", "challenge", "influenceur"],
+    "Mystérieux et intrigant": ["révélation", "technologie"],
+    "Neutre et professionnel": ["éducation", "langues", "IA"],
+    "Joyeux et léger": ["blagues", "cuisine", "voyage"],
+}
+
+NICHES_BY_PLAN = {
+    "free": [
+        "Motivation",
+        "Blagues",
+    ],
+    "starter": [
+        "Motivation",
+        "Blagues",
+        "Santé",
+        "Religion",
+    ],
+    "pro": [
+        "Motivation",
+        "Blagues",
+        "Santé",
+        "Religion",
+        "IA",
+        "Technologie",
+        "Enseignement de langues",
+        "Développement personnel",
+        "Sport & Fitness",
+        "Mindfulness",
+    ],
+    "premium": [
+        "Motivation",
+        "Blagues",
+        "Santé",
+        "Religion",
+        "IA",
+        "Technologie",
+        "Enseignement de langues",
+        "Développement personnel",
+        "Sport & Fitness",
+        "Mindfulness",
+        "Finance",
+        "Cryptomonnaie",
+        "Influenceur",
+        "Relation amoureuse",
+        "Mode & Beauté",
+        "Gaming",
+        "Voyage",
+        "Cuisine",
+        "Parentalité",
+        "Développement business",
+    ],
+}
 
 
 # ── FONCTION WAN 2.2 ────────────────────────────────────────────────────────
@@ -1388,6 +1483,1063 @@ async def create_video(req: VideoRequest):
         "job_id": job_id,
         "message": "Rendu démarré. Vérifiez /video-status/{job_id}"
     })
+
+
+class WanGenerateRequest(BaseModel):
+    prompt: str
+    resolution: str = "480p"
+    num_frames: int = 81
+    num_inference_steps: int = 20
+
+
+@app.post("/wan/generate")
+async def wan_generate(req: WanGenerateRequest):
+    if not RUNPOD_API_URL:
+        return JSONResponse(status_code=503, content={"error": "RUNPOD_API_URL non configurée"})
+    if not req.prompt.strip():
+        return JSONResponse(status_code=400, content={"error": "Le prompt est vide"})
+
+    try:
+        async with httpx.AsyncClient(timeout=900) as client:
+            response = await client.post(
+                RUNPOD_API_URL.rstrip("/"),
+                json={
+                    "prompt": req.prompt,
+                    "resolution": req.resolution,
+                    "num_frames": req.num_frames,
+                    "num_inference_steps": req.num_inference_steps,
+                },
+                headers={"Content-Type": "application/json"},
+            )
+
+        if response.status_code != 200:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text[:500]
+            return JSONResponse(
+                status_code=response.status_code,
+                content={"error": f"RunPod erreur {response.status_code}", "details": detail},
+            )
+
+        content_type = response.headers.get("content-type", "")
+        if "video" in content_type or "octet-stream" in content_type:
+            return StreamingResponse(
+                iter([response.content]),
+                media_type="video/mp4",
+                headers={"Content-Disposition": "inline; filename=wan_output.mp4"},
+            )
+
+        data = response.json()
+        video_url = data.get("video_url", "")
+        if not video_url:
+            return JSONResponse(status_code=502, content={"error": "Pas de video_url dans la réponse RunPod", "details": data})
+
+        if not video_url.startswith("http"):
+            video_url = RUNPOD_API_URL.rstrip("/") + "/" + video_url.lstrip("/")
+
+        async with httpx.AsyncClient(timeout=300) as client:
+            video_resp = await client.get(video_url, follow_redirects=True)
+
+        if video_resp.status_code != 200:
+            return JSONResponse(
+                status_code=502,
+                content={"error": f"Impossible de télécharger la vidéo depuis RunPod ({video_resp.status_code})"},
+            )
+
+        return StreamingResponse(
+            iter([video_resp.content]),
+            media_type="video/mp4",
+            headers={"Content-Disposition": "inline; filename=wan_output.mp4"},
+        )
+
+    except httpx.TimeoutException:
+        return JSONResponse(status_code=504, content={"error": "Timeout RunPod (>900s)"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Erreur wan/generate: {str(e)}"})
+
+
+class GenerateScriptRequest(BaseModel):
+    niche: str
+    video_type: str
+    narrative_style: str
+    duration_seconds: int = 60
+    language: str = "fr"
+    custom_script: str = ""
+    user_plan: str = "free"
+
+
+@app.post("/generate-script")
+async def generate_script(req: GenerateScriptRequest):
+    if not ANTHROPIC_API_KEY:
+        return JSONResponse(status_code=503, content={"error": "ANTHROPIC_API_KEY manquante"})
+
+    plan_key = req.user_plan.lower().strip()
+    allowed_niches = NICHES_BY_PLAN.get(plan_key)
+    if allowed_niches is None:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Plan inconnu: '{req.user_plan}'. Valeurs acceptées: free, starter, pro, premium"},
+        )
+
+    niche_normalized = req.niche.strip()
+    if niche_normalized not in allowed_niches:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": f"La niche '{niche_normalized}' n'est pas disponible pour le plan '{plan_key}'.",
+                "allowed_niches": allowed_niches,
+            },
+        )
+
+    if req.custom_script.strip():
+        return {
+            "script": req.custom_script.strip(),
+            "source": "custom",
+            "niche": niche_normalized,
+            "narrative_style": req.narrative_style,
+        }
+
+    lang_map = {"fr": "français", "en": "anglais", "es": "espagnol", "pt": "portugais"}
+    lang_label = lang_map.get(req.language.lower(), req.language)
+
+    prompt = f"""Tu es un expert en création de contenu vidéo viral pour les réseaux sociaux.
+
+Génère un script vidéo de {req.duration_seconds} secondes pour les paramètres suivants :
+- Niche : {niche_normalized}
+- Type de vidéo : {req.video_type}
+- Style narratif : {req.narrative_style}
+- Langue : {lang_label}
+
+RÈGLES :
+- Le script doit correspondre exactement au style narratif demandé
+- Adapte le ton et le rythme au type de vidéo
+- Durée cible : {req.duration_seconds} secondes à l'oral (environ {req.duration_seconds * 2} mots)
+- Écris uniquement le texte à dire, sans didascalies ni indications de mise en scène
+- Pas de titres de section, juste le texte continu à narrer
+- Langue : {lang_label} uniquement
+
+Retourne uniquement le script, sans introduction ni commentaire."""
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 1500,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+
+        data = response.json()
+
+        if response.status_code != 200:
+            err = data.get("error", {})
+            return JSONResponse(
+                status_code=502,
+                content={"error": err.get("message", "Claude API a échoué"), "details": data},
+            )
+
+        content_blocks = data.get("content", [])
+        script_text = ""
+        for block in content_blocks:
+            if block.get("type") == "text":
+                script_text += block.get("text", "")
+
+        script_text = script_text.strip()
+        if not script_text:
+            return JSONResponse(status_code=502, content={"error": "Claude a retourné un script vide"})
+
+        return {
+            "script": script_text,
+            "source": "generated",
+            "niche": niche_normalized,
+            "narrative_style": req.narrative_style,
+        }
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Erreur generate-script: {str(e)}"})
+
+
+VOICE_CATALOG = [
+    {
+        "voice_id": "a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1",
+        "voice_name": "Lucas",
+        "language": "fr",
+        "gender": "male",
+        "styles": ["Dynamique et rapide", "Autoritaire et confiant"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90",
+        "voice_name": "Camille",
+        "language": "fr",
+        "gender": "female",
+        "styles": ["Doux et chaleureux", "Lent et posé"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83",
+        "voice_name": "Théo",
+        "language": "fr",
+        "gender": "male",
+        "styles": ["Humoristique et léger", "Dynamique et rapide"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "d2e56gb3-4c78-5f90-b145-6d0f8e3c2a94",
+        "voice_name": "Sophie",
+        "language": "fr",
+        "gender": "female",
+        "styles": ["Éducatif et clair", "Autoritaire et confiant"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "e3f67hc4-5d89-6a01-c256-7e1a9f4d3b05",
+        "voice_name": "Nathan",
+        "language": "fr",
+        "gender": "male",
+        "styles": ["Lent et posé", "Éducatif et clair"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "f4a78id5-6e90-7b12-d367-8f2b0a5e4c16",
+        "voice_name": "Emma",
+        "language": "fr",
+        "gender": "female",
+        "styles": ["Humoristique et léger", "Doux et chaleureux"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "a1b23cd4-1234-5678-9abc-def012345678",
+        "voice_name": "James",
+        "language": "en",
+        "gender": "male",
+        "styles": ["Autoritaire et confiant", "Éducatif et clair"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "b2c34de5-2345-6789-abcd-ef0123456789",
+        "voice_name": "Aria",
+        "language": "en",
+        "gender": "female",
+        "styles": ["Doux et chaleureux", "Dynamique et rapide"],
+        "preview_url": None,
+    },
+]
+
+
+MUSIC_CATALOG = [
+    {
+        "music_id": "music-epic-001",
+        "music_name": "Rise to Glory",
+        "music_style": "Épique et motivant",
+        "niches": ["motivation", "sport", "finance"],
+        "duration": 60,
+        "url": "",
+    },
+    {
+        "music_id": "music-epic-002",
+        "music_name": "Champion's Path",
+        "music_style": "Épique et motivant",
+        "niches": ["motivation", "sport", "challenge"],
+        "duration": 45,
+        "url": "",
+    },
+    {
+        "music_id": "music-soft-001",
+        "music_name": "Morning Calm",
+        "music_style": "Doux et apaisant",
+        "niches": ["santé", "méditation", "religion"],
+        "duration": 60,
+        "url": "",
+    },
+    {
+        "music_id": "music-soft-002",
+        "music_name": "Inner Peace",
+        "music_style": "Doux et apaisant",
+        "niches": ["mindfulness", "bien-être", "parentalité"],
+        "duration": 45,
+        "url": "",
+    },
+    {
+        "music_id": "music-energy-001",
+        "music_name": "Neon Rush",
+        "music_style": "Rythmé et énergique",
+        "niches": ["gaming", "challenge", "influenceur"],
+        "duration": 60,
+        "url": "",
+    },
+    {
+        "music_id": "music-energy-002",
+        "music_name": "Beat Drop",
+        "music_style": "Rythmé et énergique",
+        "niches": ["gaming", "sport", "mode"],
+        "duration": 30,
+        "url": "",
+    },
+    {
+        "music_id": "music-mystery-001",
+        "music_name": "Dark Discovery",
+        "music_style": "Mystérieux et intrigant",
+        "niches": ["révélation", "technologie", "cryptomonnaie"],
+        "duration": 60,
+        "url": "",
+    },
+    {
+        "music_id": "music-neutral-001",
+        "music_name": "Clear Horizon",
+        "music_style": "Neutre et professionnel",
+        "niches": ["éducation", "langues", "IA", "business"],
+        "duration": 60,
+        "url": "",
+    },
+    {
+        "music_id": "music-neutral-002",
+        "music_name": "Steady Focus",
+        "music_style": "Neutre et professionnel",
+        "niches": ["tutoriel", "finance", "technologie"],
+        "duration": 45,
+        "url": "",
+    },
+    {
+        "music_id": "music-happy-001",
+        "music_name": "Sunny Day",
+        "music_style": "Joyeux et léger",
+        "niches": ["blagues", "cuisine", "voyage"],
+        "duration": 60,
+        "url": "",
+    },
+    {
+        "music_id": "music-happy-002",
+        "music_name": "Good Vibes",
+        "music_style": "Joyeux et léger",
+        "niches": ["humour", "famille", "parentalité"],
+        "duration": 45,
+        "url": "",
+    },
+]
+
+
+REFERENCE_VIDEOS = {
+    "danses": [
+        {"id": "dance-001", "name": "Hip-Hop Freestyle", "preview_url": "", "duration": 8, "path": ""},
+        {"id": "dance-002", "name": "Salsa Basic", "preview_url": "", "duration": 10, "path": ""},
+        {"id": "dance-003", "name": "Contemporary Flow", "preview_url": "", "duration": 12, "path": ""},
+    ],
+    "chants": [
+        {"id": "chant-001", "name": "Gospel Praise", "preview_url": "", "duration": 15, "path": ""},
+        {"id": "chant-002", "name": "Pop Chorus", "preview_url": "", "duration": 10, "path": ""},
+        {"id": "chant-003", "name": "Acoustic Ballad", "preview_url": "", "duration": 20, "path": ""},
+    ],
+    "discours": [
+        {"id": "discours-001", "name": "Motivational Speech", "preview_url": "", "duration": 30, "path": ""},
+        {"id": "discours-002", "name": "Product Pitch", "preview_url": "", "duration": 25, "path": ""},
+        {"id": "discours-003", "name": "Story Narration", "preview_url": "", "duration": 20, "path": ""},
+    ],
+    "gestes": [
+        {"id": "geste-001", "name": "Pointing & Explaining", "preview_url": "", "duration": 6, "path": ""},
+        {"id": "geste-002", "name": "Hands Open Welcome", "preview_url": "", "duration": 5, "path": ""},
+        {"id": "geste-003", "name": "Count on Fingers", "preview_url": "", "duration": 7, "path": ""},
+    ],
+}
+
+# Flat lookup map for reference video path resolution
+_REF_VIDEO_FLAT = {
+    v["id"]: v
+    for videos in REFERENCE_VIDEOS.values()
+    for v in videos
+}
+
+
+class SelectVoiceRequest(BaseModel):
+    voice_style: str
+    language: str = "fr"
+    gender: str = ""
+    preview: bool = False
+
+
+@app.post("/select-voice")
+async def select_voice(req: SelectVoiceRequest):
+    lang = req.language.lower().strip()
+    gender = req.gender.lower().strip()
+    style = req.voice_style.strip()
+
+    candidates = [v for v in VOICE_CATALOG if v["language"] == lang]
+    if not candidates:
+        candidates = VOICE_CATALOG[:]
+
+    style_matches = [v for v in candidates if style in v["styles"]]
+    if style_matches:
+        candidates = style_matches
+
+    if gender in ("male", "female"):
+        gender_matches = [v for v in candidates if v["gender"] == gender]
+        if gender_matches:
+            candidates = gender_matches
+
+    chosen = candidates[0]
+
+    preview_url = None
+    if req.preview and FISH_AUDIO_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"https://api.fish.audio/v1/model/{chosen['voice_id']}",
+                    headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
+                )
+            if resp.status_code == 200:
+                data = resp.json()
+                samples = data.get("samples", [])
+                if samples:
+                    preview_url = samples[0].get("audio", None)
+        except Exception:
+            pass
+
+    return {
+        "voice_id": chosen["voice_id"],
+        "voice_name": chosen["voice_name"],
+        "voice_style": style,
+        "preview_url": preview_url,
+    }
+
+
+@app.post("/clone-voice")
+async def clone_voice(
+    audio_file: UploadFile = File(...),
+    voice_name: str = Form(...),
+):
+    if not FISH_AUDIO_API_KEY:
+        return {
+            "cloned_voice_id": "mock-cloned-voice-id-12345",
+            "voice_name": voice_name,
+            "status": "ready",
+        }
+
+    content_type = audio_file.content_type or "audio/mpeg"
+    audio_bytes = await audio_file.read()
+
+    if len(audio_bytes) < 10 * 1024:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Le fichier audio doit faire au moins 10 secondes (fichier trop petit)"},
+        )
+
+    max_bytes = 5 * 60 * 128 * 1024 // 8
+    if len(audio_bytes) > max_bytes:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Le fichier audio ne doit pas dépasser 5 minutes"},
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                "https://api.fish.audio/v1/model",
+                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
+                data={
+                    "title": voice_name,
+                    "type": "voice",
+                    "train_mode": "fast",
+                    "visibility": "private",
+                },
+                files={"voices": (audio_file.filename or "voice.mp3", audio_bytes, content_type)},
+            )
+
+        if response.status_code not in (200, 201):
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text[:500]
+            return JSONResponse(
+                status_code=502,
+                content={"error": f"Fish Audio cloning erreur {response.status_code}", "details": detail},
+            )
+
+        data = response.json()
+        model_id = data.get("_id") or data.get("id", "")
+        status = "ready" if data.get("state") == "done" else "processing"
+
+        return {
+            "cloned_voice_id": model_id,
+            "voice_name": voice_name,
+            "status": status,
+        }
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Erreur clone-voice: {str(e)}"})
+
+
+@app.get("/available-voices")
+async def available_voices(style: str = ""):
+    if not FISH_AUDIO_API_KEY:
+        catalog = VOICE_CATALOG
+        if style:
+            catalog = [v for v in catalog if style in v["styles"]]
+        return {
+            "voices": [
+                {
+                    "voice_id": v["voice_id"],
+                    "voice_name": v["voice_name"],
+                    "language": v["language"],
+                    "gender": v["gender"],
+                    "styles": v["styles"],
+                }
+                for v in catalog
+            ],
+            "source": "mock",
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                "https://api.fish.audio/v1/model",
+                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
+                params={"page_size": 50, "sort_by": "task_count", "type": "voice"},
+            )
+
+        if response.status_code != 200:
+            return JSONResponse(
+                status_code=502,
+                content={"error": f"Fish Audio API erreur {response.status_code}"},
+            )
+
+        data = response.json()
+        voices = []
+        for item in data.get("items", []):
+            voice_entry = {
+                "voice_id": item.get("_id", ""),
+                "voice_name": item.get("title", ""),
+                "language": (item.get("languages") or ["unknown"])[0],
+                "gender": item.get("gender", "neutral"),
+                "styles": [],
+                "tags": item.get("tags", []),
+            }
+            voices.append(voice_entry)
+
+        if style:
+            style_lower = style.lower()
+            voices = [
+                v for v in voices
+                if style_lower in v["voice_name"].lower()
+                or any(style_lower in t.lower() for t in v.get("tags", []))
+            ]
+
+        return {"voices": voices, "count": len(voices), "source": "fish_audio"}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Erreur available-voices: {str(e)}"})
+
+
+class SelectMusicRequest(BaseModel):
+    music_style: str
+    niche: str = ""
+    duration_seconds: int = 60
+    user_upload: bool = False
+
+
+@app.post("/select-music")
+async def select_music(req: SelectMusicRequest):
+    if req.user_upload:
+        return {
+            "music_id": "",
+            "music_name": "",
+            "music_style": req.music_style,
+            "duration": req.duration_seconds,
+            "url": "",
+        }
+
+    style = req.music_style.strip()
+    niche_lower = req.niche.lower().strip()
+
+    candidates = [t for t in MUSIC_CATALOG if t["music_style"] == style]
+    if not candidates:
+        candidates = MUSIC_CATALOG[:]
+
+    if niche_lower:
+        niche_matches = [t for t in candidates if any(niche_lower in n for n in t["niches"])]
+        if niche_matches:
+            candidates = niche_matches
+
+    best = min(
+        candidates,
+        key=lambda t: abs(t["duration"] - req.duration_seconds),
+    )
+
+    return {
+        "music_id": best["music_id"],
+        "music_name": best["music_name"],
+        "music_style": style,
+        "duration": best["duration"],
+        "url": best["url"],
+    }
+
+
+@app.post("/upload-music")
+async def upload_music(
+    music_file: UploadFile = File(...),
+    music_name: str = Form(""),
+):
+    allowed_types = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/mp4", "audio/m4a", "audio/x-m4a"}
+    allowed_extensions = {".mp3", ".wav", ".m4a"}
+
+    filename = music_file.filename or ""
+    ext = os.path.splitext(filename)[1].lower()
+    content_type = music_file.content_type or ""
+
+    if ext not in allowed_extensions and content_type not in allowed_types:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Format non supporté. Utilisez mp3, wav ou m4a."},
+        )
+
+    audio_bytes = await music_file.read()
+
+    max_bytes = 10 * 1024 * 1024
+    if len(audio_bytes) > max_bytes:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Le fichier dépasse la limite de 10 MB"},
+        )
+
+    music_id = uuid.uuid4().hex
+    safe_ext = ext if ext in allowed_extensions else ".mp3"
+    saved_filename = f"music_{music_id}{safe_ext}"
+    saved_path = os.path.join(MUSIC_DIR, saved_filename)
+
+    with open(saved_path, "wb") as f:
+        f.write(audio_bytes)
+
+    duration = get_audio_duration(saved_path)
+    final_name = music_name.strip() or os.path.splitext(filename)[0] or saved_filename
+    file_url = f"{PUBLIC_BASE_URL}/music/{saved_filename}" if PUBLIC_BASE_URL else saved_path
+
+    return {
+        "music_id": music_id,
+        "music_name": final_name,
+        "duration": int(duration),
+        "file_path": file_url,
+    }
+
+
+@app.get("/music/{filename}")
+async def serve_music(filename: str):
+    file_path = os.path.join(MUSIC_DIR, filename)
+    if not os.path.exists(file_path):
+        return JSONResponse(status_code=404, content={"error": "Fichier music introuvable"})
+    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
+
+
+@app.get("/available-music")
+async def available_music(style: str = ""):
+    catalog = MUSIC_CATALOG
+    if style.strip():
+        style_lower = style.lower().strip()
+        catalog = [
+            t for t in MUSIC_CATALOG
+            if style_lower in t["music_style"].lower()
+        ]
+
+    uploaded = []
+    if PUBLIC_BASE_URL:
+        try:
+            for fname in os.listdir(MUSIC_DIR):
+                if fname.startswith("music_") and os.path.splitext(fname)[1].lower() in {".mp3", ".wav", ".m4a"}:
+                    fpath = os.path.join(MUSIC_DIR, fname)
+                    uploaded.append({
+                        "music_id": os.path.splitext(fname)[0].replace("music_", ""),
+                        "music_name": fname,
+                        "music_style": "Upload utilisateur",
+                        "duration": int(get_audio_duration(fpath)),
+                        "url": f"{PUBLIC_BASE_URL}/music/{fname}",
+                    })
+        except Exception:
+            pass
+
+    return {
+        "catalog": catalog,
+        "uploaded": uploaded,
+        "total": len(catalog) + len(uploaded),
+    }
+
+
+@app.get("/voice-styles")
+async def get_voice_styles():
+    return {"voice_styles": VOICE_STYLES}
+
+
+@app.get("/music-styles")
+async def get_music_styles():
+    return {"music_styles": MUSIC_STYLES}
+
+
+@app.get("/suggested-styles")
+async def get_suggested_styles(niche: str = ""):
+    niche_lower = niche.lower().strip()
+
+    suggested_voice = None
+    for style, keywords in VOICE_STYLES.items():
+        if any(k in niche_lower for k in keywords):
+            suggested_voice = style
+            break
+
+    suggested_music = None
+    for style, keywords in MUSIC_STYLES.items():
+        if any(k in niche_lower for k in keywords):
+            suggested_music = style
+            break
+
+    suggested_narrative = None
+    narrative_map = {
+        "Humoristique": ["blague", "humour", "entertainment", "gaming"],
+        "Inspirant": ["motivation", "développement personnel", "sport", "fitness"],
+        "Éducatif": ["ia", "technologie", "langues", "tutoriel", "enseignement"],
+        "Choc & Révélation": ["révélation", "choc", "cryptomonnaie", "finance"],
+        "Storytelling": ["amour", "relation", "parentalité", "voyage"],
+        "Informatif": ["santé", "religion", "mindfulness"],
+        "Conversationnel": ["cuisine", "mode", "beauté", "influenceur"],
+        "Dramatique": ["business", "influenceur"],
+    }
+    for style, keywords in narrative_map.items():
+        if any(k in niche_lower for k in keywords):
+            suggested_narrative = style
+            break
+
+    return {
+        "niche": niche,
+        "suggested_voice_style": suggested_voice or "Éducatif et clair",
+        "suggested_music_style": suggested_music or "Neutre et professionnel",
+        "suggested_narrative_style": suggested_narrative or "Informatif",
+    }
+
+
+@app.get("/video-types")
+async def get_video_types():
+    return {"video_types": VIDEO_TYPES, "count": len(VIDEO_TYPES)}
+
+
+@app.get("/narrative-styles")
+async def get_narrative_styles():
+    return {"narrative_styles": NARRATIVE_STYLES, "count": len(NARRATIVE_STYLES)}
+
+
+@app.get("/niches")
+async def get_niches(plan: str = "free"):
+    key = plan.lower().strip()
+    niches = NICHES_BY_PLAN.get(key)
+    if niches is None:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Plan inconnu: '{plan}'. Valeurs acceptées: free, starter, pro, premium"},
+        )
+    return {"plan": key, "niches": niches, "count": len(niches)}
+
+
+@app.get("/niches/all")
+async def get_niches_all():
+    result = {}
+    seen = {}
+    for plan, niches in NICHES_BY_PLAN.items():
+        for niche in niches:
+            if niche not in seen:
+                seen[niche] = plan
+    all_niches = [{"niche": niche, "plan": plan} for niche, plan in seen.items()]
+    return {"plans": NICHES_BY_PLAN, "all_niches": all_niches, "total": len(all_niches)}
+
+
+class QwenImageRequest(BaseModel):
+    prompt: str
+    style: str = "realistic"
+    width: int = 1280
+    height: int = 720
+    negative_prompt: str = ""
+
+
+@app.post("/qwen/generate-image")
+async def qwen_generate_image(req: QwenImageRequest):
+    if not QWEN_API_URL:
+        return JSONResponse(status_code=503, content={"error": "Qwen service not configured"})
+    if not req.prompt.strip():
+        return JSONResponse(status_code=400, content={"error": "Le prompt est vide"})
+
+    payload = {
+        "prompt": req.prompt,
+        "style": req.style,
+        "width": req.width,
+        "height": req.height,
+    }
+    if req.negative_prompt.strip():
+        payload["negative_prompt"] = req.negative_prompt
+
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            response = await client.post(
+                QWEN_API_URL.rstrip("/"),
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            )
+
+        if response.status_code != 200:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text[:500]
+            return JSONResponse(
+                status_code=response.status_code,
+                content={"error": f"Qwen API erreur {response.status_code}", "details": detail},
+            )
+
+        data = response.json()
+        return {
+            "image_url": data.get("image_url", ""),
+            "image_path": data.get("image_path", ""),
+            "prompt": req.prompt,
+        }
+
+    except httpx.TimeoutException:
+        return JSONResponse(status_code=504, content={"error": "Qwen generation timed out"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Erreur qwen/generate-image: {str(e)}"})
+
+
+@app.post("/wan/animate")
+async def wan_animate(
+    mode: str = Form("animation"),
+    resolution: str = Form("1280x720"),
+    num_frames: int = Form(81),
+    character_image_url: str = Form(""),
+    reference_video_id: str = Form(""),
+    character_image: UploadFile = File(None),
+    reference_video: UploadFile = File(None),
+):
+    if not WAN_ANIMATE_API_URL:
+        return JSONResponse(status_code=503, content={"error": "Wan Animate service not configured"})
+
+    job_dir = os.path.join(WORK_DIR, f"animate_{uuid.uuid4().hex}")
+    os.makedirs(job_dir, exist_ok=True)
+
+    try:
+        char_path = None
+        if character_image and character_image.filename:
+            ext = os.path.splitext(character_image.filename)[1].lower()
+            if ext not in {".jpg", ".jpeg", ".png"}:
+                return JSONResponse(status_code=400, content={"error": "character_image doit être jpg ou png"})
+            char_path = os.path.join(job_dir, f"character{ext}")
+            with open(char_path, "wb") as f:
+                f.write(await character_image.read())
+        elif character_image_url.strip():
+            char_path = character_image_url.strip()
+
+        ref_path = None
+        if reference_video and reference_video.filename:
+            ext = os.path.splitext(reference_video.filename)[1].lower()
+            if ext != ".mp4":
+                return JSONResponse(status_code=400, content={"error": "reference_video doit être mp4"})
+            ref_path = os.path.join(job_dir, "reference.mp4")
+            with open(ref_path, "wb") as f:
+                f.write(await reference_video.read())
+        elif reference_video_id.strip():
+            entry = _REF_VIDEO_FLAT.get(reference_video_id.strip())
+            if not entry:
+                return JSONResponse(
+                    status_code=404,
+                    content={"error": f"reference_video_id inconnu: '{reference_video_id}'"},
+                )
+            ref_path = entry["path"] or reference_video_id.strip()
+
+        if not char_path:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Fournissez character_image (fichier) ou character_image_url"},
+            )
+        if not ref_path:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Fournissez reference_video (fichier) ou reference_video_id"},
+            )
+
+        try:
+            async with httpx.AsyncClient(timeout=900) as client:
+                response = await client.post(
+                    WAN_ANIMATE_API_URL.rstrip("/"),
+                    json={
+                        "character_image": char_path,
+                        "reference_video": ref_path,
+                        "mode": mode,
+                        "resolution": resolution,
+                        "num_frames": num_frames,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+        except httpx.TimeoutException:
+            return JSONResponse(status_code=504, content={"error": "Wan Animate timed out"})
+
+        if response.status_code != 200:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text[:500]
+            return JSONResponse(
+                status_code=response.status_code,
+                content={"error": f"Wan Animate erreur {response.status_code}", "details": detail},
+            )
+
+        content_type = response.headers.get("content-type", "")
+        if "video" in content_type or "octet-stream" in content_type:
+            return StreamingResponse(
+                iter([response.content]),
+                media_type="video/mp4",
+                headers={"Content-Disposition": "inline; filename=animated.mp4"},
+            )
+
+        data = response.json()
+        return {"video_url": data.get("video_url", "")}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Erreur wan/animate: {str(e)}"})
+    finally:
+        shutil.rmtree(job_dir, ignore_errors=True)
+
+
+@app.post("/voxtral/transcribe")
+async def voxtral_transcribe(
+    language: str = Form("fr"),
+    output_format: str = Form("srt"),
+    add_to_video: bool = Form(False),
+    video_path: str = Form(""),
+    audio_file: UploadFile = File(None),
+    video_file: UploadFile = File(None),
+):
+    if not VOXTRAL_API_URL:
+        return JSONResponse(status_code=503, content={"error": "Voxtral service not configured"})
+    if not audio_file and not video_file:
+        return JSONResponse(status_code=400, content={"error": "Fournissez audio_file ou video_file"})
+
+    job_dir = os.path.join(WORK_DIR, f"voxtral_{uuid.uuid4().hex}")
+    os.makedirs(job_dir, exist_ok=True)
+
+    try:
+        audio_path = None
+
+        if video_file and video_file.filename:
+            raw_video_path = os.path.join(job_dir, "input.mp4")
+            with open(raw_video_path, "wb") as f:
+                f.write(await video_file.read())
+            audio_path = os.path.join(job_dir, "extracted.mp3")
+            await async_run_cmd([
+                "ffmpeg", "-y", "-i", raw_video_path,
+                "-vn", "-acodec", "libmp3lame", "-ab", "192k",
+                audio_path,
+            ])
+        elif audio_file and audio_file.filename:
+            ext = os.path.splitext(audio_file.filename)[1].lower()
+            if ext not in {".mp3", ".wav", ".m4a"}:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "audio_file doit être mp3, wav ou m4a"},
+                )
+            audio_path = os.path.join(job_dir, f"input{ext}")
+            with open(audio_path, "wb") as f:
+                f.write(await audio_file.read())
+
+        if not audio_path or not os.path.exists(audio_path):
+            return JSONResponse(status_code=500, content={"error": "Impossible d'obtenir le fichier audio"})
+
+        with open(audio_path, "rb") as af:
+            audio_bytes = af.read()
+
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                response = await client.post(
+                    VOXTRAL_API_URL.rstrip("/"),
+                    content=audio_bytes,
+                    headers={
+                        "Content-Type": "audio/mpeg",
+                        "X-Language": language,
+                        "X-Output-Format": output_format,
+                    },
+                )
+        except httpx.TimeoutException:
+            return JSONResponse(status_code=504, content={"error": "Voxtral transcription timed out"})
+
+        if response.status_code != 200:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text[:500]
+            return JSONResponse(
+                status_code=response.status_code,
+                content={"error": f"Voxtral erreur {response.status_code}", "details": detail},
+            )
+
+        try:
+            resp_data = response.json()
+            subtitles = resp_data.get("subtitles", resp_data.get("text", ""))
+        except Exception:
+            subtitles = response.text
+
+        output_video_path = None
+
+        if add_to_video and video_path.strip() and subtitles:
+            srt_path = os.path.join(job_dir, "subtitles.srt")
+            with open(srt_path, "w", encoding="utf-8") as f:
+                f.write(subtitles)
+
+            burned_filename = f"burned_{uuid.uuid4().hex}.mp4"
+            burned_path = os.path.join(VIDEO_DIR, burned_filename)
+            srt_escaped = escape_srt_path(os.path.abspath(srt_path))
+            subtitle_filter = (
+                f"subtitles='{srt_escaped}':"
+                "force_style='Alignment=2,MarginV=70,"
+                "FontName=Arial,FontSize=24,Bold=1,"
+                "PrimaryColour=&H00FFFFFF,"
+                "OutlineColour=&H00000000,"
+                "BorderStyle=3,Outline=2,Shadow=0,"
+                "BackColour=&H99000000'"
+            )
+            await async_run_cmd([
+                "ffmpeg", "-y", "-i", video_path.strip(),
+                "-vf", subtitle_filter,
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-c:a", "copy", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                burned_path,
+            ])
+            output_video_path = (
+                f"{PUBLIC_BASE_URL}/video/{burned_filename}" if PUBLIC_BASE_URL else burned_path
+            )
+
+        return {
+            "subtitles": subtitles,
+            "output_video_path": output_video_path,
+        }
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Erreur voxtral/transcribe: {str(e)}"})
+    finally:
+        shutil.rmtree(job_dir, ignore_errors=True)
+
+
+@app.get("/reference-videos")
+async def get_reference_videos():
+    return {
+        category: [
+            {
+                "id": v["id"],
+                "name": v["name"],
+                "preview_url": v["preview_url"],
+                "duration": v["duration"],
+            }
+            for v in videos
+        ]
+        for category, videos in REFERENCE_VIDEOS.items()
+    }
 
 
 @app.get("/video-status/{job_id}")
