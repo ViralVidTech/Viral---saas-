@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response as FastAPIResponse
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -344,15 +344,13 @@ def get_audio_duration(audio_path: str) -> float:
 
 # ── ROUTES ──────────────────────────────────────────────────────────────────
 
-@app.api_route("/", methods=["GET", "HEAD"])
-async def serve_ui(request: Request):
-    if request.method == "HEAD":
-        return FastAPIResponse(status_code=200)
+@app.get("/", response_class=HTMLResponse)
+async def serve_ui():
     html_path = os.path.join(os.path.dirname(__file__), "index.html")
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(f.read())
-    return HTMLResponse("<h1>API is running</h1>")
+            return f.read()
+    return "<h1>API is running</h1>"
 
 
 @app.get("/audio/{filename}")
