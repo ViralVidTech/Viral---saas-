@@ -360,6 +360,60 @@
       </div>
     </section>
 
+    <!-- WAN 2.2 DIRECT -->
+    <section class="panel form-panel" id="wanDirect" style="display:grid;gap:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <h2 class="section-title" style="margin-bottom:4px;">🎬 Wan 2.2 — Text to Video</h2>
+          <p class="section-subtitle" style="margin:0;">Génère une vidéo MP4 directement depuis un prompt texte via RunPod.</p>
+        </div>
+        <button class="wan-btn" id="wanDirectToggleBtn" style="white-space:nowrap;">+ Nouvelle vidéo</button>
+      </div>
+
+      <div id="wanDirectForm" style="display:none;gap:14px;">
+        <div class="field">
+          <label>Prompt vidéo</label>
+          <textarea id="wanDirectPrompt" rows="3" placeholder="A cute smiling apple character dancing in a colorful kitchen, cartoon style, smooth motion, viral short video…"></textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+          <div class="field">
+            <label>Résolution</label>
+            <select id="wanDirectSize">
+              <option value="832x480">832×480 (16:9)</option>
+              <option value="480x832">480×832 (9:16 vertical)</option>
+              <option value="720x720">720×720 (carré)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Frames (4n+1)</label>
+            <select id="wanDirectFrames">
+              <option value="49">49 frames (~3s)</option>
+              <option value="81" selected>81 frames (~5s)</option>
+              <option value="97">97 frames (~6s)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Steps</label>
+            <select id="wanDirectSteps">
+              <option value="20">20 (rapide)</option>
+              <option value="50" selected>50 (qualité)</option>
+            </select>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="wan-btn" id="wanDirectGenerateBtn">🎬 Générer la vidéo</button>
+          <button class="secondary-btn" id="wanDirectCancelBtn">Annuler</button>
+        </div>
+        <div class="status" id="wanDirectStatus"></div>
+      </div>
+
+      <div class="wan-video-block" id="wanDirectVideoBlock">
+        <strong style="color:var(--gold);">✅ Vidéo Wan 2.2 prête</strong>
+        <video id="wanDirectVideoPlayer" controls playsinline autoplay loop></video>
+        <a id="wanDirectDownloadLink" href="#" download="wan_output.mp4">⬇ Télécharger la vidéo</a>
+      </div>
+    </section>
+
     <!-- OVERVIEW -->
     <section class="workspace" id="overview" style="grid-template-columns:1.08fr 0.92fr;">
       <div class="panel results-panel">
@@ -814,6 +868,66 @@ document.getElementById('plan1Btn').addEventListener('click',()=>addActivity('Pl
 document.getElementById('plan2Btn').addEventListener('click',()=>addActivity('Plan selected','Pro plan clicked.'));
 document.getElementById('plan3Btn').addEventListener('click',()=>addActivity('Plan selected','Business plan clicked.'));
 updateModeText();updateFluxPromptFromType(false);updateDashboard();updateAuthUI();renderDetector([]);
+
+// WAN 2.2 DIRECT
+const WAN_API = 'https://viral-saas.onrender.com';
+let wanDirectBlobUrl = null;
+
+document.getElementById('wanDirectToggleBtn').addEventListener('click', () => {
+  const form = document.getElementById('wanDirectForm');
+  const open = form.style.display === 'grid';
+  form.style.display = open ? 'none' : 'grid';
+  document.getElementById('wanDirectToggleBtn').textContent = open ? '+ Nouvelle vidéo' : '✕ Fermer';
+});
+
+document.getElementById('wanDirectCancelBtn').addEventListener('click', () => {
+  document.getElementById('wanDirectForm').style.display = 'none';
+  document.getElementById('wanDirectToggleBtn').textContent = '+ Nouvelle vidéo';
+  setStatus('wanDirectStatus', '', '');
+});
+
+document.getElementById('wanDirectGenerateBtn').addEventListener('click', async () => {
+  const prompt = document.getElementById('wanDirectPrompt').value.trim();
+  if (!prompt) return setStatus('wanDirectStatus', 'Saisis un prompt avant de générer.', 'error');
+
+  const sizeVal = document.getElementById('wanDirectSize').value;
+  const [width, height] = sizeVal.split('x').map(Number);
+  const num_frames = parseInt(document.getElementById('wanDirectFrames').value);
+  const num_inference_steps = parseInt(document.getElementById('wanDirectSteps').value);
+
+  const btn = document.getElementById('wanDirectGenerateBtn');
+  btn.disabled = true;
+  document.getElementById('wanDirectVideoBlock').classList.remove('show');
+  setStatus('wanDirectStatus', '⏳ Génération en cours… (peut prendre 3–10 min)', 'ready');
+
+  if (wanDirectBlobUrl) { URL.revokeObjectURL(wanDirectBlobUrl); wanDirectBlobUrl = null; }
+
+  try {
+    const res = await fetch(`${WAN_API}/wan/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, width, height, num_frames, num_inference_steps })
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`Erreur ${res.status} : ${txt}`);
+    }
+    const blob = await res.blob();
+    wanDirectBlobUrl = URL.createObjectURL(blob);
+    const player = document.getElementById('wanDirectVideoPlayer');
+    const link   = document.getElementById('wanDirectDownloadLink');
+    player.src = wanDirectBlobUrl;
+    link.href  = wanDirectBlobUrl;
+    player.load();
+    document.getElementById('wanDirectVideoBlock').classList.add('show');
+    setStatus('wanDirectStatus', '✅ Vidéo générée !', 'success');
+    addActivity('Wan 2.2 vidéo prête', `Prompt : "${prompt.slice(0, 60)}…"`);
+  } catch (e) {
+    setStatus('wanDirectStatus', `❌ ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
 </script>
 </body>
 </html>
