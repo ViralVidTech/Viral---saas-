@@ -15,6 +15,7 @@ import {
 import { RenderControls } from "../components/RenderControls";
 import { Spacing } from "../components/Spacing";
 import { Tips } from "../components/Tips";
+import { WanGenerator } from "../components/WanGenerator";
 import { Main } from "../remotion/MyComp/Main";
 
 const Home: NextPage = () => {
@@ -54,6 +55,7 @@ const Home: NextPage = () => {
         ></RenderControls>
         <Spacing></Spacing>
         <Spacing></Spacing>
+        <WanGenerator />
         <Spacing></Spacing>
         <Spacing></Spacing>
         <Tips></Tips>
