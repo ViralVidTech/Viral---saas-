@@ -2,7 +2,7 @@ import os
 import io
 import httpx
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -10,6 +10,11 @@ RUNPOD_BASE_URL = os.getenv("RUNPOD_API_URL", "https://849ams2zdun0ya-8000.proxy
 RUNPOD_TIMEOUT = float(os.getenv("RUNPOD_TIMEOUT", "300"))
 
 app = FastAPI(title="ViralVidTech API", version="2.0.0")
+
+
+@app.get("/")
+def index():
+    return FileResponse("index.html", media_type="text/html")
 
 
 def _runpod_client() -> httpx.AsyncClient:
