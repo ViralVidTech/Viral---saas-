@@ -5,8 +5,8 @@ import asyncio
 from contextlib import asynccontextmanager
 
 import torch
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query
-from fastapi.responses import Response
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, BackgroundTasks
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
@@ -171,9 +171,10 @@ class WanT2VRequest(BaseModel):
 # Utilitaires
 # ---------------------------------------------------------------------------
 
-def _wan_tensor_to_video_bytes(tensor: torch.Tensor, fps: int) -> bytes:
+def _wan_tensor_to_video_file(tensor: torch.Tensor, fps: int, path: str) -> None:
     """
-    Convertit le tenseur Wan (C, N, H, W) en bytes MP4.
+    Écrit le tenseur Wan (C, N, H, W) dans un fichier MP4 sur disque.
+    ffmpeg a besoin d'un vrai fichier pour écrire les headers MP4 correctement.
     Les valeurs sont dans [-1, 1] en sortie du VAE.
     """
     import imageio
@@ -183,14 +184,12 @@ def _wan_tensor_to_video_bytes(tensor: torch.Tensor, fps: int) -> bytes:
     tensor = tensor.float().clamp(-1.0, 1.0)
     frames_np = ((tensor.permute(1, 2, 3, 0).cpu().numpy() + 1.0) / 2.0 * 255.0).astype(np.uint8)
 
-    buf = io.BytesIO()
     with imageio.get_writer(
-        buf, fps=fps, format="ffmpeg", codec="libx264",
-        output_params=["-f", "mp4", "-pix_fmt", "yuv420p"]
+        path, fps=fps, codec="libx264",
+        output_params=["-pix_fmt", "yuv420p"]
     ) as writer:
         for frame in frames_np:
             writer.append_data(frame)
-    return buf.getvalue()
 
 
 def _read_audio(audio_bytes: bytes, filename: str):
@@ -314,11 +313,12 @@ async def qwen_analyze(
 # ---------------------------------------------------------------------------
 
 @app.post("/wan/generate")
-async def wan_generate(request: WanT2VRequest):
+async def wan_generate(request: WanT2VRequest, background_tasks: BackgroundTasks):
     """Génère une vidéo MP4 à partir d'un prompt texte avec Wan 2.2 T2V natif."""
     load_wan_t2v()
     pipe = models["wan_t2v"]
     loop = asyncio.get_event_loop()
+    out_path = "/tmp/output.mp4"
 
     def _run():
         video_tensor = pipe.generate(
@@ -333,18 +333,15 @@ async def wan_generate(request: WanT2VRequest):
             shift=float(request.shift) if request.shift else 1.0,
             sample_solver=request.sample_solver or "unipc",
         )
-        return _wan_tensor_to_video_bytes(video_tensor, fps=int(request.fps) if request.fps else 16)
+        _wan_tensor_to_video_file(video_tensor, fps=int(request.fps) if request.fps else 16, path=out_path)
 
     try:
-        video_bytes = await loop.run_in_executor(None, _run)
+        await loop.run_in_executor(None, _run)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-    return Response(
-        content=video_bytes,
-        media_type="video/mp4",
-        headers={"Content-Disposition": "attachment; filename=output.mp4"},
-    )
+    background_tasks.add_task(os.unlink, out_path)
+    return FileResponse(out_path, media_type="video/mp4", filename="output.mp4")
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +350,7 @@ async def wan_generate(request: WanT2VRequest):
 
 @app.post("/wan/image2video")
 async def wan_image2video(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     prompt: str = Query(default="Anime cette image de façon réaliste"),
     negative_prompt: str = Query(default="blurry, low quality, distorted, static"),
@@ -361,7 +359,6 @@ async def wan_image2video(
     guidance_scale: float = Query(default=5.0),
     fps: int = Query(default=16),
     seed: int = Query(default=-1),
-    # shift=3.0 recommandé pour l'animation I2V
     shift: float = Query(default=3.0),
     sample_solver: str = Query(default="unipc"),
 ):
@@ -370,16 +367,16 @@ async def wan_image2video(
     from PIL import Image
 
     image = Image.open(io.BytesIO(await file.read())).convert("RGB")
-    pipe  = models["wan_i2v"]
-    loop  = asyncio.get_event_loop()
+    pipe     = models["wan_i2v"]
+    loop     = asyncio.get_event_loop()
+    out_path = "/tmp/animated.mp4"
 
     def _run():
         import random
-        _seed     = random.randint(0, 2**31 - 1) if (seed is None or seed < 0) else int(seed)
-        _frames   = int(num_frames) if num_frames and num_frames > 0 else 81
-        # Wan exige 4n+1
-        _frames   = _frames if (_frames - 1) % 4 == 0 else ((_frames - 1) // 4) * 4 + 1
-        _steps    = int(num_inference_steps) if num_inference_steps and num_inference_steps > 0 else 40
+        _seed   = random.randint(0, 2**31 - 1) if (seed is None or seed < 0) else int(seed)
+        _frames = int(num_frames) if num_frames and num_frames > 0 else 81
+        _frames = _frames if (_frames - 1) % 4 == 0 else ((_frames - 1) // 4) * 4 + 1
+        _steps  = int(num_inference_steps) if num_inference_steps and num_inference_steps > 0 else 40
         video_tensor = pipe.generate(
             input_prompt=prompt or "",
             img=image,
@@ -392,18 +389,15 @@ async def wan_image2video(
             shift=float(shift) if shift else 3.0,
             sample_solver=sample_solver or "unipc",
         )
-        return _wan_tensor_to_video_bytes(video_tensor, fps=int(fps) if fps else 16)
+        _wan_tensor_to_video_file(video_tensor, fps=int(fps) if fps else 16, path=out_path)
 
     try:
-        video_bytes = await loop.run_in_executor(None, _run)
+        await loop.run_in_executor(None, _run)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-    return Response(
-        content=video_bytes,
-        media_type="video/mp4",
-        headers={"Content-Disposition": "attachment; filename=animated.mp4"},
-    )
+    background_tasks.add_task(os.unlink, out_path)
+    return FileResponse(out_path, media_type="video/mp4", filename="animated.mp4")
 
 
 # ---------------------------------------------------------------------------
