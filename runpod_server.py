@@ -1,6 +1,5 @@
 import os
 import io
-import json
 import tempfile
 import asyncio
 from contextlib import asynccontextmanager
@@ -64,29 +63,23 @@ def load_qwen():
     print("[qwen] prêt")
 
 
-def _load_wan_config(path: str):
-    """Lit configuration.json et retourne un EasyDict."""
-    from easydict import EasyDict
-    config_path = os.path.join(path, "configuration.json")
-    with open(config_path, "r") as f:
-        return EasyDict(json.load(f))
-
-
 def load_wan_t2v():
     if "wan_t2v" in models:
         return
     print(f"[wan-t2v] chargement depuis {WAN_T2V_PATH} ...")
-    from wan import WanT2V
-    config = _load_wan_config(WAN_T2V_PATH)
-    pipe = WanT2V(
-        config=config,
+    import wan
+    from wan.configs import WAN_CONFIGS
+    # Le config vient du package wan (pas du configuration.json du checkpoint).
+    # checkpoint_dir sert uniquement à localiser les poids (.pth, sous-dossiers).
+    pipe = wan.WanT2V(
+        config=WAN_CONFIGS["t2v-A14B"],
         checkpoint_dir=WAN_T2V_PATH,
         device_id=DEVICE_ID,
         rank=0,
         t5_fsdp=False,
         dit_fsdp=False,
         use_sp=False,
-        t5_cpu=True,       # T5 sur CPU pour économiser la VRAM GPU
+        t5_cpu=True,
         init_on_cpu=True,
     )
     models["wan_t2v"] = pipe
@@ -97,10 +90,10 @@ def load_wan_i2v():
     if "wan_i2v" in models:
         return
     print(f"[wan-i2v] chargement depuis {WAN_I2V_PATH} ...")
-    from wan import WanI2V
-    config = _load_wan_config(WAN_I2V_PATH)
-    pipe = WanI2V(
-        config=config,
+    import wan
+    from wan.configs import WAN_CONFIGS
+    pipe = wan.WanI2V(
+        config=WAN_CONFIGS["animate-14B"],
         checkpoint_dir=WAN_I2V_PATH,
         device_id=DEVICE_ID,
         rank=0,
