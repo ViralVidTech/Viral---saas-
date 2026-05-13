@@ -1,5 +1,5 @@
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
@@ -32,6 +32,8 @@ FAL_API_KEY = os.getenv("FAL_API_KEY", "")
 FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")
 WAN_API_URL = os.getenv("WAN_API_URL", "")
 RUNPOD_API_URL = os.getenv("RUNPOD_API_URL", "")
+RUNPOD_BASE_URL = os.getenv("RUNPOD_API_URL", "https://849ams2zdun0ya-8000.proxy.runpod.net")
+RUNPOD_TIMEOUT = float(os.getenv("RUNPOD_TIMEOUT", "300"))
 QWEN_API_URL = os.getenv("QWEN_API_URL", "")
 WAN_ANIMATE_API_URL = os.getenv("WAN_ANIMATE_API_URL", "")
 VOXTRAL_API_URL = os.getenv("VOXTRAL_API_URL", "")
@@ -45,6 +47,21 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(WORK_DIR, exist_ok=True)
 os.makedirs(MUSIC_DIR, exist_ok=True)
+
+def _runpod_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(base_url=RUNPOD_BASE_URL, timeout=RUNPOD_TIMEOUT)
+
+
+class WanT2VRequest(BaseModel):
+    prompt: str
+    negative_prompt: str = "blurry, low quality"
+    num_frames: int = 81
+    width: int = 832
+    height: int = 480
+    num_inference_steps: int = 50
+    guidance_scale: float = 7.5
+    fps: int = 16
+
 
 VIDEO_TYPES = [
     "Vidéo stock",
@@ -2540,6 +2557,84 @@ async def get_reference_videos():
         ]
         for category, videos in REFERENCE_VIDEOS.items()
     }
+
+
+@app.get("/health")
+async def health():
+    async with _runpod_client() as client:
+        try:
+            r = await client.get("/health")
+            r.raise_for_status()
+            return r.json()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code, detail=f"RunPod unreachable: {exc}")
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"RunPod unreachable: {exc}")
+
+
+@app.post("/qwen/analyze")
+async def qwen_analyze(
+    file: UploadFile = File(...),
+    prompt: str = Query(default="Describe this image."),
+):
+    image_bytes = await file.read()
+    async with _runpod_client() as client:
+        try:
+            r = await client.post(
+                "/qwen/analyze",
+                params={"prompt": prompt},
+                files={"file": (file.filename, image_bytes, file.content_type or "image/jpeg")},
+            )
+            r.raise_for_status()
+            return r.json()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text)
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.post("/wan/image2video")
+async def wan_image2video(
+    file: UploadFile = File(...),
+    prompt: str = Query(default="Animate this image"),
+    negative_prompt: str = Query(default="blurry, low quality"),
+    num_frames: int = Query(default=81),
+    num_inference_steps: int = Query(default=50),
+    guidance_scale: float = Query(default=7.5),
+    fps: int = Query(default=16),
+):
+    image_bytes = await file.read()
+    async with _runpod_client() as client:
+        try:
+            r = await client.post(
+                "/wan/image2video",
+                params={
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "num_frames": num_frames,
+                    "num_inference_steps": num_inference_steps,
+                    "guidance_scale": guidance_scale,
+                    "fps": fps,
+                },
+                files={"file": (file.filename, image_bytes, file.content_type or "image/jpeg")},
+            )
+            r.raise_for_status()
+            return Response(
+                content=r.content,
+                media_type="video/mp4",
+                headers={"Content-Disposition": "attachment; filename=animated.mp4"},
+            )
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text)
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+
+
+# NOTE: /wan/generate is defined above (~line 1495). This file's version accepts a JSON body
+# (WanGenerateRequest: prompt/resolution/num_frames/num_inference_steps) and POSTs to
+# RUNPOD_API_URL, returning the MP4 directly. api.py's version used WanT2VRequest with
+# additional params (negative_prompt, fps, guidance_scale) and routed via _runpod_client().
+# The implementation here is kept; use /wan/image2video for image-to-video via RunPod.
 
 
 @app.get("/video-status/{job_id}")
