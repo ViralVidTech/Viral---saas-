@@ -2,7 +2,7 @@ import os
 import io
 import httpx
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -30,6 +30,15 @@ class WanT2VRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
+
+@app.get("/")
+async def serve_ui():
+    html_path = os.path.join(os.path.dirname(__file__), "index.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    return HTMLResponse("<h1>ViralVidTech API is running</h1>")
+
 
 @app.get("/health")
 async def health():
