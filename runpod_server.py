@@ -143,11 +143,11 @@ class WanT2VRequest(BaseModel):
     sample_solver: str = "unipc"
 
     @property
-    def wan_size(self) -> str:
-        """Format attendu par WanT2V.generate() : '832*480'."""
-        w = self.width  if self.width  and self.width  > 0 else 832
-        h = self.height if self.height and self.height > 0 else 480
-        return f"{w}*{h}"
+    def wan_size(self) -> tuple:
+        """WanT2V.generate() attend un tuple (width, height) d'entiers."""
+        w = int(self.width)  if self.width  and self.width  > 0 else 832
+        h = int(self.height) if self.height and self.height > 0 else 480
+        return (w, h)
 
     @property
     def wan_seed(self):
