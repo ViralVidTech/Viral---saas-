@@ -139,9 +139,30 @@ class WanT2VRequest(BaseModel):
     guidance_scale: float = 7.5
     fps: int = 16
     seed: int = -1
-    # shift recommandé : 1.0 pour 720p T2V, 3.0 pour I2V/animate
     shift: float = 1.0
     sample_solver: str = "unipc"
+
+    @property
+    def wan_size(self) -> str:
+        """Format attendu par WanT2V.generate() : '832*480'."""
+        w = self.width  if self.width  and self.width  > 0 else 832
+        h = self.height if self.height and self.height > 0 else 480
+        return f"{w}*{h}"
+
+    @property
+    def wan_seed(self):
+        s = self.seed if self.seed is not None else -1
+        return None if s < 0 else int(s)
+
+    @property
+    def wan_frames(self) -> int:
+        n = self.num_frames if self.num_frames and self.num_frames > 0 else 81
+        # Wan exige 4n+1 ; on arrondit vers le bas si nécessaire
+        return n if (n - 1) % 4 == 0 else ((n - 1) // 4) * 4 + 1
+
+    @property
+    def wan_steps(self) -> int:
+        return self.num_inference_steps if self.num_inference_steps and self.num_inference_steps > 0 else 50
 
 
 # ---------------------------------------------------------------------------
@@ -298,20 +319,19 @@ async def wan_generate(request: WanT2VRequest):
     loop = asyncio.get_event_loop()
 
     def _run():
-        seed = request.seed if request.seed >= 0 else None
         video_tensor = pipe.generate(
             input_prompt=request.prompt,
-            size=(request.width, request.height),
-            frame_num=request.num_frames,
-            sampling_steps=request.num_inference_steps,
-            guide_scale=request.guidance_scale,
-            n_prompt=request.negative_prompt,
-            seed=seed,
+            size=request.wan_size,
+            frame_num=request.wan_frames,
+            sampling_steps=request.wan_steps,
+            guide_scale=float(request.guidance_scale) if request.guidance_scale else 7.5,
+            n_prompt=request.negative_prompt or "",
+            seed=request.wan_seed,
             offload_model=True,
-            shift=request.shift,
-            sample_solver=request.sample_solver,
+            shift=float(request.shift) if request.shift else 1.0,
+            sample_solver=request.sample_solver or "unipc",
         )
-        return _wan_tensor_to_video_bytes(video_tensor, fps=request.fps)
+        return _wan_tensor_to_video_bytes(video_tensor, fps=int(request.fps) if request.fps else 16)
 
     try:
         video_bytes = await loop.run_in_executor(None, _run)
@@ -352,20 +372,24 @@ async def wan_image2video(
     loop  = asyncio.get_event_loop()
 
     def _run():
-        seed_val = seed if seed >= 0 else None
+        _seed     = None if (seed is None or seed < 0) else int(seed)
+        _frames   = int(num_frames) if num_frames and num_frames > 0 else 81
+        # Wan exige 4n+1
+        _frames   = _frames if (_frames - 1) % 4 == 0 else ((_frames - 1) // 4) * 4 + 1
+        _steps    = int(num_inference_steps) if num_inference_steps and num_inference_steps > 0 else 40
         video_tensor = pipe.generate(
-            input_prompt=prompt,
+            input_prompt=prompt or "",
             img=image,
-            frame_num=num_frames,
-            sampling_steps=num_inference_steps,
-            guide_scale=guidance_scale,
-            n_prompt=negative_prompt,
-            seed=seed_val,
+            frame_num=_frames,
+            sampling_steps=_steps,
+            guide_scale=float(guidance_scale) if guidance_scale else 5.0,
+            n_prompt=negative_prompt or "",
+            seed=_seed,
             offload_model=True,
-            shift=shift,
-            sample_solver=sample_solver,
+            shift=float(shift) if shift else 3.0,
+            sample_solver=sample_solver or "unipc",
         )
-        return _wan_tensor_to_video_bytes(video_tensor, fps=fps)
+        return _wan_tensor_to_video_bytes(video_tensor, fps=int(fps) if fps else 16)
 
     try:
         video_bytes = await loop.run_in_executor(None, _run)
