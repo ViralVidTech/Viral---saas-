@@ -150,9 +150,11 @@ class WanT2VRequest(BaseModel):
         return (w, h)
 
     @property
-    def wan_seed(self):
+    def wan_seed(self) -> int:
+        """Toujours retourner un int — WanT2V.generate() fait 'seed >= 0' en interne."""
+        import random
         s = self.seed if self.seed is not None else -1
-        return None if s < 0 else int(s)
+        return random.randint(0, 2**31 - 1) if s < 0 else int(s)
 
     @property
     def wan_frames(self) -> int:
@@ -372,7 +374,8 @@ async def wan_image2video(
     loop  = asyncio.get_event_loop()
 
     def _run():
-        _seed     = None if (seed is None or seed < 0) else int(seed)
+        import random
+        _seed     = random.randint(0, 2**31 - 1) if (seed is None or seed < 0) else int(seed)
         _frames   = int(num_frames) if num_frames and num_frames > 0 else 81
         # Wan exige 4n+1
         _frames   = _frames if (_frames - 1) % 4 == 0 else ((_frames - 1) // 4) * 4 + 1
