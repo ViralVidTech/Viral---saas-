@@ -5,7 +5,17 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
 
+# Désactive torch.compile / dynamo avant tout import torch ou diffusers.
+# Contourne l'erreur "infer_schema: Parameter input has unsupported type
+# torch.Tensor" qui apparaît avec PyTorch 2.4.x + diffusers WanPipeline.
+os.environ["TORCHDYNAMO_DISABLE"] = "1"
+os.environ["TORCH_COMPILE_DISABLE"] = "1"
+
 import torch
+
+if hasattr(torch, "_dynamo"):
+    torch._dynamo.config.suppress_errors = True
+    torch._dynamo.config.disable = True
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, BackgroundTasks
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -63,6 +73,14 @@ def load_qwen():
     print("[qwen] prêt")
 
 
+def _disable_compile(pipe):
+    """Désactive torch.compile sur tous les sous-modules du pipeline."""
+    for attr in ("transformer", "unet", "vae", "text_encoder", "text_encoder_2"):
+        module = getattr(pipe, attr, None)
+        if module is not None and hasattr(torch, "_dynamo"):
+            torch._dynamo.disable(module, recursive=True)
+
+
 def load_wan_t2v():
     if "wan_t2v" in models:
         return
@@ -76,6 +94,7 @@ def load_wan_t2v():
             WAN_T2V_PATH, torch_dtype=DTYPE, local_files_only=True
         )
     pipe.to(DEVICE)
+    _disable_compile(pipe)
     models["wan_t2v"] = pipe
     print("[wan-t2v] prêt")
 
@@ -93,6 +112,7 @@ def load_wan_i2v():
             WAN_I2V_PATH, torch_dtype=DTYPE, local_files_only=True
         )
     pipe.to(DEVICE)
+    _disable_compile(pipe)
     models["wan_i2v"] = pipe
     print("[wan-i2v] prêt")
 
