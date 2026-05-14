@@ -1522,29 +1522,57 @@ WAN_SIZE_MAP = {
 
 
 async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps: int):
+    base = RUNPOD_API_URL.rstrip("/")
     try:
-        async with httpx.AsyncClient(timeout=900) as client:
-            response = await client.post(
-                RUNPOD_API_URL.rstrip("/") + "/wan/generate",
-                data={
-                    "prompt": prompt,
-                    "size": wan_size,
-                    "sample_steps": str(sample_steps),
-                },
+        # Step 1 — submit job to RunPod, get runpod_job_id instantly
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                f"{base}/wan/generate",
+                data={"prompt": prompt, "size": wan_size, "sample_steps": str(sample_steps)},
             )
-        if response.status_code != 200:
+        if res.status_code != 200:
             try:
-                detail = response.json()
+                detail = res.json()
             except Exception:
-                detail = response.text[:500]
-            WAN_JOBS[job_id] = {"status": "error", "detail": f"RunPod erreur {response.status_code}: {detail}"}
+                detail = res.text[:500]
+            WAN_JOBS[job_id] = {"status": "error", "detail": f"RunPod submit erreur {res.status_code}: {detail}"}
             return
+        runpod_job_id = res.json().get("job_id")
+        if not runpod_job_id:
+            WAN_JOBS[job_id] = {"status": "error", "detail": "RunPod n'a pas retourné de job_id"}
+            return
+
+        # Step 2 — poll RunPod every 10 seconds, max 90 attempts (15 min)
+        for attempt in range(90):
+            await asyncio.sleep(10)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    sr = await client.get(f"{base}/wan/status/{runpod_job_id}")
+                sd = sr.json()
+            except Exception:
+                continue  # transient network error, retry
+
+            if sd.get("status") == "done":
+                break
+            if sd.get("status") == "error":
+                WAN_JOBS[job_id] = {"status": "error", "detail": sd.get("detail", "Erreur RunPod inconnue")}
+                return
+        else:
+            WAN_JOBS[job_id] = {"status": "error", "detail": "Timeout: RunPod n'a pas terminé en 15 minutes"}
+            return
+
+        # Step 3 — download finished video from RunPod
+        async with httpx.AsyncClient(timeout=300) as client:
+            video_resp = await client.get(f"{base}/wan/video/{runpod_job_id}")
+        if video_resp.status_code != 200:
+            WAN_JOBS[job_id] = {"status": "error", "detail": f"Impossible de télécharger la vidéo ({video_resp.status_code})"}
+            return
+
         video_path = f"/tmp/{job_id}.mp4"
         with open(video_path, "wb") as f:
-            f.write(response.content)
+            f.write(video_resp.content)
         WAN_JOBS[job_id] = {"status": "done", "video_path": video_path}
-    except httpx.TimeoutException:
-        WAN_JOBS[job_id] = {"status": "error", "detail": "Timeout RunPod (>900s)"}
+
     except Exception as e:
         WAN_JOBS[job_id] = {"status": "error", "detail": str(e)}
 
