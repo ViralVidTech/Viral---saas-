@@ -890,41 +890,73 @@ document.getElementById('wanDirectGenerateBtn').addEventListener('click', async 
   const prompt = document.getElementById('wanDirectPrompt').value.trim();
   if (!prompt) return setStatus('wanDirectStatus', 'Saisis un prompt avant de générer.', 'error');
 
-  const sizeVal = document.getElementById('wanDirectSize').value;
-  const [width, height] = sizeVal.split('x').map(Number);
-  const num_frames = parseInt(document.getElementById('wanDirectFrames').value);
+  const resolution = document.getElementById('wanDirectSize').value;
   const num_inference_steps = parseInt(document.getElementById('wanDirectSteps').value);
+  const num_frames = parseInt(document.getElementById('wanDirectFrames').value);
 
   const btn = document.getElementById('wanDirectGenerateBtn');
   btn.disabled = true;
   document.getElementById('wanDirectVideoBlock').classList.remove('show');
-  setStatus('wanDirectStatus', '⏳ Génération en cours… (peut prendre 3–10 min)', 'ready');
+  setStatus('wanDirectStatus', '⏳ Génération en cours… (5–7 minutes) — ne ferme pas cette page.', 'ready');
 
   if (wanDirectBlobUrl) { URL.revokeObjectURL(wanDirectBlobUrl); wanDirectBlobUrl = null; }
 
   try {
+    // Step 1 — submit job, get job_id instantly
     const res = await fetch(`${WAN_API}/wan/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, width, height, num_frames, num_inference_steps })
+      body: JSON.stringify({ prompt, resolution, num_frames, num_inference_steps })
     });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`Erreur ${res.status} : ${txt}`);
-    }
-    const blob = await res.blob();
-    wanDirectBlobUrl = URL.createObjectURL(blob);
-    const player = document.getElementById('wanDirectVideoPlayer');
-    const link   = document.getElementById('wanDirectDownloadLink');
-    player.src = wanDirectBlobUrl;
-    link.href  = wanDirectBlobUrl;
-    player.load();
-    document.getElementById('wanDirectVideoBlock').classList.add('show');
-    setStatus('wanDirectStatus', '✅ Vidéo générée !', 'success');
-    addActivity('Wan 2.2 vidéo prête', `Prompt : "${prompt.slice(0, 60)}…"`);
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `Erreur ${res.status}`);
+
+    const jobId = data.job_id;
+    if (!jobId) throw new Error('Pas de job_id retourné par le serveur');
+
+    // Step 2 — poll /wan/status/{job_id} every 10 seconds
+    let tries = 0, consErrors = 0;
+    const poll = setInterval(async () => {
+      tries++;
+      try {
+        const sr = await fetch(`${WAN_API}/wan/status/${jobId}`);
+        const sd = await sr.json();
+        consErrors = 0;
+
+        if (sd.status === 'done' && sd.video_url) {
+          clearInterval(poll);
+          // Step 3 — load video from /wan/video/{job_id}
+          const videoUrl = `${WAN_API}${sd.video_url}`;
+          const player = document.getElementById('wanDirectVideoPlayer');
+          const link   = document.getElementById('wanDirectDownloadLink');
+          player.src = videoUrl;
+          link.href  = videoUrl;
+          player.load();
+          document.getElementById('wanDirectVideoBlock').classList.add('show');
+          setStatus('wanDirectStatus', '✅ Vidéo générée !', 'success');
+          addActivity('Wan 2.2 vidéo prête', `Prompt : "${prompt.slice(0, 60)}…"`);
+          btn.disabled = false;
+        } else if (sd.status === 'error') {
+          clearInterval(poll);
+          setStatus('wanDirectStatus', `❌ Erreur RunPod : ${sd.detail || 'inconnue'}`, 'error');
+          btn.disabled = false;
+        } else if (tries >= 90) { // 90 × 10s = 15 min max
+          clearInterval(poll);
+          setStatus('wanDirectStatus', '❌ Timeout — la génération dépasse 15 minutes.', 'error');
+          btn.disabled = false;
+        } else {
+          setStatus('wanDirectStatus', `⏳ Génération en cours… (${tries * 10}s) — ne ferme pas cette page.`, 'ready');
+        }
+      } catch (pe) {
+        consErrors++;
+        if (consErrors >= 3) {
+          setStatus('wanDirectStatus', `⏳ Génération en cours… (${tries * 10}s) — reconnexion...`, 'ready');
+        }
+      }
+    }, 10000);
+
   } catch (e) {
     setStatus('wanDirectStatus', `❌ ${e.message}`, 'error');
-  } finally {
     btn.disabled = false;
   }
 });
