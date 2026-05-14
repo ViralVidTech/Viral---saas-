@@ -32,7 +32,7 @@ FAL_API_KEY = os.getenv("FAL_API_KEY", "")
 FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")
 WAN_API_URL = os.getenv("WAN_API_URL", "")
 RUNPOD_API_URL = os.getenv("RUNPOD_API_URL", "")
-RUNPOD_BASE_URL = os.getenv("RUNPOD_API_URL", "https://849ams2zdun0ya-8000.proxy.runpod.net")
+RUNPOD_BASE_URL = os.getenv("RUNPOD_API_URL", "")
 RUNPOD_TIMEOUT = float(os.getenv("RUNPOD_TIMEOUT", "300"))
 QWEN_API_URL = os.getenv("QWEN_API_URL", "")
 WAN_ANIMATE_API_URL = os.getenv("WAN_ANIMATE_API_URL", "")
@@ -1519,7 +1519,7 @@ async def wan_generate(req: WanGenerateRequest):
     try:
         async with httpx.AsyncClient(timeout=900) as client:
             response = await client.post(
-                RUNPOD_API_URL.rstrip("/"),
+                RUNPOD_API_URL.rstrip("/") + "/wan/generate",
                 json={
                     "prompt": req.prompt,
                     "resolution": req.resolution,
