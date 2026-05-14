@@ -14,6 +14,7 @@ import asyncio
 app = FastAPI()
 
 VIDEO_JOBS = {}
+WAN_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
 
 app.add_middleware(
     CORSMiddleware,
@@ -1509,6 +1510,45 @@ class WanGenerateRequest(BaseModel):
     num_inference_steps: int = 20
 
 
+WAN_SIZE_MAP = {
+    "480p": "832*480",
+    "720p": "1280*720",
+    "1080p": "1280*720",
+    "832*480": "832*480",
+    "1280*720": "1280*720",
+    "480*832": "480*832",
+    "720*1280": "720*1280",
+}
+
+
+async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps: int):
+    try:
+        async with httpx.AsyncClient(timeout=900) as client:
+            response = await client.post(
+                RUNPOD_API_URL.rstrip("/") + "/wan/generate",
+                data={
+                    "prompt": prompt,
+                    "size": wan_size,
+                    "sample_steps": str(sample_steps),
+                },
+            )
+        if response.status_code != 200:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text[:500]
+            WAN_JOBS[job_id] = {"status": "error", "detail": f"RunPod erreur {response.status_code}: {detail}"}
+            return
+        video_path = f"/tmp/{job_id}.mp4"
+        with open(video_path, "wb") as f:
+            f.write(response.content)
+        WAN_JOBS[job_id] = {"status": "done", "video_path": video_path}
+    except httpx.TimeoutException:
+        WAN_JOBS[job_id] = {"status": "error", "detail": "Timeout RunPod (>900s)"}
+    except Exception as e:
+        WAN_JOBS[job_id] = {"status": "error", "detail": str(e)}
+
+
 @app.post("/wan/generate")
 async def wan_generate(req: WanGenerateRequest):
     if not RUNPOD_API_URL:
@@ -1516,73 +1556,57 @@ async def wan_generate(req: WanGenerateRequest):
     if not req.prompt.strip():
         return JSONResponse(status_code=400, content={"error": "Le prompt est vide"})
 
-    SIZE_MAP = {
-        "480p": "832*480",
-        "720p": "1280*720",
-        "1080p": "1280*720",
-        "832*480": "832*480",
-        "1280*720": "1280*720",
-        "480*832": "480*832",
-        "720*1280": "720*1280",
-    }
-    wan_size = SIZE_MAP.get(req.resolution, "832*480")
+    wan_size = WAN_SIZE_MAP.get(req.resolution, "832*480")
+    job_id = uuid.uuid4().hex
+    WAN_JOBS[job_id] = {"status": "processing"}
 
-    try:
-        async with httpx.AsyncClient(timeout=900) as client:
-            response = await client.post(
-                RUNPOD_API_URL.rstrip("/") + "/wan/generate",
-                data={
-                    "prompt": req.prompt,
-                    "size": wan_size,
-                    "sample_steps": str(req.num_inference_steps),
-                },
-            )
+    asyncio.create_task(_process_wan_job(job_id, req.prompt, wan_size, req.num_inference_steps))
 
-        if response.status_code != 200:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text[:500]
-            return JSONResponse(
-                status_code=response.status_code,
-                content={"error": f"RunPod erreur {response.status_code}", "details": detail},
-            )
+    return JSONResponse(status_code=200, content={
+        "job_id": job_id,
+        "status": "processing",
+        "poll_url": f"/wan/status/{job_id}",
+    })
 
-        content_type = response.headers.get("content-type", "")
-        if "video" in content_type or "octet-stream" in content_type:
-            return StreamingResponse(
-                iter([response.content]),
-                media_type="video/mp4",
-                headers={"Content-Disposition": "inline; filename=wan_output.mp4"},
-            )
 
-        data = response.json()
-        video_url = data.get("video_url", "")
-        if not video_url:
-            return JSONResponse(status_code=502, content={"error": "Pas de video_url dans la réponse RunPod", "details": data})
+@app.get("/wan/status/{job_id}")
+async def wan_status(job_id: str):
+    job = WAN_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    if job["status"] == "done":
+        return JSONResponse(status_code=200, content={
+            "status": "done",
+            "video_url": f"/wan/video/{job_id}",
+        })
+    if job["status"] == "error":
+        return JSONResponse(status_code=200, content={
+            "status": "error",
+            "detail": job.get("detail", "Erreur inconnue"),
+        })
+    return JSONResponse(status_code=200, content={"status": "processing"})
 
-        if not video_url.startswith("http"):
-            video_url = RUNPOD_API_URL.rstrip("/") + "/" + video_url.lstrip("/")
 
-        async with httpx.AsyncClient(timeout=300) as client:
-            video_resp = await client.get(video_url, follow_redirects=True)
+@app.get("/wan/video/{job_id}")
+async def wan_video(job_id: str):
+    job = WAN_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    if job["status"] != "done":
+        return JSONResponse(status_code=425, content={"error": "Vidéo pas encore prête", "status": job["status"]})
+    video_path = job.get("video_path", "")
+    if not video_path or not os.path.exists(video_path):
+        return JSONResponse(status_code=404, content={"error": "Fichier vidéo introuvable sur le serveur"})
 
-        if video_resp.status_code != 200:
-            return JSONResponse(
-                status_code=502,
-                content={"error": f"Impossible de télécharger la vidéo depuis RunPod ({video_resp.status_code})"},
-            )
+    def iter_file():
+        with open(video_path, "rb") as f:
+            yield from iter(lambda: f.read(65536), b"")
 
-        return StreamingResponse(
-            iter([video_resp.content]),
-            media_type="video/mp4",
-            headers={"Content-Disposition": "inline; filename=wan_output.mp4"},
-        )
-
-    except httpx.TimeoutException:
-        return JSONResponse(status_code=504, content={"error": "Timeout RunPod (>900s)"})
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Erreur wan/generate: {str(e)}"})
+    return StreamingResponse(
+        iter_file(),
+        media_type="video/mp4",
+        headers={"Content-Disposition": f"inline; filename=wan_{job_id}.mp4"},
+    )
 
 
 class GenerateScriptRequest(BaseModel):
