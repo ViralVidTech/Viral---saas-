@@ -1516,13 +1516,24 @@ async def wan_generate(req: WanGenerateRequest):
     if not req.prompt.strip():
         return JSONResponse(status_code=400, content={"error": "Le prompt est vide"})
 
+    SIZE_MAP = {
+        "480p": "832*480",
+        "720p": "1280*720",
+        "1080p": "1280*720",
+        "832*480": "832*480",
+        "1280*720": "1280*720",
+        "480*832": "480*832",
+        "720*1280": "720*1280",
+    }
+    wan_size = SIZE_MAP.get(req.resolution, "832*480")
+
     try:
         async with httpx.AsyncClient(timeout=900) as client:
             response = await client.post(
                 RUNPOD_API_URL.rstrip("/") + "/wan/generate",
                 data={
                     "prompt": req.prompt,
-                    "size": req.resolution,
+                    "size": wan_size,
                     "sample_steps": str(req.num_inference_steps),
                 },
             )
