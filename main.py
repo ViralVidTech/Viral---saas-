@@ -1520,13 +1520,11 @@ async def wan_generate(req: WanGenerateRequest):
         async with httpx.AsyncClient(timeout=900) as client:
             response = await client.post(
                 RUNPOD_API_URL.rstrip("/") + "/wan/generate",
-                json={
+                data={
                     "prompt": req.prompt,
-                    "resolution": req.resolution,
-                    "num_frames": req.num_frames,
-                    "num_inference_steps": req.num_inference_steps,
+                    "size": req.resolution,
+                    "sample_steps": str(req.num_inference_steps),
                 },
-                headers={"Content-Type": "application/json"},
             )
 
         if response.status_code != 200:
