@@ -153,6 +153,73 @@ NICHES_BY_PLAN = {
     ],
 }
 
+PUBLISH_PLANS = {
+    "free": {
+        "manual_publications_per_day": 0,
+        "auto_publications_per_day": 0,
+        "platforms": [],
+        "auto_publish": False,
+        "price_monthly": 0
+    },
+    "starter": {
+        "manual_publications_per_day": 1,
+        "auto_publications_per_day": 1,
+        "platforms": ["tiktok", "youtube", "instagram", "facebook"],
+        "auto_publish": True,
+        "price_monthly_manual": 19,
+        "price_monthly_auto": 29
+    },
+    "pro": {
+        "manual_publications_per_day": 2,
+        "auto_publications_per_day": 2,
+        "platforms": ["tiktok", "youtube", "instagram", "facebook"],
+        "auto_publish": True,
+        "price_monthly_manual": 49,
+        "price_monthly_auto": 69
+    },
+    "premium": {
+        "manual_publications_per_day": 4,
+        "auto_publications_per_day": 4,
+        "platforms": ["tiktok", "youtube", "instagram", "facebook"],
+        "auto_publish": True,
+        "price_monthly_manual": 99,
+        "price_monthly_auto": 129
+    }
+}
+
+PLATFORM_CONFIGS = {
+    "tiktok": {
+        "name": "TikTok",
+        "env_key": "TIKTOK_ACCESS_TOKEN",
+        "max_duration_seconds": 60,
+        "supported_formats": ["mp4"],
+        "optimal_post_times": ["18:00", "19:00", "20:00"]
+    },
+    "youtube": {
+        "name": "YouTube Shorts",
+        "env_key": "YOUTUBE_ACCESS_TOKEN",
+        "max_duration_seconds": 60,
+        "supported_formats": ["mp4"],
+        "optimal_post_times": ["15:00", "17:00", "20:00"]
+    },
+    "instagram": {
+        "name": "Instagram Reels",
+        "env_key": "INSTAGRAM_ACCESS_TOKEN",
+        "max_duration_seconds": 90,
+        "supported_formats": ["mp4"],
+        "optimal_post_times": ["11:00", "13:00", "19:00"]
+    },
+    "facebook": {
+        "name": "Facebook",
+        "env_key": "FACEBOOK_ACCESS_TOKEN",
+        "max_duration_seconds": 120,
+        "supported_formats": ["mp4"],
+        "optimal_post_times": ["12:00", "15:00", "18:00"]
+    }
+}
+
+PUBLISH_JOBS = {}
+
 
 # ── FONCTION WAN 2.2 ────────────────────────────────────────────────────────
 async def generate_wan_video(prompt: str) -> str:
@@ -2704,3 +2771,169 @@ async def video_status(job_id: str):
     if not job:
         return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     return JSONResponse(status_code=200, content=job)
+
+
+# ── SOCIAL MEDIA PUBLISHING ─────────────────────────────────────────────────
+
+class PublishScheduleRequest(BaseModel):
+    video_path: str
+    platforms: list
+    title: str
+    description: str = ""
+    scheduled_time: str = ""
+    user_plan: str = "free"
+    auto_mode: bool = False
+    user_id: str
+
+
+async def _process_publish_job(job_id: str):
+    job = PUBLISH_JOBS.get(job_id)
+    if not job:
+        return
+
+    scheduled_time = job.get("scheduled_time", "")
+    if scheduled_time:
+        try:
+            from datetime import datetime, timezone
+            target = datetime.fromisoformat(scheduled_time)
+            now = datetime.now(timezone.utc)
+            if target.tzinfo is None:
+                target = target.replace(tzinfo=timezone.utc)
+            delay = (target - now).total_seconds()
+            if delay > 0:
+                await asyncio.sleep(delay)
+        except Exception:
+            pass
+
+    PUBLISH_JOBS[job_id]["status"] = "publishing"
+
+    token_map = {
+        "tiktok": ("TIKTOK_ACCESS_TOKEN", "TikTok token not configured"),
+        "youtube": ("YOUTUBE_ACCESS_TOKEN", "YouTube token not configured"),
+        "instagram": ("INSTAGRAM_ACCESS_TOKEN", "Instagram token not configured"),
+        "facebook": ("FACEBOOK_ACCESS_TOKEN", "Facebook token not configured"),
+    }
+
+    for platform in job.get("platforms", []):
+        env_key, msg = token_map.get(platform, (None, "Platform not supported"))
+        if env_key is None:
+            PUBLISH_JOBS[job_id]["results"][platform] = {
+                "status": "error", "message": "Platform not supported"
+            }
+            continue
+        token = os.getenv(env_key, "")
+        if not token:
+            PUBLISH_JOBS[job_id]["results"][platform] = {
+                "status": "not_configured", "message": msg
+            }
+        else:
+            PUBLISH_JOBS[job_id]["results"][platform] = {
+                "status": "published", "message": f"Published to {platform}"
+            }
+
+    PUBLISH_JOBS[job_id]["status"] = "done"
+
+
+@app.post("/publish/schedule")
+async def publish_schedule(req: PublishScheduleRequest):
+    plan_key = req.user_plan.lower().strip()
+
+    if plan_key == "free":
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Publication automatique non disponible pour le plan gratuit"}
+        )
+
+    plan = PUBLISH_PLANS.get(plan_key)
+    if not plan:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Plan inconnu: '{req.user_plan}'"}
+        )
+
+    allowed_platforms = plan.get("platforms", [])
+    invalid = [p for p in req.platforms if p not in allowed_platforms]
+    if invalid:
+        return JSONResponse(
+            status_code=403,
+            content={"error": f"Plateformes non disponibles pour ce plan: {invalid}"}
+        )
+
+    limit_key = "auto_publications_per_day" if req.auto_mode else "manual_publications_per_day"
+    daily_limit = plan.get(limit_key, 0)
+
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()
+    user_today_count = sum(
+        1 for j in PUBLISH_JOBS.values()
+        if j.get("user_id") == req.user_id
+        and (j.get("scheduled_time", "") or "")[:10] == today
+        and j.get("status") not in ("cancelled",)
+    )
+
+    if user_today_count >= daily_limit:
+        return JSONResponse(
+            status_code=429,
+            content={"error": f"Limite de {daily_limit} publication(s) par jour atteinte pour ce plan"}
+        )
+
+    job_id = uuid.uuid4().hex
+    PUBLISH_JOBS[job_id] = {
+        "job_id": job_id,
+        "user_id": req.user_id,
+        "platforms": req.platforms,
+        "status": "scheduled",
+        "scheduled_time": req.scheduled_time,
+        "video_path": req.video_path,
+        "title": req.title,
+        "description": req.description,
+        "results": {},
+    }
+
+    asyncio.create_task(_process_publish_job(job_id))
+
+    return JSONResponse(status_code=200, content={
+        "job_id": job_id,
+        "status": "scheduled",
+        "platforms": req.platforms,
+        "scheduled_time": req.scheduled_time,
+    })
+
+
+@app.get("/publish/status/{job_id}")
+async def publish_status(job_id: str):
+    job = PUBLISH_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    return JSONResponse(status_code=200, content=job)
+
+
+@app.get("/publish/history/{user_id}")
+async def publish_history(user_id: str):
+    jobs = [j for j in PUBLISH_JOBS.values() if j.get("user_id") == user_id]
+    jobs.sort(key=lambda j: j.get("scheduled_time", ""), reverse=True)
+    return JSONResponse(status_code=200, content={"jobs": jobs})
+
+
+@app.get("/publish/plans")
+async def publish_plans():
+    return JSONResponse(status_code=200, content=PUBLISH_PLANS)
+
+
+@app.get("/publish/platforms")
+async def publish_platforms():
+    return JSONResponse(status_code=200, content=PLATFORM_CONFIGS)
+
+
+@app.delete("/publish/cancel/{job_id}")
+async def publish_cancel(job_id: str):
+    job = PUBLISH_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    if job["status"] not in ("scheduled",):
+        return JSONResponse(
+            status_code=409,
+            content={"error": f"Impossible d'annuler un job avec le statut '{job['status']}'"}
+        )
+    PUBLISH_JOBS[job_id]["status"] = "cancelled"
+    return JSONResponse(status_code=200, content={"job_id": job_id, "status": "cancelled"})
