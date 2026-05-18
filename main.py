@@ -377,6 +377,9 @@ class VideoRequest(BaseModel):
     sync_url: str = ""
     music_url: str = ""
     wan_video: str = ""
+    wan_video2: str = ""
+    wan_video3: str = ""
+    wan_video4: str = ""
     duration: int = 30
     subtitles: str = ""
 
@@ -1318,19 +1321,21 @@ async def _process_video(job_id: str, req: VideoRequest):
             (req.text8 or "").strip()[:200],
         ]
 
-        if req.wan_video:
-            valid_video_urls_raw = [req.wan_video]
+        wan_clip_list = [u for u in [req.wan_video, req.wan_video2, req.wan_video3, req.wan_video4] if u]
+        if wan_clip_list:
+            valid_video_urls_raw = wan_clip_list
         else:
             valid_video_urls_raw = [u for u in all_video_urls if u]
         if not valid_video_urls_raw:
             VIDEO_JOBS[job_id] = {"status": "failed", "error": "Aucune vidéo fournie"}
             return
 
-        # MODE WAN : 1 clip par scene, MODE PEXELS : 5 clips par scene
-        if req.wan_video:
+        # MODE WAN : 1 clip per scene (each wan clip = 1 scene), MODE PEXELS : 5 clips per scene
+        if wan_clip_list:
             CLIPS_PER_SCENE = 1
-            nb_clips_total = nb_scenes * CLIPS_PER_SCENE
-            clip_urls = [req.wan_video] * nb_scenes
+            nb_scenes = len(wan_clip_list)
+            nb_clips_total = nb_scenes
+            clip_urls = wan_clip_list
             subtitle_texts = [
                 all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
                 for i in range(nb_scenes)
@@ -1378,15 +1383,22 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         clip_duration = real_total_duration / nb_clips_total
 
-        if req.wan_video:
-            # Download the WAN clip once then copy locally — avoids 4× HTTP downloads
-            raw_master = os.path.join(job_dir, "raw_master.mp4")
-            await download_file(req.wan_video, raw_master, retries=5)
+        if wan_clip_list:
             raw_paths = []
-            for i in range(nb_scenes):
-                dst = os.path.join(job_dir, f"raw_{i}.mp4")
-                shutil.copy2(raw_master, dst)
-                raw_paths.append(dst)
+            if len(wan_clip_list) == 1:
+                # Single clip: download once and copy per scene
+                raw_master = os.path.join(job_dir, "raw_master.mp4")
+                await download_file(wan_clip_list[0], raw_master, retries=5)
+                for i in range(nb_scenes):
+                    dst = os.path.join(job_dir, f"raw_{i}.mp4")
+                    shutil.copy2(raw_master, dst)
+                    raw_paths.append(dst)
+            else:
+                # Multiple clips: download each separately in order
+                for i, url in enumerate(clip_urls):
+                    dst = os.path.join(job_dir, f"raw_{i}.mp4")
+                    await download_file(url, dst, retries=5)
+                    raw_paths.append(dst)
         else:
             raw_paths = [os.path.join(job_dir, f"raw_{i}.mp4")
                          for i in range(len(clip_urls))]
@@ -1592,7 +1604,7 @@ async def create_video(req: VideoRequest):
 class WanGenerateRequest(BaseModel):
     prompt: str
     resolution: str = "480p"
-    num_frames: int = 81
+    num_frames: int = 97
     num_inference_steps: int = 20
     image_url: str = ""
 
@@ -1608,11 +1620,11 @@ WAN_SIZE_MAP = {
 }
 
 
-async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps: int, image_url: str = ""):
+async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps: int, image_url: str = "", num_frames: int = 97):
     base = RUNPOD_API_URL.rstrip("/")
     try:
         # Step 1 — submit job to RunPod, get runpod_job_id instantly
-        payload = {"prompt": prompt, "size": wan_size, "sample_steps": str(sample_steps)}
+        payload = {"prompt": prompt, "size": wan_size, "sample_steps": str(sample_steps), "frame_num": str(num_frames)}
         if image_url:
             payload["image_url"] = image_url
         async with httpx.AsyncClient(timeout=30) as client:
@@ -1669,7 +1681,7 @@ async def wan_generate(req: WanGenerateRequest):
     job_id = uuid.uuid4().hex
     WAN_JOBS[job_id] = {"status": "processing"}
 
-    asyncio.create_task(_process_wan_job(job_id, req.prompt, wan_size, req.num_inference_steps, req.image_url))
+    asyncio.create_task(_process_wan_job(job_id, req.prompt, wan_size, req.num_inference_steps, req.image_url, req.num_frames))
 
     return JSONResponse(status_code=200, content={
         "job_id": job_id,

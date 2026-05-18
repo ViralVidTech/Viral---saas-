@@ -816,11 +816,22 @@ async function generateSubtitles(apiUrl, audioUrl, lang, statusId) {
   } catch { return ''; }
 }
 
-async function assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, statusId) {
+async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId) {
   setStatus(statusId, '⏳ FFmpeg assemble la vidéo finale…', 'ready');
+  const clips = Array.isArray(videoUrls) ? videoUrls : [videoUrls];
+  const payload = {
+    wan_video:  clips[0] || '',
+    wan_video2: clips[1] || '',
+    wan_video3: clips[2] || '',
+    wan_video4: clips[3] || '',
+    audio_url: audioUrl,
+    music_url: musicUrl,
+    subtitles,
+    duration: 30
+  };
   const ffRes = await fetch(`${apiUrl}/create-video`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ wan_video: videoUrl, audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, pipeline_mode: 'ai_wan' })
+    body: JSON.stringify(payload)
   });
   if (!ffRes.ok) {
     const errData = await ffRes.json().catch(() => ({}));
@@ -1117,17 +1128,31 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     const fluxD = await fluxR.json();
     if (!fluxD.image_url) throw new Error("Flux n'a pas retourné d'image");
 
-    // 3 — Wan I2V (using Flux image as reference)
-    setStatus('p1Status', '⏳ Wan 2.2 génère la vidéo…', 'ready');
-    const wanR = await fetch(`${apiUrl}/wan/generate`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0,200), resolution: res, num_frames: 81, num_inference_steps: steps, image_url: fluxD.image_url })
-    });
-    if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
-    const wanD = await wanR.json();
-    if (!wanD.job_id) throw new Error("Wan n'a pas retourné de job_id");
-    const wanDone = await pollWithStatus(apiUrl, `/wan/status/${wanD.job_id}`, 'p1Status', 'Wan génère la vidéo');
-    let videoUrl = `${apiUrl}${wanDone.video_url}`;
+    // 3 — Split script into scenes, generate one Wan I2V clip per scene
+    const sceneLines = script.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
+    const sceneCount = Math.min(Math.max(sceneLines.length, 1), 4);
+    const scenePrompts = Array.from({ length: sceneCount }, (_, i) =>
+      (sceneLines[i] || script).slice(0, 200)
+    );
+
+    setStatus('p1Status', `⏳ Wan 2.2 soumet ${sceneCount} clips…`, 'ready');
+    const wanJobIds = await Promise.all(scenePrompts.map(async (scenePmt) => {
+      const r = await fetch(`${apiUrl}/wan/generate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: scenePmt, resolution: res, num_frames: 97, num_inference_steps: steps, image_url: fluxD.image_url })
+      });
+      if (!r.ok) throw new Error(`Wan erreur ${r.status}`);
+      const d = await r.json();
+      if (!d.job_id) throw new Error("Wan n'a pas retourné de job_id");
+      return d.job_id;
+    }));
+
+    const clipUrls = [];
+    for (let i = 0; i < wanJobIds.length; i++) {
+      const done = await pollWithStatus(apiUrl, `/wan/status/${wanJobIds[i]}`, 'p1Status', `Clip ${i + 1}/${wanJobIds.length}`);
+      clipUrls.push(`${apiUrl}${done.video_url}`);
+    }
+    let videoUrl = clipUrls[0];
 
     // 4 — Fish Audio
     let audioUrl = '';
@@ -1137,8 +1162,8 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     let subtitles = '';
     if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p1Status');
 
-    // 6 — FFmpeg
-    if (audioUrl || musicUrl || subtitles) videoUrl = await assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, 'p1Status');
+    // 6 — FFmpeg: concatenate all scene clips + voice + music
+    if (audioUrl || musicUrl || subtitles || clipUrls.length > 1) videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p1Status');
 
     showPipelineVideo('p1VideoPlayer', 'p1DownloadLink', 'p1VideoBlock', videoUrl);
     setStatus('p1Status', '✅ Pipeline 1 terminé !', 'success');

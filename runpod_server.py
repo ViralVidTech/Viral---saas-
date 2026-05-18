@@ -43,6 +43,7 @@ async def wan_generate(
     prompt: str = Form(...),
     size: str = Form("832*480"),
     sample_steps: int = Form(20),
+    frame_num: int = Form(97),
     image_url: str = Form(""),
 ):
     job_id = uuid.uuid4().hex
@@ -56,6 +57,7 @@ async def wan_generate(
             "--image", image_url,
             "--prompt", prompt,
             "--sample_steps", str(sample_steps),
+            "--frame_num", str(frame_num),
             "--save_file", output_path
         ]
     else:
@@ -66,6 +68,7 @@ async def wan_generate(
             "--ckpt_dir", WAN_T2V_CKPT,
             "--prompt", prompt,
             "--sample_steps", str(sample_steps),
+            "--frame_num", str(frame_num),
             "--save_file", output_path
         ]
     WAN_JOBS[job_id] = {"status": "processing"}
