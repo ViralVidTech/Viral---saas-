@@ -114,8 +114,45 @@ async def qwen_generate():
     return JSONResponse({"error": "coming soon"}, status_code=503)
 
 @app.post("/voxtral/transcribe")
-async def voxtral_transcribe():
-    return JSONResponse({"error": "coming soon"}, status_code=503)
+async def voxtral_transcribe(
+    audio_file: UploadFile = File(...),
+    language: str = Form("fr"),
+    output_format: str = Form("text"),
+):
+    job_id = uuid.uuid4().hex
+    ext = os.path.splitext(audio_file.filename)[1].lower() if audio_file.filename else ".mp3"
+    audio_path = f"{WORK_DIR}/{job_id}{ext}"
+    with open(audio_path, "wb") as f:
+        f.write(await audio_file.read())
+
+    script = f"""
+import torch
+from transformers import VoxtralForConditionalGeneration, AutoProcessor
+processor = AutoProcessor.from_pretrained('/workspace/voxtral', local_files_only=True)
+model = VoxtralForConditionalGeneration.from_pretrained('/workspace/voxtral', local_files_only=True, torch_dtype=torch.bfloat16, device_map='cuda')
+inputs = processor.apply_transcription_request(language='{language}', audio='{audio_path}', model_id='mistralai/Voxtral-Mini-3B-2507')
+inputs = inputs.to('cuda', dtype=torch.bfloat16)
+outputs = model.generate(**inputs, max_new_tokens=1000)
+decoded = processor.batch_decode(outputs[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)
+print(decoded[0])
+"""
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python3", "-c", script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return JSONResponse(status_code=500, content={"error": stderr.decode()[-2000:]})
+        transcription = stdout.decode().strip()
+        return JSONResponse({"transcription": transcription, "language": language})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
