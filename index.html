@@ -1118,41 +1118,45 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
       script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p1Script'), 'p1Status');
     }
 
-    // 2+3 — Split into 4 distinct scenes; generate one Flux image + Wan I2V clip per scene
+    // 2+3 — Generate 4 scenes SEQUENTIALLY: Flux → Wan submit → poll → next scene
+    // (Only one Wan job active at a time — prevents CUDA OOM)
     function splitScenes(text, n) {
       let chunks = text.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
       if (chunks.length < n) chunks = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
       if (chunks.length >= n) return chunks.slice(0, n);
-      // Fewer paragraphs than needed — divide text into n equal length segments
       const sz = Math.ceil(text.length / n);
       return Array.from({ length: n }, (_, i) => text.slice(i * sz, (i + 1) * sz).trim() || text.slice(0, 200));
     }
     const sceneCount = 4;
     const scenePrompts = splitScenes(script, sceneCount).map(s => s.slice(0, 200));
 
-    setStatus('p1Status', `⏳ Flux + Wan : ${sceneCount} scènes en cours…`, 'ready');
-    const wanJobIds = await Promise.all(scenePrompts.map(async (scenePmt) => {
-      // One Flux image per scene
+    const clipUrls = [];
+    for (let i = 0; i < sceneCount; i++) {
+      const scenePmt = scenePrompts[i];
+      setStatus('p1Status', `🎬 Génération scène ${i + 1}/${sceneCount}…`, 'ready');
+
+      // Step A: Flux image for this scene
       const fluxR = await fetch(`${apiUrl}/generate-image`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: `${scenePmt.slice(0, 80)}, viral short video, colorful, cartoon style`, image_size: 'portrait_4_3', num_inference_steps: 28, guidance_scale: 3.5, num_images: 1 })
       });
       const imageUrl = fluxR.ok ? ((await fluxR.json()).image_url || '') : '';
-      // Wan I2V job using that scene's image
-      const r = await fetch(`${apiUrl}/wan/generate`, {
+
+      // Step B: submit Wan job
+      const wanR = await fetch(`${apiUrl}/wan/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: scenePmt, resolution: res, num_frames: 97, num_inference_steps: steps, image_url: imageUrl })
       });
-      if (!r.ok) throw new Error(`Wan erreur ${r.status}`);
-      const d = await r.json();
-      if (!d.job_id) throw new Error("Wan n'a pas retourné de job_id");
-      return d.job_id;
-    }));
+      if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
+      const wanD = await wanR.json();
+      if (!wanD.job_id) throw new Error("Wan n'a pas retourné de job_id");
 
-    const clipUrls = [];
-    for (let i = 0; i < wanJobIds.length; i++) {
-      const done = await pollWithStatus(apiUrl, `/wan/status/${wanJobIds[i]}`, 'p1Status', `Clip ${i + 1}/${sceneCount}`);
+      // Step C: poll until done
+      const done = await pollWithStatus(apiUrl, `/wan/status/${wanD.job_id}`, 'p1Status', `Scène ${i + 1}/${sceneCount}`);
+
+      // Step D: collect URL
       clipUrls.push(`${apiUrl}${done.video_url}`);
+      if (i + 1 < sceneCount) setStatus('p1Status', `✅ Scène ${i + 1}/${sceneCount} — Génération scène ${i + 2}/${sceneCount}…`, 'ready');
     }
     let videoUrl = clipUrls[0];
 

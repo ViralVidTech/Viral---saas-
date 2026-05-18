@@ -37,6 +37,13 @@ async def _run_wan_job(job_id: str, cmd: list):
         WAN_JOBS[job_id] = {"status": "done", "video_path": video_path}
     except Exception as e:
         WAN_JOBS[job_id] = {"status": "error", "detail": str(e)}
+    finally:
+        try:
+            import gc, torch
+            gc.collect()
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
 
 @app.post("/wan/generate")
 async def wan_generate(
