@@ -1149,9 +1149,9 @@ let _pipelineVoices = [], _pipelineVoiceStyles = [];
 async function loadPipelineData() {
   const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
 
-  // Niches — {"plan":"free","niches":[...],"count":20}
+  // Niches — {"plan":"premium","niches":[...],"count":N}
   try {
-    const r = await fetch(`${apiUrl}/niches?plan=free`);
+    const r = await fetch(`${apiUrl}/niches?plan=premium`);
     if (r.ok) {
       const d = await r.json();
       const niches = d.niches || d.all_niches || [];
@@ -1224,6 +1224,53 @@ async function loadPipelineData() {
           sel.appendChild(og);
         });
       }
+    }
+  } catch(e) {}
+
+  // Languages — {"languages":[{"code":"fr","name":"Français"},…]}
+  try {
+    const r = await fetch(`${apiUrl}/languages`);
+    if (r.ok) {
+      const d = await r.json();
+      const langs = d.languages || [];
+      ['p1Lang','p2Lang','p3Lang'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const cur = sel.value;
+        populateSelect(sel, langs, l => l.code, l => l.name, '— Langue —');
+        if (cur) sel.value = cur;
+      });
+    }
+  } catch(e) {}
+
+  // Music — {"catalog":[{"music_id","music_name","music_style","duration","url"},…],"uploaded":[…]}
+  try {
+    const r = await fetch(`${apiUrl}/available-music`);
+    if (r.ok) {
+      const d = await r.json();
+      const tracks = [...(d.catalog || []), ...(d.uploaded || [])];
+      ['p1Music','p2Music','p3Music','p4Music'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Pas de musique</option>';
+        const byStyle = {};
+        tracks.forEach(t => {
+          const style = t.music_style || 'Autre';
+          if (!byStyle[style]) byStyle[style] = [];
+          byStyle[style].push(t);
+        });
+        Object.entries(byStyle).forEach(([style, items]) => {
+          const og = document.createElement('optgroup');
+          og.label = style;
+          items.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.url || '';
+            opt.textContent = `${t.music_name} (${t.duration}s)`;
+            og.appendChild(opt);
+          });
+          sel.appendChild(og);
+        });
+      });
     }
   } catch(e) {}
 }

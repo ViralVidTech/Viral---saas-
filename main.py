@@ -1863,95 +1863,77 @@ VOICE_CATALOG = [
 ]
 
 
+LANGUAGES = [
+    {"code": "fr", "name": "Français"},
+    {"code": "en", "name": "Anglais"},
+    {"code": "es", "name": "Espagnol"},
+    {"code": "zh", "name": "Chinois"},
+    {"code": "ja", "name": "Japonais"},
+    {"code": "ko", "name": "Coréen"},
+    {"code": "ar", "name": "Arabe"},
+    {"code": "pt", "name": "Portugais"},
+    {"code": "de", "name": "Allemand"},
+    {"code": "it", "name": "Italien"},
+    {"code": "ru", "name": "Russe"},
+    {"code": "nl", "name": "Néerlandais"},
+    {"code": "pl", "name": "Polonais"},
+    {"code": "tr", "name": "Turc"},
+    {"code": "vi", "name": "Vietnamien"},
+    {"code": "th", "name": "Thaï"},
+    {"code": "id", "name": "Indonésien"},
+    {"code": "ms", "name": "Malais"},
+    {"code": "hi", "name": "Hindi"},
+    {"code": "uk", "name": "Ukrainien"},
+    {"code": "cs", "name": "Tchèque"},
+    {"code": "ro", "name": "Roumain"},
+    {"code": "hu", "name": "Hongrois"},
+    {"code": "el", "name": "Grec"},
+    {"code": "sv", "name": "Suédois"},
+    {"code": "da", "name": "Danois"},
+    {"code": "fi", "name": "Finnois"},
+    {"code": "no", "name": "Norvégien"},
+    {"code": "he", "name": "Hébreu"},
+    {"code": "fa", "name": "Persan"},
+]
+
 MUSIC_CATALOG = [
-    {
-        "music_id": "music-epic-001",
-        "music_name": "Rise to Glory",
-        "music_style": "Épique et motivant",
-        "niches": ["motivation", "sport", "finance"],
-        "duration": 60,
-        "url": "",
-    },
-    {
-        "music_id": "music-epic-002",
-        "music_name": "Champion's Path",
-        "music_style": "Épique et motivant",
-        "niches": ["motivation", "sport", "challenge"],
-        "duration": 45,
-        "url": "",
-    },
-    {
-        "music_id": "music-soft-001",
-        "music_name": "Morning Calm",
-        "music_style": "Doux et apaisant",
-        "niches": ["santé", "méditation", "religion"],
-        "duration": 60,
-        "url": "",
-    },
-    {
-        "music_id": "music-soft-002",
-        "music_name": "Inner Peace",
-        "music_style": "Doux et apaisant",
-        "niches": ["mindfulness", "bien-être", "parentalité"],
-        "duration": 45,
-        "url": "",
-    },
-    {
-        "music_id": "music-energy-001",
-        "music_name": "Neon Rush",
-        "music_style": "Rythmé et énergique",
-        "niches": ["gaming", "challenge", "influenceur"],
-        "duration": 60,
-        "url": "",
-    },
-    {
-        "music_id": "music-energy-002",
-        "music_name": "Beat Drop",
-        "music_style": "Rythmé et énergique",
-        "niches": ["gaming", "sport", "mode"],
-        "duration": 30,
-        "url": "",
-    },
-    {
-        "music_id": "music-mystery-001",
-        "music_name": "Dark Discovery",
-        "music_style": "Mystérieux et intrigant",
-        "niches": ["révélation", "technologie", "cryptomonnaie"],
-        "duration": 60,
-        "url": "",
-    },
-    {
-        "music_id": "music-neutral-001",
-        "music_name": "Clear Horizon",
-        "music_style": "Neutre et professionnel",
-        "niches": ["éducation", "langues", "IA", "business"],
-        "duration": 60,
-        "url": "",
-    },
-    {
-        "music_id": "music-neutral-002",
-        "music_name": "Steady Focus",
-        "music_style": "Neutre et professionnel",
-        "niches": ["tutoriel", "finance", "technologie"],
-        "duration": 45,
-        "url": "",
-    },
-    {
-        "music_id": "music-happy-001",
-        "music_name": "Sunny Day",
-        "music_style": "Joyeux et léger",
-        "niches": ["blagues", "cuisine", "voyage"],
-        "duration": 60,
-        "url": "",
-    },
-    {
-        "music_id": "music-happy-002",
-        "music_name": "Good Vibes",
-        "music_style": "Joyeux et léger",
-        "niches": ["humour", "famille", "parentalité"],
-        "duration": 45,
-        "url": "",
-    },
+    # ── Épique et motivant ──────────────────────────────────────────────
+    {"music_id": "music-epic-001", "music_name": "Epic Rise",       "music_style": "Épique et motivant", "niches": ["motivation", "sport", "finance"],    "duration": 60, "url": ""},
+    {"music_id": "music-epic-002", "music_name": "Power Surge",     "music_style": "Épique et motivant", "niches": ["sport", "challenge", "fitness"],     "duration": 45, "url": ""},
+    {"music_id": "music-epic-003", "music_name": "Champion",        "music_style": "Épique et motivant", "niches": ["motivation", "sport"],               "duration": 60, "url": ""},
+    {"music_id": "music-epic-004", "music_name": "Victory March",   "music_style": "Épique et motivant", "niches": ["finance", "business", "success"],    "duration": 50, "url": ""},
+    {"music_id": "music-epic-005", "music_name": "Rise Up",         "music_style": "Épique et motivant", "niches": ["motivation", "mindset"],             "duration": 60, "url": ""},
+    {"music_id": "music-epic-006", "music_name": "Unstoppable",     "music_style": "Épique et motivant", "niches": ["sport", "motivation", "challenge"],  "duration": 45, "url": ""},
+    # ── Doux et apaisant ───────────────────────────────────────────────
+    {"music_id": "music-soft-001", "music_name": "Peaceful Mind",   "music_style": "Doux et apaisant",   "niches": ["méditation", "bien-être"],           "duration": 60, "url": ""},
+    {"music_id": "music-soft-002", "music_name": "Gentle Rain",     "music_style": "Doux et apaisant",   "niches": ["santé", "mindfulness"],              "duration": 60, "url": ""},
+    {"music_id": "music-soft-003", "music_name": "Serenity",        "music_style": "Doux et apaisant",   "niches": ["religion", "spiritualité"],          "duration": 55, "url": ""},
+    {"music_id": "music-soft-004", "music_name": "Calm Waters",     "music_style": "Doux et apaisant",   "niches": ["parentalité", "famille"],            "duration": 60, "url": ""},
+    {"music_id": "music-soft-005", "music_name": "Soft Breeze",     "music_style": "Doux et apaisant",   "niches": ["voyage", "nature"],                  "duration": 45, "url": ""},
+    {"music_id": "music-soft-006", "music_name": "Inner Peace",     "music_style": "Doux et apaisant",   "niches": ["mindfulness", "méditation"],         "duration": 60, "url": ""},
+    # ── Rythmé et énergique ────────────────────────────────────────────
+    {"music_id": "music-energy-001", "music_name": "Beat Drop",     "music_style": "Rythmé et énergique", "niches": ["gaming", "sport", "mode"],          "duration": 30, "url": ""},
+    {"music_id": "music-energy-002", "music_name": "Energy Rush",   "music_style": "Rythmé et énergique", "niches": ["gaming", "challenge"],              "duration": 60, "url": ""},
+    {"music_id": "music-energy-003", "music_name": "Pulse",         "music_style": "Rythmé et énergique", "niches": ["fitness", "sport"],                 "duration": 45, "url": ""},
+    {"music_id": "music-energy-004", "music_name": "Rhythm Fire",   "music_style": "Rythmé et énergique", "niches": ["influenceur", "mode"],              "duration": 60, "url": ""},
+    {"music_id": "music-energy-005", "music_name": "Dance Wave",    "music_style": "Rythmé et énergique", "niches": ["danse", "humour"],                  "duration": 30, "url": ""},
+    {"music_id": "music-energy-006", "music_name": "Electric Vibe", "music_style": "Rythmé et énergique", "niches": ["technologie", "IA"],                "duration": 45, "url": ""},
+    # ── Mystérieux et intrigant ────────────────────────────────────────
+    {"music_id": "music-mystery-001", "music_name": "Dark Secret",  "music_style": "Mystérieux et intrigant", "niches": ["révélation", "cryptomonnaie"],  "duration": 60, "url": ""},
+    {"music_id": "music-mystery-002", "music_name": "Mystery Walk", "music_style": "Mystérieux et intrigant", "niches": ["technologie", "IA"],            "duration": 50, "url": ""},
+    {"music_id": "music-mystery-003", "music_name": "Shadow",       "music_style": "Mystérieux et intrigant", "niches": ["finance", "politique"],         "duration": 60, "url": ""},
+    {"music_id": "music-mystery-004", "music_name": "Unknown Path", "music_style": "Mystérieux et intrigant", "niches": ["voyage", "découverte"],         "duration": 45, "url": ""},
+    {"music_id": "music-mystery-005", "music_name": "Twilight",     "music_style": "Mystérieux et intrigant", "niches": ["révélation", "spiritualité"],   "duration": 55, "url": ""},
+    # ── Neutre et professionnel ────────────────────────────────────────
+    {"music_id": "music-neutral-001", "music_name": "Corporate Flow",  "music_style": "Neutre et professionnel", "niches": ["business", "finance"],      "duration": 60, "url": ""},
+    {"music_id": "music-neutral-002", "music_name": "Business Beat",   "music_style": "Neutre et professionnel", "niches": ["éducation", "tutoriel"],    "duration": 45, "url": ""},
+    {"music_id": "music-neutral-003", "music_name": "Professional",    "music_style": "Neutre et professionnel", "niches": ["IA", "technologie"],        "duration": 60, "url": ""},
+    {"music_id": "music-neutral-004", "music_name": "Clean Tone",      "music_style": "Neutre et professionnel", "niches": ["langues", "éducation"],     "duration": 50, "url": ""},
+    # ── Joyeux et léger ───────────────────────────────────────────────
+    {"music_id": "music-happy-001", "music_name": "Happy Day",    "music_style": "Joyeux et léger", "niches": ["humour", "blagues", "cuisine"],          "duration": 60, "url": ""},
+    {"music_id": "music-happy-002", "music_name": "Fun Times",    "music_style": "Joyeux et léger", "niches": ["famille", "enfants"],                    "duration": 45, "url": ""},
+    {"music_id": "music-happy-003", "music_name": "Cheerful",     "music_style": "Joyeux et léger", "niches": ["voyage", "lifestyle"],                   "duration": 60, "url": ""},
+    {"music_id": "music-happy-004", "music_name": "Bright Side",  "music_style": "Joyeux et léger", "niches": ["parentalité", "motivation"],             "duration": 45, "url": ""},
 ]
 
 
@@ -2295,6 +2277,11 @@ async def available_music(style: str = ""):
         "uploaded": uploaded,
         "total": len(catalog) + len(uploaded),
     }
+
+
+@app.get("/languages")
+async def get_languages():
+    return {"languages": LANGUAGES}
 
 
 @app.get("/voice-styles")
