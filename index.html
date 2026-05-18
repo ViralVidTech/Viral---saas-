@@ -831,7 +831,7 @@ async function assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitle
     if (ffData.video_url) return ffData.video_url;
     throw new Error('FFmpeg assembly échouée: pas de job_id retourné');
   }
-  let finalUrl = null, ffTries = 0;
+  let finalUrl = null, ffTries = 0, ffmpegError = '';
   await new Promise(resolve => {
     const iv = setInterval(async () => {
       ffTries++;
@@ -839,13 +839,13 @@ async function assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitle
         const sr = await fetch(`${apiUrl}/video-status/${ffData.job_id}`);
         const sd = await sr.json();
         if (sd.status === 'done' && sd.video_url) { clearInterval(iv); finalUrl = sd.video_url; resolve(); }
-        else if (sd.status === 'failed') { clearInterval(iv); resolve(); }
-        else if (ffTries >= 120) { clearInterval(iv); resolve(); }
+        else if (sd.status === 'failed') { clearInterval(iv); ffmpegError = sd.error || 'statut échoué'; resolve(); }
+        else if (ffTries >= 120) { clearInterval(iv); ffmpegError = 'délai dépassé (10 min)'; resolve(); }
         else setStatus(statusId, `⏳ FFmpeg… (${ffTries * 5}s)`, 'ready');
-      } catch { if (ffTries >= 5) { clearInterval(iv); resolve(); } }
+      } catch { if (ffTries >= 5) { clearInterval(iv); ffmpegError = 'erreur réseau répétée'; resolve(); } }
     }, 5000);
   });
-  if (!finalUrl) throw new Error('FFmpeg assembly échouée: le rendu a expiré ou a échoué');
+  if (!finalUrl) throw new Error(`FFmpeg assembly échouée: ${ffmpegError}`);
   return finalUrl;
 }
 

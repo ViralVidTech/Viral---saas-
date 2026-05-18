@@ -378,6 +378,7 @@ class VideoRequest(BaseModel):
     music_url: str = ""
     wan_video: str = ""
     duration: int = 30
+    subtitles: str = ""
 
 
 # ── UTILITAIRES FFMPEG ──────────────────────────────────────────────────────
@@ -1377,14 +1378,23 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         clip_duration = real_total_duration / nb_clips_total
 
-        raw_paths = [os.path.join(job_dir, f"raw_{i}.mp4")
-                     for i in range(len(clip_urls))]
-
-        await asyncio.gather(*[
-            download_file(url, path)
-            for url, path in zip(clip_urls, raw_paths)
-            if url
-        ])
+        if req.wan_video:
+            # Download the WAN clip once then copy locally — avoids 4× HTTP downloads
+            raw_master = os.path.join(job_dir, "raw_master.mp4")
+            await download_file(req.wan_video, raw_master, retries=5)
+            raw_paths = []
+            for i in range(nb_scenes):
+                dst = os.path.join(job_dir, f"raw_{i}.mp4")
+                shutil.copy2(raw_master, dst)
+                raw_paths.append(dst)
+        else:
+            raw_paths = [os.path.join(job_dir, f"raw_{i}.mp4")
+                         for i in range(len(clip_urls))]
+            await asyncio.gather(*[
+                download_file(url, path)
+                for url, path in zip(clip_urls, raw_paths)
+                if url
+            ])
 
         from concurrent.futures import ThreadPoolExecutor
 
@@ -1471,6 +1481,14 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         srt_path = os.path.join(job_dir, "subtitles.srt")
         srt_built = False
+
+        if req.subtitles:
+            try:
+                with open(srt_path, "w", encoding="utf-8") as f:
+                    f.write(req.subtitles)
+                srt_built = True
+            except Exception:
+                srt_built = False
 
         sync_url = (req.sync_url or "").strip()
         if sync_url:
