@@ -124,6 +124,29 @@
     .mode-card { background:rgba(255,255,255,0.035); border:1px solid var(--border); border-radius:14px; padding:14px; display:grid; gap:8px; }
     .mode-card strong { font-size:0.95rem; }
     .mode-card small { color:var(--muted); line-height:1.4; }
+    /* ── Pipeline tabs & toggles ── */
+    .pipeline-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+    .pipeline-tab{background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:12px;padding:12px 8px;color:var(--muted);cursor:pointer;font:inherit;font-size:0.88rem;transition:all 0.2s;line-height:1.3;text-align:center;}
+    .pipeline-tab:hover{background:rgba(255,255,255,0.09);color:var(--text);transform:translateY(-1px);}
+    .pipeline-tab.active{background:linear-gradient(135deg,var(--gold),var(--gold-strong));color:#000;border-color:transparent;font-weight:800;}
+    .pipeline-tab small{font-size:0.72rem;opacity:0.82;display:block;margin-top:3px;}
+    .pipeline-tab.active small{opacity:0.7;}
+    .pipeline-panel{display:grid;gap:14px;}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+    .radio-group{display:flex;gap:10px;flex-wrap:wrap;}
+    .radio-opt{display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;transition:all 0.2s;font-size:0.92rem;}
+    .radio-opt input{accent-color:var(--gold);}
+    .toggle-row{display:flex;align-items:center;gap:12px;font-size:0.93rem;}
+    .toggle{position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;}
+    .toggle input{opacity:0;width:0;height:0;}
+    .toggle-slider{position:absolute;inset:0;background:rgba(255,255,255,0.15);border-radius:999px;cursor:pointer;transition:0.2s;}
+    .toggle-slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:0.2s;}
+    .toggle input:checked+.toggle-slider{background:var(--emerald);}
+    .toggle input:checked+.toggle-slider:before{transform:translateX(20px);}
+    .section-divider{border:none;border-top:1px solid var(--border);margin:4px 0;}
+    @media(max-width:900px){.pipeline-tabs{grid-template-columns:repeat(2,1fr);}}
+    @media(max-width:600px){.two-col,.three-col{grid-template-columns:1fr;}}
     @media (max-width:1180px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } .workspace { grid-template-columns:1fr; } .pricing-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr 1fr; } .pipeline-steps { grid-template-columns:repeat(2,1fr); } }
     @media (max-width:980px) { .app-shell { grid-template-columns:1fr; } .sidebar { border-right:none; border-bottom:1px solid rgba(255,255,255,0.08); } }
     @media (max-width:720px) { .main { padding:18px; } .kpi-grid, .mini-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr; } .headline h2 { max-width:none; } .pipeline-steps { grid-template-columns:1fr 1fr; } }
@@ -360,58 +383,198 @@
       </div>
     </section>
 
-    <!-- WAN 2.2 DIRECT -->
-    <section class="panel form-panel" id="wanDirect" style="display:grid;gap:18px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-        <div>
-          <h2 class="section-title" style="margin-bottom:4px;">🎬 Wan 2.2 — Text to Video</h2>
-          <p class="section-subtitle" style="margin:0;">Génère une vidéo MP4 directement depuis un prompt texte via RunPod.</p>
-        </div>
-        <button class="wan-btn" id="wanDirectToggleBtn" style="white-space:nowrap;">+ Nouvelle vidéo</button>
+    <!-- PIPELINES DE PRODUCTION -->
+    <section class="panel form-panel" id="wanDirect" style="display:grid;gap:20px;">
+      <div>
+        <h2 class="section-title">🚀 Pipelines de Production</h2>
+        <p class="section-subtitle">Choisissez un pipeline et configurez votre production vidéo.</p>
       </div>
 
-      <div id="wanDirectForm" style="display:none;gap:14px;">
+      <!-- Tabs -->
+      <div class="pipeline-tabs">
+        <button class="pipeline-tab active" data-tab="p1">Pipeline 1<small>Script + Image → Wan T2V</small></button>
+        <button class="pipeline-tab" data-tab="p2">Pipeline 2<small>Script + Scènes Wan</small></button>
+        <button class="pipeline-tab" data-tab="p3">Pipeline 3<small>Vidéo Stock</small></button>
+        <button class="pipeline-tab" data-tab="p4">Pipeline 4<small>Animation Wan</small></button>
+      </div>
+
+      <!-- ── PIPELINE 1 ── -->
+      <div id="p1" class="pipeline-panel">
+        <div class="two-col">
+          <div class="field"><label>Niche</label><select id="p1Niche"><option value="">Chargement…</option></select></div>
+          <div class="field"><label>Style narratif</label><select id="p1NarStyle"><option value="">Chargement…</option></select></div>
+        </div>
         <div class="field">
-          <label>Prompt vidéo</label>
-          <textarea id="wanDirectPrompt" rows="3" placeholder="A cute smiling apple character dancing in a colorful kitchen, cartoon style, smooth motion, viral short video…"></textarea>
+          <div class="toggle-row" style="margin-bottom:8px;">
+            <label class="toggle"><input type="checkbox" id="p1AutoScript" checked><span class="toggle-slider"></span></label>
+            <span>Générer automatiquement le script</span>
+          </div>
+          <textarea id="p1Script" rows="4" placeholder="Votre script apparaîtra ici après génération, ou écrivez-le manuellement…"></textarea>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-          <div class="field">
-            <label>Résolution</label>
-            <select id="wanDirectSize">
-              <option value="832x480">832×480 (16:9)</option>
-              <option value="480x832">480×832 (9:16 vertical)</option>
-              <option value="720x720">720×720 (carré)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Frames (4n+1)</label>
-            <select id="wanDirectFrames">
-              <option value="49">49 frames (~3s)</option>
-              <option value="81" selected>81 frames (~5s)</option>
-              <option value="97">97 frames (~6s)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Steps</label>
-            <select id="wanDirectSteps">
-              <option value="20">20 (rapide)</option>
-              <option value="50" selected>50 (qualité)</option>
-            </select>
+        <hr class="section-divider">
+        <div class="two-col">
+          <div class="field"><label>Style de voix</label><select id="p1VoiceStyle"><option value="">Tous les styles</option></select></div>
+          <div class="field"><label>Voix Fish Audio</label><select id="p1Voice"><option value="">Chargement…</option></select></div>
+        </div>
+        <div class="field"><label>Musique de fond</label>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <select id="p1Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
+            <input type="file" id="p1MusicFile" accept="audio/*" style="display:none;">
+            <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p1MusicFile').click()">📁 Upload</button>
           </div>
         </div>
-        <div class="actions">
-          <button class="wan-btn" id="wanDirectGenerateBtn">🎬 Générer la vidéo</button>
-          <button class="secondary-btn" id="wanDirectCancelBtn">Annuler</button>
+        <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p1Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
+        <div class="three-col">
+          <div class="field"><label>Résolution</label><select id="p1Res"><option value="832*480">832×480 (16:9)</option><option value="480*832">480×832 (9:16)</option><option value="1280*720">1280×720 (HD)</option></select></div>
+          <div class="field"><label>Steps</label><select id="p1Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
+          <div class="field"><label>Langue</label><select id="p1Lang"><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option></select></div>
         </div>
-        <div class="status" id="wanDirectStatus"></div>
+        <div class="actions"><button class="wan-btn" id="p1Btn">🎬 Générer Pipeline 1</button></div>
+        <div class="status" id="p1Status"></div>
+        <div class="wan-video-block" id="p1VideoBlock">
+          <strong style="color:var(--gold);">✅ Vidéo Pipeline 1 prête</strong>
+          <video id="p1VideoPlayer" controls playsinline autoplay loop></video>
+          <a id="p1DownloadLink" href="#" download="pipeline1.mp4">⬇ Télécharger</a>
+        </div>
       </div>
 
-      <div class="wan-video-block" id="wanDirectVideoBlock">
-        <strong style="color:var(--gold);">✅ Vidéo Wan 2.2 prête</strong>
-        <video id="wanDirectVideoPlayer" controls playsinline autoplay loop></video>
-        <a id="wanDirectDownloadLink" href="#" download="wan_output.mp4">⬇ Télécharger la vidéo</a>
+      <!-- ── PIPELINE 2 ── -->
+      <div id="p2" class="pipeline-panel" style="display:none;">
+        <div class="two-col">
+          <div class="field"><label>Niche</label><select id="p2Niche"><option value="">Chargement…</option></select></div>
+          <div class="field"><label>Style narratif</label><select id="p2NarStyle"><option value="">Chargement…</option></select></div>
+        </div>
+        <div class="field">
+          <div class="toggle-row" style="margin-bottom:8px;">
+            <label class="toggle"><input type="checkbox" id="p2AutoScript" checked><span class="toggle-slider"></span></label>
+            <span>Générer automatiquement le script</span>
+          </div>
+          <textarea id="p2Script" rows="4" placeholder="Votre script apparaîtra ici…"></textarea>
+        </div>
+        <hr class="section-divider">
+        <div class="two-col">
+          <div class="field"><label>Style de voix</label><select id="p2VoiceStyle"><option value="">Tous les styles</option></select></div>
+          <div class="field"><label>Voix Fish Audio</label><select id="p2Voice"><option value="">Chargement…</option></select></div>
+        </div>
+        <div class="field"><label>Musique de fond</label>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <select id="p2Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
+            <input type="file" id="p2MusicFile" accept="audio/*" style="display:none;">
+            <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p2MusicFile').click()">📁 Upload</button>
+          </div>
+        </div>
+        <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p2Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
+        <div class="three-col">
+          <div class="field"><label>Résolution</label><select id="p2Res"><option value="832*480">832×480 (16:9)</option><option value="480*832">480×832 (9:16)</option><option value="1280*720">1280×720 (HD)</option></select></div>
+          <div class="field"><label>Steps</label><select id="p2Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
+          <div class="field"><label>Langue</label><select id="p2Lang"><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option></select></div>
+        </div>
+        <div class="actions"><button class="wan-btn" id="p2Btn">🎬 Générer Pipeline 2</button></div>
+        <div class="status" id="p2Status"></div>
+        <div class="wan-video-block" id="p2VideoBlock">
+          <strong style="color:var(--gold);">✅ Vidéo Pipeline 2 prête</strong>
+          <video id="p2VideoPlayer" controls playsinline autoplay loop></video>
+          <a id="p2DownloadLink" href="#" download="pipeline2.mp4">⬇ Télécharger</a>
+        </div>
       </div>
+
+      <!-- ── PIPELINE 3 ── -->
+      <div id="p3" class="pipeline-panel" style="display:none;">
+        <div class="two-col">
+          <div class="field"><label>Niche</label><select id="p3Niche"><option value="">Chargement…</option></select></div>
+          <div class="field"><label>Style narratif</label><select id="p3NarStyle"><option value="">Chargement…</option></select></div>
+        </div>
+        <div class="field">
+          <div class="toggle-row" style="margin-bottom:8px;">
+            <label class="toggle"><input type="checkbox" id="p3AutoScript" checked><span class="toggle-slider"></span></label>
+            <span>Générer automatiquement le script</span>
+          </div>
+          <textarea id="p3Script" rows="4" placeholder="Votre script apparaîtra ici…"></textarea>
+        </div>
+        <hr class="section-divider">
+        <div class="two-col">
+          <div class="field"><label>Style de voix</label><select id="p3VoiceStyle"><option value="">Tous les styles</option></select></div>
+          <div class="field"><label>Voix Fish Audio</label><select id="p3Voice"><option value="">Chargement…</option></select></div>
+        </div>
+        <div class="field"><label>Musique de fond</label>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <select id="p3Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
+            <input type="file" id="p3MusicFile" accept="audio/*" style="display:none;">
+            <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p3MusicFile').click()">📁 Upload</button>
+          </div>
+        </div>
+        <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p3Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
+        <div class="field"><label>Langue</label><select id="p3Lang"><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option></select></div>
+        <div class="actions"><button class="wan-btn" id="p3Btn">🎬 Générer Pipeline 3</button></div>
+        <div class="status" id="p3Status"></div>
+        <div class="wan-video-block" id="p3VideoBlock">
+          <strong style="color:var(--gold);">✅ Vidéo Pipeline 3 prête</strong>
+          <video id="p3VideoPlayer" controls playsinline autoplay loop></video>
+          <a id="p3DownloadLink" href="#" download="pipeline3.mp4">⬇ Télécharger</a>
+        </div>
+      </div>
+
+      <!-- ── PIPELINE 4 ── -->
+      <div id="p4" class="pipeline-panel" style="display:none;">
+        <div class="field">
+          <label>Source de l'image du personnage</label>
+          <div class="radio-group">
+            <label class="radio-opt"><input type="radio" name="p4ImgSrc" value="describe" checked> 🖊 Décrire un personnage</label>
+            <label class="radio-opt"><input type="radio" name="p4ImgSrc" value="upload"> 📁 Uploader une image</label>
+          </div>
+        </div>
+        <div id="p4ImgDescArea" class="field">
+          <label>Description du personnage (Flux 2 Pro)</label>
+          <textarea id="p4ImgDesc" rows="2" placeholder="Ex: une pomme souriante 3D avec de grands yeux, fond cuisine colorée, style cartoon viral…"></textarea>
+        </div>
+        <div id="p4ImgUploadArea" class="field" style="display:none;">
+          <label>Image (jpg / png)</label>
+          <input type="file" id="p4ImgFile" accept=".jpg,.jpeg,.png">
+        </div>
+        <hr class="section-divider">
+        <div class="field">
+          <label>Vidéo de référence (pose / mouvement)</label>
+          <div class="radio-group">
+            <label class="radio-opt"><input type="radio" name="p4VidSrc" value="library" checked> 📚 Choisir dans la bibliothèque</label>
+            <label class="radio-opt"><input type="radio" name="p4VidSrc" value="upload"> 📁 Uploader une vidéo</label>
+          </div>
+        </div>
+        <div id="p4VidLibArea" class="field">
+          <label>Bibliothèque de vidéos de référence</label>
+          <select id="p4RefVideo"><option value="">Chargement…</option></select>
+        </div>
+        <div id="p4VidUploadArea" class="field" style="display:none;">
+          <label>Vidéo de référence (mp4)</label>
+          <input type="file" id="p4VidFile" accept=".mp4">
+        </div>
+        <hr class="section-divider">
+        <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p4UseVoice"><span class="toggle-slider"></span></label><span>Voix Fish Audio (optionnel)</span></div>
+        <div id="p4VoiceArea" style="display:none;" class="two-col">
+          <div class="field"><label>Style de voix</label><select id="p4VoiceStyle"><option value="">Tous les styles</option></select></div>
+          <div class="field"><label>Voix Fish Audio</label><select id="p4Voice"><option value="">Chargement…</option></select></div>
+        </div>
+        <div class="field" id="p4VoiceTextArea" style="display:none;">
+          <label>Texte à lire</label>
+          <textarea id="p4VoiceText" rows="2" placeholder="Texte pour la voix off…"></textarea>
+        </div>
+        <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p4UseMusic"><span class="toggle-slider"></span></label><span>Musique de fond (optionnel)</span></div>
+        <div id="p4MusicArea" style="display:none;" class="field">
+          <div style="display:flex;gap:10px;align-items:center;">
+            <select id="p4Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
+            <input type="file" id="p4MusicFile" accept="audio/*" style="display:none;">
+            <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p4MusicFile').click()">📁 Upload</button>
+          </div>
+        </div>
+        <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p4Subs"><span class="toggle-slider"></span></label><span>Sous-titres Voxtral (optionnel)</span></div>
+        <div class="actions"><button class="wan-btn" id="p4Btn">🎬 Générer Pipeline 4</button></div>
+        <div class="status" id="p4Status"></div>
+        <div class="wan-video-block" id="p4VideoBlock">
+          <strong style="color:var(--gold);">✅ Animation Pipeline 4 prête</strong>
+          <video id="p4VideoPlayer" controls playsinline autoplay loop></video>
+          <a id="p4DownloadLink" href="#" download="pipeline4.mp4">⬇ Télécharger</a>
+        </div>
+      </div>
+
     </section>
 
     <!-- OVERVIEW -->
@@ -869,97 +1032,538 @@ document.getElementById('plan2Btn').addEventListener('click',()=>addActivity('Pl
 document.getElementById('plan3Btn').addEventListener('click',()=>addActivity('Plan selected','Business plan clicked.'));
 updateModeText();updateFluxPromptFromType(false);updateDashboard();updateAuthUI();renderDetector([]);
 
-// WAN 2.2 DIRECT
-const WAN_API = 'https://viral-saas.onrender.com';
-let wanDirectBlobUrl = null;
+// ══════════════════════════════════════════════════════════════════════
+// PIPELINES DE PRODUCTION
+// ══════════════════════════════════════════════════════════════════════
 
-document.getElementById('wanDirectToggleBtn').addEventListener('click', () => {
-  const form = document.getElementById('wanDirectForm');
-  const open = form.style.display === 'grid';
-  form.style.display = open ? 'none' : 'grid';
-  document.getElementById('wanDirectToggleBtn').textContent = open ? '+ Nouvelle vidéo' : '✕ Fermer';
-});
+function getPipelineApiUrl() { return normalizeApiUrl(apiUrlInput.value); }
 
-document.getElementById('wanDirectCancelBtn').addEventListener('click', () => {
-  document.getElementById('wanDirectForm').style.display = 'none';
-  document.getElementById('wanDirectToggleBtn').textContent = '+ Nouvelle vidéo';
-  setStatus('wanDirectStatus', '', '');
-});
+// ── Shared helpers ────────────────────────────────────────────────────
+function populateSelect(sel, items, valFn, labelFn, emptyLabel) {
+  sel.innerHTML = `<option value="">${emptyLabel || '— Choisir —'}</option>`;
+  (items || []).forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = valFn(item); opt.textContent = labelFn(item);
+    sel.appendChild(opt);
+  });
+}
 
-document.getElementById('wanDirectGenerateBtn').addEventListener('click', async () => {
-  const prompt = document.getElementById('wanDirectPrompt').value.trim();
-  if (!prompt) return setStatus('wanDirectStatus', 'Saisis un prompt avant de générer.', 'error');
+function filterVoicesByStyle(voices, styleVal, voiceSel) {
+  voiceSel.innerHTML = '<option value="">— Choisir une voix —</option>';
+  (voices || []).forEach(v => {
+    if (!styleVal || !v.style || v.style === styleVal) {
+      const opt = document.createElement('option');
+      opt.value = v.id; opt.textContent = v.name || v.id;
+      voiceSel.appendChild(opt);
+    }
+  });
+}
 
-  const resolution = document.getElementById('wanDirectSize').value;
-  const num_inference_steps = parseInt(document.getElementById('wanDirectSteps').value);
-  const num_frames = parseInt(document.getElementById('wanDirectFrames').value);
-
-  const btn = document.getElementById('wanDirectGenerateBtn');
-  btn.disabled = true;
-  document.getElementById('wanDirectVideoBlock').classList.remove('show');
-  setStatus('wanDirectStatus', '⏳ Génération en cours… (5–7 minutes) — ne ferme pas cette page.', 'ready');
-
-  if (wanDirectBlobUrl) { URL.revokeObjectURL(wanDirectBlobUrl); wanDirectBlobUrl = null; }
-
-  try {
-    // Step 1 — submit job, get job_id instantly
-    const res = await fetch(`${WAN_API}/wan/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, resolution, num_frames, num_inference_steps })
-    });
-    const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || `Erreur ${res.status}`);
-
-    const jobId = data.job_id;
-    if (!jobId) throw new Error('Pas de job_id retourné par le serveur');
-
-    // Step 2 — poll /wan/status/{job_id} every 10 seconds
-    let tries = 0, consErrors = 0;
-    const poll = setInterval(async () => {
+async function pollWithStatus(apiUrl, path, statusId, label, interval, maxTries) {
+  interval = interval || 10000; maxTries = maxTries || 180;
+  let tries = 0;
+  return new Promise((resolve, reject) => {
+    const iv = setInterval(async () => {
       tries++;
       try {
-        const sr = await fetch(`${WAN_API}/wan/status/${jobId}`);
-        const sd = await sr.json();
-        consErrors = 0;
+        const r = await fetch(`${apiUrl}${path}`);
+        const d = await r.json();
+        if (d.status === 'done') { clearInterval(iv); resolve(d); }
+        else if (d.status === 'error') { clearInterval(iv); reject(new Error(d.detail || 'Erreur')); }
+        else if (tries >= maxTries) { clearInterval(iv); reject(new Error('Timeout (30 min)')); }
+        else setStatus(statusId, `⏳ ${label}… (${tries * Math.round(interval / 1000)}s)`, 'ready');
+      } catch(e) { if (tries >= maxTries) { clearInterval(iv); reject(e); } }
+    }, interval);
+  });
+}
 
-        if (sd.status === 'done' && sd.video_url) {
-          clearInterval(poll);
-          // Step 3 — load video from /wan/video/{job_id}
-          const videoUrl = `${WAN_API}${sd.video_url}`;
-          const player = document.getElementById('wanDirectVideoPlayer');
-          const link   = document.getElementById('wanDirectDownloadLink');
-          player.src = videoUrl;
-          link.href  = videoUrl;
-          player.load();
-          document.getElementById('wanDirectVideoBlock').classList.add('show');
-          setStatus('wanDirectStatus', '✅ Vidéo générée !', 'success');
-          addActivity('Wan 2.2 vidéo prête', `Prompt : "${prompt.slice(0, 60)}…"`);
-          btn.disabled = false;
-        } else if (sd.status === 'error') {
-          clearInterval(poll);
-          setStatus('wanDirectStatus', `❌ Erreur RunPod : ${sd.detail || 'inconnue'}`, 'error');
-          btn.disabled = false;
-        } else if (tries >= 180) { // 180 × 10s = 30 min max
-          clearInterval(poll);
-          setStatus('wanDirectStatus', '❌ Timeout — la génération dépasse 30 minutes.', 'error');
-          btn.disabled = false;
+async function generateScript(apiUrl, niche, narStyle, lang, scriptEl, statusId) {
+  setStatus(statusId, '⏳ Claude génère le script…', 'ready');
+  const res = await fetch(`${apiUrl}/generate-script`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ niche, narrative_style: narStyle, language: lang })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Erreur script ${res.status}`); }
+  const data = await res.json();
+  const script = data.script || data.text || '';
+  scriptEl.value = script;
+  return script;
+}
+
+async function generateFishVoice(apiUrl, text, voiceId, statusId) {
+  setStatus(statusId, '⏳ Fish Audio génère la voix…', 'ready');
+  const res = await fetch(`${apiUrl}/generate-audio-fish`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice_id: voiceId, format: 'mp3', latency: 'balanced' })
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Erreur voice ${res.status}`); }
+  const data = await res.json();
+  return data.audio_url || '';
+}
+
+async function generateSubtitles(apiUrl, audioUrl, lang, statusId) {
+  setStatus(statusId, '⏳ Voxtral génère les sous-titres…', 'ready');
+  const fd = new FormData();
+  fd.append('language', lang); fd.append('output_format', 'srt'); fd.append('video_path', audioUrl);
+  const res = await fetch(`${apiUrl}/voxtral/transcribe`, { method: 'POST', body: fd });
+  if (!res.ok) return '';
+  const data = await res.json();
+  return data.transcription || data.subtitles || '';
+}
+
+async function assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, statusId) {
+  setStatus(statusId, '⏳ FFmpeg assemble la vidéo finale…', 'ready');
+  const ffRes = await fetch(`${apiUrl}/create-video`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wan_video: videoUrl, audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, pipeline_mode: 'ai_wan' })
+  });
+  if (!ffRes.ok) return videoUrl;
+  const ffData = await ffRes.json();
+  if (!ffData.job_id) return ffData.video_url || videoUrl;
+  let finalUrl = videoUrl, ffTries = 0;
+  await new Promise(resolve => {
+    const iv = setInterval(async () => {
+      ffTries++;
+      try {
+        const sr = await fetch(`${apiUrl}/video-status/${ffData.job_id}`);
+        const sd = await sr.json();
+        if (sd.status === 'done' && sd.video_url) { clearInterval(iv); finalUrl = sd.video_url; resolve(); }
+        else if (sd.status === 'failed' || ffTries >= 120) { clearInterval(iv); resolve(); }
+        else setStatus(statusId, `⏳ FFmpeg… (${ffTries * 5}s)`, 'ready');
+      } catch { if (ffTries >= 5) { clearInterval(iv); resolve(); } }
+    }, 5000);
+  });
+  return finalUrl;
+}
+
+function showPipelineVideo(playerId, linkId, blockId, url) {
+  const player = document.getElementById(playerId);
+  const link   = document.getElementById(linkId);
+  player.src = url; link.href = url; player.load();
+  document.getElementById(blockId).classList.add('show');
+}
+
+// ── Pipeline data: voices, niches, styles ────────────────────────────
+let _pipelineVoices = [], _pipelineVoiceStyles = [];
+
+async function loadPipelineData() {
+  const apiUrl = getPipelineApiUrl();
+  if (!apiUrl) return;
+
+  // Niches
+  try {
+    const r = await fetch(`${apiUrl}/niches?plan=free`);
+    if (r.ok) {
+      const d = await r.json();
+      const niches = d.all_niches || d.niches || [];
+      const toVal   = n => typeof n === 'string' ? n : (n.niche || '');
+      const toLabel = n => typeof n === 'string' ? n : (n.niche || '');
+      ['p1Niche','p2Niche','p3Niche'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) populateSelect(sel, niches, toVal, toLabel, '— Choisir une niche —');
+      });
+    }
+  } catch(e) {}
+
+  // Narrative styles
+  try {
+    const r = await fetch(`${apiUrl}/narrative-styles`);
+    if (r.ok) {
+      const d = await r.json();
+      const styles = d.styles || (Array.isArray(d) ? d : []);
+      const toVal   = s => typeof s === 'string' ? s : (s.id || s.value || '');
+      const toLabel = s => typeof s === 'string' ? s : (s.label || s.name || s.id || '');
+      ['p1NarStyle','p2NarStyle','p3NarStyle'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) populateSelect(sel, styles, toVal, toLabel, '— Style narratif —');
+      });
+    }
+  } catch(e) {}
+
+  // Fish voices
+  try {
+    const r = await fetch(`${apiUrl}/fish-voices`);
+    if (r.ok) {
+      const d = await r.json();
+      _pipelineVoices = d.voices || [];
+      ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
+      });
+    }
+  } catch(e) {}
+
+  // Voice styles
+  try {
+    const r = await fetch(`${apiUrl}/voice-styles`);
+    if (r.ok) {
+      const d = await r.json();
+      _pipelineVoiceStyles = d.styles || (Array.isArray(d) ? d : []);
+      const toVal   = s => typeof s === 'string' ? s : (s.id || '');
+      const toLabel = s => typeof s === 'string' ? s : (s.label || s.name || s.id || '');
+      ['p1VoiceStyle','p2VoiceStyle','p3VoiceStyle','p4VoiceStyle'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) populateSelect(sel, _pipelineVoiceStyles, toVal, toLabel, 'Tous les styles');
+      });
+    }
+  } catch(e) {}
+
+  // Reference videos (Pipeline 4)
+  try {
+    const r = await fetch(`${apiUrl}/reference-videos`);
+    if (r.ok) {
+      const d = await r.json();
+      const sel = document.getElementById('p4RefVideo');
+      if (sel) {
+        sel.innerHTML = '<option value="">— Choisir une vidéo —</option>';
+        const groups = d.groups || d.categories || {};
+        const flat   = d.videos || d.all_videos || [];
+        if (Object.keys(groups).length > 0) {
+          Object.entries(groups).forEach(([cat, items]) => {
+            const og = document.createElement('optgroup');
+            og.label = cat.charAt(0).toUpperCase() + cat.slice(1);
+            (items || []).forEach(v => {
+              const opt = document.createElement('option');
+              opt.value = v.id || v; opt.textContent = v.name || v.label || v.id || v;
+              og.appendChild(opt);
+            });
+            sel.appendChild(og);
+          });
         } else {
-          setStatus('wanDirectStatus', `⏳ Génération en cours… (${tries * 10}s) — ne ferme pas cette page.`, 'ready');
-        }
-      } catch (pe) {
-        consErrors++;
-        if (consErrors >= 3) {
-          setStatus('wanDirectStatus', `⏳ Génération en cours… (${tries * 10}s) — reconnexion...`, 'ready');
+          flat.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.id || v; opt.textContent = v.name || v.label || v.id || v;
+            sel.appendChild(opt);
+          });
         }
       }
-    }, 10000);
+    }
+  } catch(e) {}
+}
 
-  } catch (e) {
-    setStatus('wanDirectStatus', `❌ ${e.message}`, 'error');
-    btn.disabled = false;
-  }
+// Filter voices when style changes
+['p1','p2','p3','p4'].forEach(p => {
+  const styleEl = document.getElementById(`${p}VoiceStyle`);
+  const voiceEl = document.getElementById(`${p}Voice`);
+  if (styleEl && voiceEl) styleEl.addEventListener('change', () => filterVoicesByStyle(_pipelineVoices, styleEl.value, voiceEl));
 });
+
+// Reload data when API URL changes
+let _pipelineLoadTimer = null;
+apiUrlInput.addEventListener('input', () => {
+  clearTimeout(_pipelineLoadTimer);
+  _pipelineLoadTimer = setTimeout(loadPipelineData, 800);
+});
+
+// ── Tab switching ─────────────────────────────────────────────────────
+document.querySelectorAll('.pipeline-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.pipeline-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.pipeline-panel').forEach(p => p.style.display = 'none');
+    tab.classList.add('active');
+    const panel = document.getElementById(tab.dataset.tab);
+    if (panel) panel.style.display = 'grid';
+  });
+});
+
+// ── Pipeline 4 — toggle image / video source ──────────────────────────
+document.querySelectorAll('input[name="p4ImgSrc"]').forEach(r => {
+  r.addEventListener('change', () => {
+    const isDesc = document.querySelector('input[name="p4ImgSrc"]:checked').value === 'describe';
+    document.getElementById('p4ImgDescArea').style.display  = isDesc ? '' : 'none';
+    document.getElementById('p4ImgUploadArea').style.display = isDesc ? 'none' : '';
+  });
+});
+document.querySelectorAll('input[name="p4VidSrc"]').forEach(r => {
+  r.addEventListener('change', () => {
+    const isLib = document.querySelector('input[name="p4VidSrc"]:checked').value === 'library';
+    document.getElementById('p4VidLibArea').style.display    = isLib ? '' : 'none';
+    document.getElementById('p4VidUploadArea').style.display = isLib ? 'none' : '';
+  });
+});
+document.getElementById('p4UseVoice').addEventListener('change', e => {
+  document.getElementById('p4VoiceArea').style.display    = e.target.checked ? 'grid' : 'none';
+  document.getElementById('p4VoiceTextArea').style.display = e.target.checked ? '' : 'none';
+});
+document.getElementById('p4UseMusic').addEventListener('change', e => {
+  document.getElementById('p4MusicArea').style.display = e.target.checked ? '' : 'none';
+});
+
+// ── PIPELINE 1: Script → Flux → Wan T2V → Fish Audio → Voxtral → FFmpeg
+document.getElementById('p1Btn').addEventListener('click', async () => {
+  const apiUrl = getPipelineApiUrl();
+  if (!apiUrl) return setStatus('p1Status', "Entrez d'abord l'URL de l'API.", 'error');
+  const btn = document.getElementById('p1Btn');
+  btn.disabled = true;
+  document.getElementById('p1VideoBlock').classList.remove('show');
+  try {
+    const niche    = document.getElementById('p1Niche').value;
+    const narStyle = document.getElementById('p1NarStyle').value;
+    const lang     = document.getElementById('p1Lang').value;
+    const res      = document.getElementById('p1Res').value;
+    const steps    = parseInt(document.getElementById('p1Steps').value);
+    const voiceId  = document.getElementById('p1Voice').value;
+    const musicUrl = document.getElementById('p1Music').value;
+    const wantSubs = document.getElementById('p1Subs').checked;
+
+    // 1 — Script
+    let script = document.getElementById('p1Script').value.trim();
+    if (document.getElementById('p1AutoScript').checked || !script) {
+      if (!niche) { btn.disabled = false; return setStatus('p1Status', 'Choisissez une niche.', 'error'); }
+      script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p1Script'), 'p1Status');
+    }
+
+    // 2 — Flux 2 Pro
+    setStatus('p1Status', '⏳ Flux 2 Pro génère l\'image…', 'ready');
+    const fluxR = await fetch(`${apiUrl}/generate-image`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: `${script.slice(0,120)}, viral short video character, colorful, cartoon style`, image_size: 'portrait_4_3', num_inference_steps: 28, guidance_scale: 3.5, num_images: 1 })
+    });
+    if (!fluxR.ok) throw new Error(`Flux erreur ${fluxR.status}`);
+    const fluxD = await fluxR.json();
+    if (!fluxD.image_url) throw new Error("Flux n'a pas retourné d'image");
+
+    // 3 — Wan T2V
+    setStatus('p1Status', '⏳ Wan 2.2 génère la vidéo…', 'ready');
+    const wanR = await fetch(`${apiUrl}/wan/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: script.slice(0,200), resolution: res, num_frames: 81, num_inference_steps: steps })
+    });
+    if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
+    const wanD = await wanR.json();
+    if (!wanD.job_id) throw new Error("Wan n'a pas retourné de job_id");
+    const wanDone = await pollWithStatus(apiUrl, `/wan/status/${wanD.job_id}`, 'p1Status', 'Wan génère la vidéo');
+    let videoUrl = `${apiUrl}${wanDone.video_url}`;
+
+    // 4 — Fish Audio
+    let audioUrl = '';
+    if (voiceId) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p1Status');
+
+    // 5 — Voxtral
+    let subtitles = '';
+    if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p1Status');
+
+    // 6 — FFmpeg
+    if (audioUrl || musicUrl || subtitles) videoUrl = await assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, 'p1Status');
+
+    showPipelineVideo('p1VideoPlayer', 'p1DownloadLink', 'p1VideoBlock', videoUrl);
+    setStatus('p1Status', '✅ Pipeline 1 terminé !', 'success');
+    addActivity('Pipeline 1 terminé', `Niche : ${niche}`);
+  } catch(e) { setStatus('p1Status', `❌ ${e.message}`, 'error'); }
+  finally { btn.disabled = false; }
+});
+
+// ── PIPELINE 2: Script → Wan T2V (sans image) → Fish Audio → Voxtral → FFmpeg
+document.getElementById('p2Btn').addEventListener('click', async () => {
+  const apiUrl = getPipelineApiUrl();
+  if (!apiUrl) return setStatus('p2Status', "Entrez d'abord l'URL de l'API.", 'error');
+  const btn = document.getElementById('p2Btn');
+  btn.disabled = true;
+  document.getElementById('p2VideoBlock').classList.remove('show');
+  try {
+    const niche    = document.getElementById('p2Niche').value;
+    const narStyle = document.getElementById('p2NarStyle').value;
+    const lang     = document.getElementById('p2Lang').value;
+    const res      = document.getElementById('p2Res').value;
+    const steps    = parseInt(document.getElementById('p2Steps').value);
+    const voiceId  = document.getElementById('p2Voice').value;
+    const musicUrl = document.getElementById('p2Music').value;
+    const wantSubs = document.getElementById('p2Subs').checked;
+
+    // 1 — Script
+    let script = document.getElementById('p2Script').value.trim();
+    if (document.getElementById('p2AutoScript').checked || !script) {
+      if (!niche) { btn.disabled = false; return setStatus('p2Status', 'Choisissez une niche.', 'error'); }
+      script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p2Script'), 'p2Status');
+    }
+
+    // 2 — Wan T2V
+    setStatus('p2Status', '⏳ Wan 2.2 génère la vidéo…', 'ready');
+    const wanR = await fetch(`${apiUrl}/wan/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: script.slice(0,200), resolution: res, num_frames: 81, num_inference_steps: steps })
+    });
+    if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
+    const wanD = await wanR.json();
+    if (!wanD.job_id) throw new Error("Wan n'a pas retourné de job_id");
+    const wanDone = await pollWithStatus(apiUrl, `/wan/status/${wanD.job_id}`, 'p2Status', 'Wan génère la vidéo');
+    let videoUrl = `${apiUrl}${wanDone.video_url}`;
+
+    // 3 — Fish Audio
+    let audioUrl = '';
+    if (voiceId) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p2Status');
+
+    // 4 — Voxtral
+    let subtitles = '';
+    if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p2Status');
+
+    // 5 — FFmpeg
+    if (audioUrl || musicUrl || subtitles) videoUrl = await assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, 'p2Status');
+
+    showPipelineVideo('p2VideoPlayer', 'p2DownloadLink', 'p2VideoBlock', videoUrl);
+    setStatus('p2Status', '✅ Pipeline 2 terminé !', 'success');
+    addActivity('Pipeline 2 terminé', `Niche : ${niche}`);
+  } catch(e) { setStatus('p2Status', `❌ ${e.message}`, 'error'); }
+  finally { btn.disabled = false; }
+});
+
+// ── PIPELINE 3: Claude → Stock → Fish Audio → Voxtral → FFmpeg ───────
+document.getElementById('p3Btn').addEventListener('click', async () => {
+  const apiUrl = getPipelineApiUrl();
+  if (!apiUrl) return setStatus('p3Status', "Entrez d'abord l'URL de l'API.", 'error');
+  const btn = document.getElementById('p3Btn');
+  btn.disabled = true;
+  document.getElementById('p3VideoBlock').classList.remove('show');
+  try {
+    const niche    = document.getElementById('p3Niche').value;
+    const narStyle = document.getElementById('p3NarStyle').value;
+    const lang     = document.getElementById('p3Lang').value;
+    const voiceId  = document.getElementById('p3Voice').value;
+    const musicUrl = document.getElementById('p3Music').value;
+    const wantSubs = document.getElementById('p3Subs').checked;
+
+    // 1 — Script + stock video via /generate
+    let script = document.getElementById('p3Script').value.trim();
+    if (document.getElementById('p3AutoScript').checked || !script) {
+      if (!niche) { btn.disabled = false; return setStatus('p3Status', 'Choisissez une niche.', 'error'); }
+      setStatus('p3Status', '⏳ Claude génère le script + vidéos stock…', 'ready');
+      const genR = await fetch(`${apiUrl}/generate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ niche, langue: lang, duration: 30 })
+      });
+      if (!genR.ok) throw new Error(`Erreur génération ${genR.status}`);
+      const genD = await genR.json();
+      script = genD.script || ''; document.getElementById('p3Script').value = script;
+      for (let i = 1; i <= 32; i++) window[`_p3sv${i}`] = genD[`video_url${i === 1 ? '' : i}`] || '';
+      for (let i = 1; i <= 8; i++)  window[`_p3sc${i}`] = genD[`scene${i}`] || '';
+    }
+
+    // 2 — Fish Audio
+    let audioUrl = '';
+    if (voiceId && script) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p3Status');
+
+    // 3 — Voxtral
+    let subtitles = '';
+    if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p3Status');
+
+    // 4 — FFmpeg (stock mode)
+    setStatus('p3Status', '⏳ FFmpeg assemble la vidéo stock…', 'ready');
+    const body = { audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, pipeline_mode: 'stock', wan_video: '',
+      text1: window._p3sc1||'', text2: window._p3sc2||'', text3: window._p3sc3||'', text4: window._p3sc4||'' };
+    for (let i = 1; i <= 32; i++) body[`video_url${i === 1 ? '' : i}`] = window[`_p3sv${i}`] || '';
+    const ffR = await fetch(`${apiUrl}/create-video`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!ffR.ok) throw new Error(`FFmpeg erreur ${ffR.status}`);
+    const ffD = await ffR.json();
+    if (!ffD.job_id) throw new Error('Pas de job_id FFmpeg');
+    let finalUrl = '', ffTries = 0;
+    await new Promise((resolve, reject) => {
+      const iv = setInterval(async () => {
+        ffTries++;
+        try {
+          const sr = await fetch(`${apiUrl}/video-status/${ffD.job_id}`);
+          const sd = await sr.json();
+          if (sd.status === 'done' && sd.video_url) { clearInterval(iv); finalUrl = sd.video_url; resolve(); }
+          else if (sd.status === 'failed') { clearInterval(iv); reject(new Error(sd.error || 'FFmpeg failed')); }
+          else if (ffTries >= 120) { clearInterval(iv); reject(new Error('FFmpeg timeout')); }
+          else setStatus('p3Status', `⏳ FFmpeg… (${ffTries * 5}s)`, 'ready');
+        } catch(e) { if (ffTries >= 5) { clearInterval(iv); reject(e); } }
+      }, 5000);
+    });
+
+    showPipelineVideo('p3VideoPlayer', 'p3DownloadLink', 'p3VideoBlock', finalUrl);
+    setStatus('p3Status', '✅ Pipeline 3 terminé !', 'success');
+    addActivity('Pipeline 3 terminé', `Niche : ${niche}`);
+  } catch(e) { setStatus('p3Status', `❌ ${e.message}`, 'error'); }
+  finally { btn.disabled = false; }
+});
+
+// ── PIPELINE 4: Flux/Upload → Wan Animate → Fish Audio → Voxtral ─────
+document.getElementById('p4Btn').addEventListener('click', async () => {
+  const apiUrl = getPipelineApiUrl();
+  if (!apiUrl) return setStatus('p4Status', "Entrez d'abord l'URL de l'API.", 'error');
+  const btn = document.getElementById('p4Btn');
+  btn.disabled = true;
+  document.getElementById('p4VideoBlock').classList.remove('show');
+  try {
+    const imgSrc   = document.querySelector('input[name="p4ImgSrc"]:checked').value;
+    const vidSrc   = document.querySelector('input[name="p4VidSrc"]:checked').value;
+    const useVoice = document.getElementById('p4UseVoice').checked;
+    const useMusic = document.getElementById('p4UseMusic').checked;
+    const wantSubs = document.getElementById('p4Subs').checked;
+
+    // 1a — Character image
+    let charImageUrl = '', charImageFile = null;
+    if (imgSrc === 'describe') {
+      const desc = document.getElementById('p4ImgDesc').value.trim();
+      if (!desc) { btn.disabled = false; return setStatus('p4Status', 'Décrivez le personnage.', 'error'); }
+      setStatus('p4Status', '⏳ Flux 2 Pro génère l\'image…', 'ready');
+      const fluxR = await fetch(`${apiUrl}/generate-image`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: desc, image_size: 'portrait_4_3', num_inference_steps: 28, guidance_scale: 3.5, num_images: 1 })
+      });
+      if (!fluxR.ok) throw new Error(`Flux erreur ${fluxR.status}`);
+      const fluxD = await fluxR.json();
+      charImageUrl = fluxD.image_url || '';
+      if (!charImageUrl) throw new Error("Flux n'a pas retourné d'image");
+    } else {
+      const fi = document.getElementById('p4ImgFile');
+      if (!fi.files || !fi.files[0]) { btn.disabled = false; return setStatus('p4Status', 'Uploadez une image.', 'error'); }
+      charImageFile = fi.files[0];
+    }
+
+    // 1b — Reference video
+    let refVideoId = '', refVideoFile = null;
+    if (vidSrc === 'library') {
+      refVideoId = document.getElementById('p4RefVideo').value;
+      if (!refVideoId) { btn.disabled = false; return setStatus('p4Status', 'Choisissez une vidéo de référence.', 'error'); }
+    } else {
+      const vi = document.getElementById('p4VidFile');
+      if (!vi.files || !vi.files[0]) { btn.disabled = false; return setStatus('p4Status', 'Uploadez une vidéo de référence.', 'error'); }
+      refVideoFile = vi.files[0];
+    }
+
+    // 2 — Wan Animate
+    setStatus('p4Status', '⏳ Wan Animate génère l\'animation…', 'ready');
+    const fd = new FormData();
+    fd.append('mode', 'animation'); fd.append('resolution', '1280x720'); fd.append('num_frames', '81');
+    if (charImageUrl) fd.append('character_image_url', charImageUrl);
+    else fd.append('character_image', charImageFile);
+    if (refVideoId) fd.append('reference_video_id', refVideoId);
+    else fd.append('reference_video', refVideoFile);
+
+    const animR = await fetch(`${apiUrl}/wan/animate`, { method: 'POST', body: fd });
+    if (!animR.ok) { const e = await animR.json().catch(() => ({})); throw new Error(e.error || `Wan Animate erreur ${animR.status}`); }
+    const animD = await animR.json();
+    if (!animD.job_id) throw new Error("Wan Animate n'a pas retourné de job_id");
+    const animDone = await pollWithStatus(apiUrl, `/wan/animate/status/${animD.job_id}`, 'p4Status', 'Wan Animate génère');
+    let videoUrl = animDone.video_url ? `${apiUrl}${animDone.video_url}` : '';
+    if (!videoUrl) throw new Error('Pas de video_url dans la réponse');
+
+    // 3 — Optional Fish Audio
+    let audioUrl = '';
+    if (useVoice) {
+      const voiceId   = document.getElementById('p4Voice').value;
+      const voiceText = document.getElementById('p4VoiceText').value.trim() || document.getElementById('p4ImgDesc').value.trim() || 'Vidéo générée par IA';
+      if (voiceId) audioUrl = await generateFishVoice(apiUrl, voiceText, voiceId, 'p4Status');
+    }
+
+    // 4 — Optional Voxtral
+    let subtitles = '';
+    if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, 'fr', 'p4Status');
+
+    // 5 — Optional FFmpeg
+    const musicUrl = useMusic ? document.getElementById('p4Music').value : '';
+    if (audioUrl || musicUrl || subtitles) videoUrl = await assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, 'p4Status');
+
+    showPipelineVideo('p4VideoPlayer', 'p4DownloadLink', 'p4VideoBlock', videoUrl);
+    setStatus('p4Status', '✅ Pipeline 4 terminé !', 'success');
+    addActivity('Pipeline 4 terminé', 'Animation Wan générée');
+  } catch(e) { setStatus('p4Status', `❌ ${e.message}`, 'error'); }
+  finally { btn.disabled = false; }
+});
+
+// ── Auto-load when API URL is already set ─────────────────────────────
+if (apiUrlInput.value.trim()) loadPipelineData();
 </script>
 </body>
 </html>
