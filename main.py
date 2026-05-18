@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse, Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
@@ -1629,17 +1629,8 @@ async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps
             WAN_JOBS[job_id] = {"status": "error", "detail": "Timeout: RunPod n'a pas terminé en 30 minutes"}
             return
 
-        # Step 3 — download finished video from RunPod
-        async with httpx.AsyncClient(timeout=300) as client:
-            video_resp = await client.get(f"{base}/wan/video/{runpod_job_id}")
-        if video_resp.status_code != 200:
-            WAN_JOBS[job_id] = {"status": "error", "detail": f"Impossible de télécharger la vidéo ({video_resp.status_code})"}
-            return
-
-        video_path = f"/tmp/{job_id}.mp4"
-        with open(video_path, "wb") as f:
-            f.write(video_resp.content)
-        WAN_JOBS[job_id] = {"status": "done", "video_path": video_path}
+        # Step 3 — store Vast.ai video URL for redirect
+        WAN_JOBS[job_id] = {"status": "done", "video_url": f"{base}/wan/video/{runpod_job_id}"}
 
     except Exception as e:
         WAN_JOBS[job_id] = {"status": "error", "detail": str(e)}
@@ -1687,32 +1678,13 @@ async def wan_status(job_id: str):
 async def wan_video(job_id: str):
     job = WAN_JOBS.get(job_id)
     if not job:
-        fallback = f"/tmp/{job_id}.mp4"
-        if os.path.exists(fallback):
-            def iter_fallback():
-                with open(fallback, "rb") as f:
-                    yield from iter(lambda: f.read(65536), b"")
-            return StreamingResponse(
-                iter_fallback(),
-                media_type="video/mp4",
-                headers={"Content-Disposition": f"inline; filename=wan_{job_id}.mp4"},
-            )
         return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     if job["status"] != "done":
         return JSONResponse(status_code=425, content={"error": "Vidéo pas encore prête", "status": job["status"]})
-    video_path = job.get("video_path", "")
-    if not video_path or not os.path.exists(video_path):
-        return JSONResponse(status_code=404, content={"error": "Fichier vidéo introuvable sur le serveur"})
-
-    def iter_file():
-        with open(video_path, "rb") as f:
-            yield from iter(lambda: f.read(65536), b"")
-
-    return StreamingResponse(
-        iter_file(),
-        media_type="video/mp4",
-        headers={"Content-Disposition": f"inline; filename=wan_{job_id}.mp4"},
-    )
+    video_url = job.get("video_url", "")
+    if not video_url:
+        return JSONResponse(status_code=404, content={"error": "URL vidéo introuvable"})
+    return RedirectResponse(url=video_url, status_code=302)
 
 
 class GenerateScriptRequest(BaseModel):
@@ -2513,17 +2485,8 @@ async def _process_wan_animate_job(
             WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": "Timeout: Vast.ai n'a pas terminé en 30 minutes"}
             return
 
-        # Step 3 — download finished video
-        async with httpx.AsyncClient(timeout=300) as client:
-            video_resp = await client.get(f"{base}/wan/video/{runpod_job_id}")
-        if video_resp.status_code != 200:
-            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"Impossible de télécharger la vidéo ({video_resp.status_code})"}
-            return
-
-        video_path = f"/tmp/{job_id}.mp4"
-        with open(video_path, "wb") as f:
-            f.write(video_resp.content)
-        WAN_ANIMATE_JOBS[job_id] = {"status": "done", "video_path": video_path}
+        # Step 3 — store Vast.ai video URL for redirect
+        WAN_ANIMATE_JOBS[job_id] = {"status": "done", "video_url": f"{base}/wan/video/{runpod_job_id}"}
 
     except Exception as e:
         WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": str(e)}
@@ -2631,32 +2594,13 @@ async def wan_animate_status(job_id: str):
 async def wan_animate_video(job_id: str):
     job = WAN_ANIMATE_JOBS.get(job_id)
     if not job:
-        fallback = f"/tmp/{job_id}.mp4"
-        if os.path.exists(fallback):
-            def iter_fallback():
-                with open(fallback, "rb") as f:
-                    yield from iter(lambda: f.read(65536), b"")
-            return StreamingResponse(
-                iter_fallback(),
-                media_type="video/mp4",
-                headers={"Content-Disposition": "inline; filename=animated.mp4"},
-            )
         return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     if job["status"] != "done":
         return JSONResponse(status_code=202, content={"status": job["status"]})
-    video_path = job.get("video_path")
-    if not video_path or not os.path.exists(video_path):
-        return JSONResponse(status_code=404, content={"error": "Fichier vidéo introuvable"})
-    def iter_file():
-        with open(video_path, "rb") as f:
-            yield from iter(lambda: f.read(65536), b"")
-        os.remove(video_path)
-        del WAN_ANIMATE_JOBS[job_id]
-    return StreamingResponse(
-        iter_file(),
-        media_type="video/mp4",
-        headers={"Content-Disposition": "inline; filename=animated.mp4"},
-    )
+    video_url = job.get("video_url", "")
+    if not video_url:
+        return JSONResponse(status_code=404, content={"error": "URL vidéo introuvable"})
+    return RedirectResponse(url=video_url, status_code=302)
 
 
 @app.post("/voxtral/transcribe")

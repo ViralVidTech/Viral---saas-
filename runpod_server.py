@@ -77,8 +77,6 @@ async def wan_video(job_id: str):
     def iter_file():
         with open(video_path, "rb") as f:
             yield from iter(lambda: f.read(65536), b"")
-        os.remove(video_path)
-        del WAN_JOBS[job_id]
     return StreamingResponse(iter_file(), media_type="video/mp4")
 
 @app.post("/wan/animate")
