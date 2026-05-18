@@ -2673,7 +2673,7 @@ async def voxtral_transcribe(
 
         try:
             resp_data = response.json()
-            subtitles = resp_data.get("subtitles", resp_data.get("text", ""))
+            subtitles = resp_data.get("transcription", resp_data.get("subtitles", resp_data.get("text", "")))
         except Exception:
             subtitles = response.text
 
