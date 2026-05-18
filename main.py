@@ -2511,16 +2511,25 @@ async def wan_animate(
 
         try:
             async with httpx.AsyncClient(timeout=900) as client:
+                if char_path.startswith("http"):
+                    dl = await client.get(char_path)
+                    char_bytes = dl.content
+                    char_filename = "character.jpg"
+                else:
+                    with open(char_path, "rb") as f:
+                        char_bytes = f.read()
+                    char_filename = os.path.basename(char_path)
+
+                with open(ref_path, "rb") as f:
+                    ref_bytes = f.read()
+
                 response = await client.post(
                     WAN_ANIMATE_API_URL.rstrip("/") + "/wan/animate",
-                    json={
-                        "character_image": char_path,
-                        "reference_video": ref_path,
-                        "mode": mode,
-                        "resolution": resolution,
-                        "num_frames": num_frames,
+                    files={
+                        "character_image": (char_filename, char_bytes, "image/jpeg"),
+                        "reference_video": ("reference.mp4", ref_bytes, "video/mp4"),
                     },
-                    headers={"Content-Type": "application/json"},
+                    data={"mode": mode},
                 )
         except httpx.TimeoutException:
             return JSONResponse(status_code=504, content={"error": "Wan Animate timed out"})
