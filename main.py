@@ -1687,6 +1687,16 @@ async def wan_status(job_id: str):
 async def wan_video(job_id: str):
     job = WAN_JOBS.get(job_id)
     if not job:
+        fallback = f"/tmp/{job_id}.mp4"
+        if os.path.exists(fallback):
+            def iter_fallback():
+                with open(fallback, "rb") as f:
+                    yield from iter(lambda: f.read(65536), b"")
+            return StreamingResponse(
+                iter_fallback(),
+                media_type="video/mp4",
+                headers={"Content-Disposition": f"inline; filename=wan_{job_id}.mp4"},
+            )
         return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     if job["status"] != "done":
         return JSONResponse(status_code=425, content={"error": "Vidéo pas encore prête", "status": job["status"]})
@@ -2621,6 +2631,16 @@ async def wan_animate_status(job_id: str):
 async def wan_animate_video(job_id: str):
     job = WAN_ANIMATE_JOBS.get(job_id)
     if not job:
+        fallback = f"/tmp/{job_id}.mp4"
+        if os.path.exists(fallback):
+            def iter_fallback():
+                with open(fallback, "rb") as f:
+                    yield from iter(lambda: f.read(65536), b"")
+            return StreamingResponse(
+                iter_fallback(),
+                media_type="video/mp4",
+                headers={"Content-Disposition": "inline; filename=animated.mp4"},
+            )
         return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     if job["status"] != "done":
         return JSONResponse(status_code=202, content={"status": job["status"]})
