@@ -1147,40 +1147,35 @@ function showPipelineVideo(playerId, linkId, blockId, url) {
 let _pipelineVoices = [], _pipelineVoiceStyles = [];
 
 async function loadPipelineData() {
-  const apiUrl = getPipelineApiUrl();
-  if (!apiUrl) return;
+  const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
 
-  // Niches
+  // Niches — {"plan":"free","niches":[...],"count":20}
   try {
     const r = await fetch(`${apiUrl}/niches?plan=free`);
     if (r.ok) {
       const d = await r.json();
-      const niches = d.all_niches || d.niches || [];
-      const toVal   = n => typeof n === 'string' ? n : (n.niche || '');
-      const toLabel = n => typeof n === 'string' ? n : (n.niche || '');
+      const niches = d.niches || d.all_niches || [];
       ['p1Niche','p2Niche','p3Niche'].forEach(id => {
         const sel = document.getElementById(id);
-        if (sel) populateSelect(sel, niches, toVal, toLabel, '— Choisir une niche —');
+        if (sel) populateSelect(sel, niches, n => n, n => n, '— Choisir une niche —');
       });
     }
   } catch(e) {}
 
-  // Narrative styles
+  // Narrative styles — {"narrative_styles":[...]}
   try {
     const r = await fetch(`${apiUrl}/narrative-styles`);
     if (r.ok) {
       const d = await r.json();
-      const styles = d.styles || (Array.isArray(d) ? d : []);
-      const toVal   = s => typeof s === 'string' ? s : (s.id || s.value || '');
-      const toLabel = s => typeof s === 'string' ? s : (s.label || s.name || s.id || '');
+      const styles = d.narrative_styles || d.styles || [];
       ['p1NarStyle','p2NarStyle','p3NarStyle'].forEach(id => {
         const sel = document.getElementById(id);
-        if (sel) populateSelect(sel, styles, toVal, toLabel, '— Style narratif —');
+        if (sel) populateSelect(sel, styles, s => typeof s === 'string' ? s : (s.id || s.value || ''), s => typeof s === 'string' ? s : (s.label || s.name || s.id || ''), '— Style narratif —');
       });
     }
   } catch(e) {}
 
-  // Fish voices
+  // Fish voices — {"success":true,"voices":[{"id":...,"name":...}]}
   try {
     const r = await fetch(`${apiUrl}/fish-voices`);
     if (r.ok) {
@@ -1193,22 +1188,20 @@ async function loadPipelineData() {
     }
   } catch(e) {}
 
-  // Voice styles
+  // Voice styles — {"voice_styles":{"energique":...,"doux":...}}
   try {
     const r = await fetch(`${apiUrl}/voice-styles`);
     if (r.ok) {
       const d = await r.json();
-      _pipelineVoiceStyles = d.styles || (Array.isArray(d) ? d : []);
-      const toVal   = s => typeof s === 'string' ? s : (s.id || '');
-      const toLabel = s => typeof s === 'string' ? s : (s.label || s.name || s.id || '');
+      _pipelineVoiceStyles = Object.keys(d.voice_styles || {});
       ['p1VoiceStyle','p2VoiceStyle','p3VoiceStyle','p4VoiceStyle'].forEach(id => {
         const sel = document.getElementById(id);
-        if (sel) populateSelect(sel, _pipelineVoiceStyles, toVal, toLabel, 'Tous les styles');
+        if (sel) populateSelect(sel, _pipelineVoiceStyles, s => s, s => s, 'Tous les styles');
       });
     }
   } catch(e) {}
 
-  // Reference videos (Pipeline 4)
+  // Reference videos — {"danses":[...],"chants":[...],"discours":[...],"gestes":[...]}
   try {
     const r = await fetch(`${apiUrl}/reference-videos`);
     if (r.ok) {
@@ -1216,26 +1209,20 @@ async function loadPipelineData() {
       const sel = document.getElementById('p4RefVideo');
       if (sel) {
         sel.innerHTML = '<option value="">— Choisir une vidéo —</option>';
-        const groups = d.groups || d.categories || {};
-        const flat   = d.videos || d.all_videos || [];
-        if (Object.keys(groups).length > 0) {
-          Object.entries(groups).forEach(([cat, items]) => {
-            const og = document.createElement('optgroup');
-            og.label = cat.charAt(0).toUpperCase() + cat.slice(1);
-            (items || []).forEach(v => {
-              const opt = document.createElement('option');
-              opt.value = v.id || v; opt.textContent = v.name || v.label || v.id || v;
-              og.appendChild(opt);
-            });
-            sel.appendChild(og);
-          });
-        } else {
-          flat.forEach(v => {
+        const knownCats = ['danses','chants','discours','gestes'];
+        const allCats = [...knownCats, ...Object.keys(d).filter(k => !knownCats.includes(k))];
+        allCats.forEach(cat => {
+          const items = d[cat];
+          if (!Array.isArray(items) || !items.length) return;
+          const og = document.createElement('optgroup');
+          og.label = cat.charAt(0).toUpperCase() + cat.slice(1);
+          items.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.id || v; opt.textContent = v.name || v.label || v.id || v;
-            sel.appendChild(opt);
+            og.appendChild(opt);
           });
-        }
+          sel.appendChild(og);
+        });
       }
     }
   } catch(e) {}
@@ -1562,8 +1549,8 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 
-// ── Auto-load when API URL is already set ─────────────────────────────
-if (apiUrlInput.value.trim()) loadPipelineData();
+// ── Auto-load on page ready (defaults to viral-saas.onrender.com if no URL entered) ──
+loadPipelineData();
 </script>
 </body>
 </html>
