@@ -266,6 +266,7 @@
             <span>Générer automatiquement le script</span>
           </div>
           <textarea id="p1Script" rows="4" placeholder="Votre script apparaîtra ici après génération, ou écrivez-le manuellement…"></textarea>
+          <button class="primary-btn" id="p1ScriptBtn" type="button" style="margin-top:8px;font-size:0.88rem;padding:9px 16px;" onclick="runGenerateScript('p1')">✨ Générer le script</button>
         </div>
         <hr class="section-divider">
         <div class="two-col">
@@ -318,6 +319,7 @@
             <span>Générer automatiquement le script</span>
           </div>
           <textarea id="p2Script" rows="4" placeholder="Votre script apparaîtra ici…"></textarea>
+          <button class="primary-btn" id="p2ScriptBtn" type="button" style="margin-top:8px;font-size:0.88rem;padding:9px 16px;" onclick="runGenerateScript('p2')">✨ Générer le script</button>
         </div>
         <hr class="section-divider">
         <div class="two-col">
@@ -370,6 +372,7 @@
             <span>Générer automatiquement le script</span>
           </div>
           <textarea id="p3Script" rows="4" placeholder="Votre script apparaîtra ici…"></textarea>
+          <button class="primary-btn" id="p3ScriptBtn" type="button" style="margin-top:8px;font-size:0.88rem;padding:9px 16px;" onclick="runGenerateScript('p3')">✨ Générer le script</button>
         </div>
         <hr class="section-divider">
         <div class="two-col">
@@ -985,13 +988,33 @@ async function generateScript(apiUrl, niche, narStyle, lang, scriptEl, statusId)
   setStatus(statusId, '⏳ Claude génère le script…', 'ready');
   const res = await fetch(`${apiUrl}/generate-script`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ niche, narrative_style: narStyle, language: lang })
+    body: JSON.stringify({ niche, narrative_style: narStyle, language: lang, user_plan: 'premium' })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Erreur script ${res.status}`); }
   const data = await res.json();
   const script = data.script || data.text || '';
-  scriptEl.value = script;
+  if (scriptEl) scriptEl.value = script;
   return script;
+}
+
+async function runGenerateScript(prefix) {
+  const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
+  const nicheEl    = document.getElementById(`${prefix}Niche`);
+  const narStyleEl = document.getElementById(`${prefix}NarStyle`);
+  const langEl     = document.getElementById(`${prefix}Lang`);
+  const scriptEl   = document.getElementById(`${prefix}Script`);
+  if (!nicheEl || !scriptEl) return setStatus(`${prefix}Status`, 'Éléments introuvables.', 'error');
+  if (!nicheEl.value) return setStatus(`${prefix}Status`, 'Choisissez une niche d\'abord.', 'error');
+  const btn = document.getElementById(`${prefix}ScriptBtn`);
+  if (btn) btn.disabled = true;
+  try {
+    await generateScript(apiUrl, nicheEl.value, narStyleEl?.value || '', langEl?.value || 'fr', scriptEl, `${prefix}Status`);
+    setStatus(`${prefix}Status`, '✅ Script généré !', 'success');
+  } catch(e) {
+    setStatus(`${prefix}Status`, `❌ ${e.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function generateFishVoice(apiUrl, text, voiceId, statusId) {
@@ -1282,14 +1305,14 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
   btn.disabled = true;
   document.getElementById('p1VideoBlock').classList.remove('show');
   try {
-    const niche    = document.getElementById('p1Niche').value;
-    const narStyle = document.getElementById('p1NarStyle').value;
-    const lang     = document.getElementById('p1Lang').value;
-    const res      = document.getElementById('p1Res').value;
-    const steps    = parseInt(document.getElementById('p1Steps').value);
-    const voiceId  = document.getElementById('p1Voice').value;
-    const musicUrl = document.getElementById('p1Music').value;
-    const wantSubs = document.getElementById('p1Subs').checked;
+    const niche    = document.getElementById('p1Niche')?.value || '';
+    const narStyle = document.getElementById('p1NarStyle')?.value || '';
+    const lang     = document.getElementById('p1Lang')?.value || 'fr';
+    const res      = document.getElementById('p1Res')?.value || '832*480';
+    const steps    = parseInt(document.getElementById('p1Steps')?.value || '20');
+    const voiceId  = document.getElementById('p1Voice')?.value || '';
+    const musicUrl = document.getElementById('p1Music')?.value || '';
+    const wantSubs = document.getElementById('p1Subs')?.checked || false;
 
     // 1 — Script
     let script = document.getElementById('p1Script').value.trim();
@@ -1346,14 +1369,14 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
   btn.disabled = true;
   document.getElementById('p2VideoBlock').classList.remove('show');
   try {
-    const niche    = document.getElementById('p2Niche').value;
-    const narStyle = document.getElementById('p2NarStyle').value;
-    const lang     = document.getElementById('p2Lang').value;
-    const res      = document.getElementById('p2Res').value;
-    const steps    = parseInt(document.getElementById('p2Steps').value);
-    const voiceId  = document.getElementById('p2Voice').value;
-    const musicUrl = document.getElementById('p2Music').value;
-    const wantSubs = document.getElementById('p2Subs').checked;
+    const niche    = document.getElementById('p2Niche')?.value || '';
+    const narStyle = document.getElementById('p2NarStyle')?.value || '';
+    const lang     = document.getElementById('p2Lang')?.value || 'fr';
+    const res      = document.getElementById('p2Res')?.value || '832*480';
+    const steps    = parseInt(document.getElementById('p2Steps')?.value || '20');
+    const voiceId  = document.getElementById('p2Voice')?.value || '';
+    const musicUrl = document.getElementById('p2Music')?.value || '';
+    const wantSubs = document.getElementById('p2Subs')?.checked || false;
 
     // 1 — Script
     let script = document.getElementById('p2Script').value.trim();
@@ -1400,12 +1423,12 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
   btn.disabled = true;
   document.getElementById('p3VideoBlock').classList.remove('show');
   try {
-    const niche    = document.getElementById('p3Niche').value;
-    const narStyle = document.getElementById('p3NarStyle').value;
-    const lang     = document.getElementById('p3Lang').value;
-    const voiceId  = document.getElementById('p3Voice').value;
-    const musicUrl = document.getElementById('p3Music').value;
-    const wantSubs = document.getElementById('p3Subs').checked;
+    const niche    = document.getElementById('p3Niche')?.value || '';
+    const narStyle = document.getElementById('p3NarStyle')?.value || '';
+    const lang     = document.getElementById('p3Lang')?.value || 'fr';
+    const voiceId  = document.getElementById('p3Voice')?.value || '';
+    const musicUrl = document.getElementById('p3Music')?.value || '';
+    const wantSubs = document.getElementById('p3Subs')?.checked || false;
 
     // 1 — Script + stock video via /generate
     let script = document.getElementById('p3Script').value.trim();
