@@ -235,7 +235,7 @@
             <span>Générer automatiquement le script</span>
           </div>
           <textarea id="p1Script" rows="4" placeholder="Votre script apparaîtra ici après génération, ou écrivez-le manuellement…"></textarea>
-          <button class="primary-btn" id="p1ScriptBtn" type="button" style="margin-top:8px;font-size:0.88rem;padding:9px 16px;" onclick="runGenerateScript('p1')">✨ Générer le script</button>
+          <button class="primary-btn" id="p1ScriptBtn" type="button" style="margin-top:8px;font-size:0.88rem;padding:9px 16px;" onclick="console.log('P1 button clicked'); runGenerateScript('p1')">✨ Générer le script</button>
         </div>
         <hr class="section-divider">
         <div class="two-col">
@@ -682,7 +682,10 @@ updateDashboard();updateAuthUI();renderDetector([]);
 // PIPELINES DE PRODUCTION
 // ══════════════════════════════════════════════════════════════════════
 
-function getPipelineApiUrl() { return normalizeApiUrl(apiUrlInput.value); }
+function getPipelineApiUrl() {
+  const raw = apiUrlInput?.value || '';
+  return normalizeApiUrl(raw) || 'https://viral-saas.onrender.com';
+}
 
 // ── Shared helpers ────────────────────────────────────────────────────
 function populateSelect(sel, items, valFn, labelFn, emptyLabel) {
@@ -970,7 +973,7 @@ async function loadPipelineData() {
 
 // Reload data when API URL changes
 let _pipelineLoadTimer = null;
-apiUrlInput.addEventListener('input', () => {
+if (apiUrlInput) apiUrlInput.addEventListener('input', () => {
   clearTimeout(_pipelineLoadTimer);
   _pipelineLoadTimer = setTimeout(loadPipelineData, 800);
 });
