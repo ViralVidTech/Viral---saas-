@@ -1627,6 +1627,7 @@ class WanGenerateRequest(BaseModel):
 
 WAN_SIZE_MAP = {
     "480p": "832*480",
+    "portrait": "480*832",
     "720p": "1280*720",
     "1080p": "1280*720",
     "832*480": "832*480",
