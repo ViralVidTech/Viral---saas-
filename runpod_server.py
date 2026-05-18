@@ -13,7 +13,7 @@ os.makedirs(WORK_DIR, exist_ok=True)
 
 WAN_CODE = "/workspace/wan2.2-code"
 WAN_T2V_CKPT    = "/workspace/wan2.2-t2v"        # A14B — 76 GB VRAM
-WAN_T2V_1_3B    = "/workspace/Wan2.2-T2V-1.3B"   # 1.3B — ~8 GB VRAM
+WAN_T2V_1_3B    = "/workspace/wan2.2-t2v-1.3b"    # 1.3B — ~8 GB VRAM
 WAN_ANIMATE_CKPT = "/workspace/wan2.2-animate"
 
 WAN_JOBS = {}
