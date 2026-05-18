@@ -2653,7 +2653,7 @@ async def voxtral_transcribe(
         try:
             async with httpx.AsyncClient(timeout=300) as client:
                 response = await client.post(
-                    VOXTRAL_API_URL.rstrip("/"),
+                    VOXTRAL_API_URL.rstrip("/") + "/voxtral/transcribe",
                     content=audio_bytes,
                     headers={
                         "Content-Type": "audio/mpeg",
