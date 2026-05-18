@@ -104,6 +104,8 @@ async def wan_animate(
         "--pose_video", vid_path,
         "--save_file", out_path,
         "--sample_steps", str(sample_steps),
+        "--size", "832*480",
+        "--offload_model", "True",
     ]
     WAN_JOBS[job_id] = {"status": "processing"}
     asyncio.create_task(_run_wan_job(job_id, cmd))
