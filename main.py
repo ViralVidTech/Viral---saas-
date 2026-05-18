@@ -2512,7 +2512,7 @@ async def wan_animate(
         try:
             async with httpx.AsyncClient(timeout=900) as client:
                 response = await client.post(
-                    WAN_ANIMATE_API_URL.rstrip("/"),
+                    WAN_ANIMATE_API_URL.rstrip("/") + "/wan/animate",
                     json={
                         "character_image": char_path,
                         "reference_video": ref_path,
