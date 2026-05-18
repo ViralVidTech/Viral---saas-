@@ -740,37 +740,52 @@ async function generateScript(apiUrl, niche, narStyle, lang, scriptEl, statusId)
 }
 
 async function runGenerateScript(prefix) {
-  const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
-  console.log(`[runGenerateScript] prefix=${prefix} apiUrl=${apiUrl}`);
-  const nicheEl    = document.getElementById(`${prefix}Niche`);
-  const narStyleEl = document.getElementById(`${prefix}NarStyle`);
-  const langEl     = document.getElementById(`${prefix}Lang`);
-  const scriptEl   = document.getElementById(`${prefix}Script`);
-  console.log(`[runGenerateScript] niche=${nicheEl?.value} narStyle=${narStyleEl?.value} lang=${langEl?.value}`);
-  if (!nicheEl || !scriptEl) return setStatus(`${prefix}Status`, 'Éléments introuvables.', 'error');
-  if (!nicheEl.value) return setStatus(`${prefix}Status`, 'Choisissez une niche d\'abord.', 'error');
-  const btn = document.getElementById(`${prefix}ScriptBtn`);
-  if (btn) btn.disabled = true;
-  try {
-    const payload = { niche: nicheEl.value, narrative_style: narStyleEl?.value || '', language: langEl?.value || 'fr', user_plan: 'premium' };
-    console.log(`[runGenerateScript] POST ${apiUrl}/generate-script`, payload);
-    setStatus(`${prefix}Status`, '⏳ Claude génère le script…', 'ready');
-    const res = await fetch(`${apiUrl}/generate-script`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    console.log(`[runGenerateScript] response status=${res.status} ok=${res.ok}`);
-    const data = await res.json();
-    console.log(`[runGenerateScript] response data=`, data);
-    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
-    scriptEl.value = data.script || data.text || '';
-    setStatus(`${prefix}Status`, '✅ Script généré !', 'success');
-  } catch(e) {
-    console.error(`[runGenerateScript] error:`, e);
-    setStatus(`${prefix}Status`, `❌ ${e.message}`, 'error');
-  } finally {
-    if (btn) btn.disabled = false;
-  }
+    console.log('runGenerateScript called with prefix:', prefix);
+    const niche = document.getElementById(prefix + 'Niche')?.value || 'Motivation';
+    const lang = document.getElementById(prefix + 'Lang')?.value || 'fr';
+    const style = document.getElementById(prefix + 'NarStyle')?.value || 'Inspirant';
+    const scriptEl = document.getElementById(prefix + 'Script');
+
+    console.log('Niche:', niche, 'Lang:', lang, 'Style:', style);
+    console.log('Script element:', scriptEl);
+
+    if (!scriptEl) {
+        alert('Script element not found for prefix: ' + prefix);
+        return;
+    }
+
+    scriptEl.value = 'Génération en cours...';
+
+    try {
+        const url = 'https://viral-saas.onrender.com/generate-script';
+        console.log('Calling URL:', url);
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                niche: niche,
+                narrative_style: style,
+                language: lang,
+                user_plan: 'premium',
+                video_type: 'Vidéo stock',
+                duration_seconds: 60
+            })
+        });
+
+        console.log('Response status:', res.status);
+        const data = await res.json();
+        console.log('Response data:', data);
+
+        if (data.script) {
+            scriptEl.value = data.script;
+        } else {
+            scriptEl.value = 'Erreur: ' + JSON.stringify(data);
+        }
+    } catch(e) {
+        console.error('Fetch error:', e);
+        scriptEl.value = 'Erreur de connexion: ' + e.message;
+    }
 }
 
 async function generateFishVoice(apiUrl, text, voiceId, statusId) {
