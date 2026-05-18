@@ -2650,16 +2650,13 @@ async def voxtral_transcribe(
         with open(audio_path, "rb") as af:
             audio_bytes = af.read()
 
+        audio_filename = os.path.basename(audio_path)
         try:
             async with httpx.AsyncClient(timeout=300) as client:
                 response = await client.post(
                     VOXTRAL_API_URL.rstrip("/") + "/voxtral/transcribe",
-                    content=audio_bytes,
-                    headers={
-                        "Content-Type": "audio/mpeg",
-                        "X-Language": language,
-                        "X-Output-Format": output_format,
-                    },
+                    files={"audio_file": (audio_filename, audio_bytes, "audio/mpeg")},
+                    data={"language": language, "output_format": output_format},
                 )
         except httpx.TimeoutException:
             return JSONResponse(status_code=504, content={"error": "Voxtral transcription timed out"})
