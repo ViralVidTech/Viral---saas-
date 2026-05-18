@@ -264,7 +264,7 @@
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p1Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
         <div class="three-col">
-          <div class="field"><label>Résolution</label><select id="p1Res"><option value="832*480">832×480 (16:9)</option><option value="480*832">480×832 (9:16)</option><option value="1280*720">1280×720 (HD)</option></select></div>
+          <div class="field"><label>Résolution</label><select id="p1Res"><option value="480p" selected>832×480 (16:9)</option><option value="portrait">480×832 (9:16)</option><option value="720p">1280×720 (HD)</option></select></div>
           <div class="field"><label>Steps</label><select id="p1Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
         </div>
         <div class="actions"><button class="wan-btn" id="p1Btn">🎬 Générer Pipeline 1</button></div>
@@ -317,7 +317,7 @@
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p2Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
         <div class="three-col">
-          <div class="field"><label>Résolution</label><select id="p2Res"><option value="832*480">832×480 (16:9)</option><option value="480*832">480×832 (9:16)</option><option value="1280*720">1280×720 (HD)</option></select></div>
+          <div class="field"><label>Résolution</label><select id="p2Res"><option value="480p" selected>832×480 (16:9)</option><option value="portrait">480×832 (9:16)</option><option value="720p">1280×720 (HD)</option></select></div>
           <div class="field"><label>Steps</label><select id="p2Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
         </div>
         <div class="actions"><button class="wan-btn" id="p2Btn">🎬 Générer Pipeline 2</button></div>
@@ -730,7 +730,7 @@ async function generateScript(apiUrl, niche, narStyle, lang, scriptEl, statusId)
   setStatus(statusId, '⏳ Claude génère le script…', 'ready');
   const res = await fetch(`${apiUrl}/generate-script`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ niche, narrative_style: narStyle, language: lang, user_plan: 'premium' })
+    body: JSON.stringify({ niche, narrative_style: narStyle, language: lang, user_plan: 'premium', video_type: 'Vidéo stock', duration_seconds: 60 })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Erreur script ${res.status}`); }
   const data = await res.json();
