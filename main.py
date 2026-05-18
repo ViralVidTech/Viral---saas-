@@ -1468,42 +1468,21 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         real_segment_duration = clip_duration
 
-        final_audio_path = None
+        output_filename = f"{job_id}.mp4"
+        output_path = os.path.join(VIDEO_DIR, output_filename)
 
-        if voice_url and voice_path:
-            if music_url:
-                music_path = os.path.join(job_dir, "music.mp3")
-                await download_audio_file(music_url, music_path)
-                mixed_path = os.path.join(job_dir, "mixed.m4a")
-                await async_run_cmd([
-                    "ffmpeg", "-y",
-                    "-fflags", "+genpts",
-                    "-i", voice_path,
-                    "-stream_loop", "-1", "-i", music_path,
-                    "-filter_complex",
-                    f"[1:a]volume=0.12,atrim=0:{real_total_duration}[bg];"
-                    f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]",
-                    "-map", "[aout]",
-                    "-c:a", "aac", "-b:a", "192k",
-                    mixed_path
-                ])
-                final_audio_path = mixed_path
-            else:
-                final_audio_path = voice_path
-
+        # --- Build SRT (only write if there is real content) ---
         srt_path = os.path.join(job_dir, "subtitles.srt")
-        srt_built = False
 
         if req.subtitles:
             try:
                 with open(srt_path, "w", encoding="utf-8") as f:
                     f.write(req.subtitles)
-                srt_built = True
             except Exception:
-                srt_built = False
+                pass
 
         sync_url = (req.sync_url or "").strip()
-        if sync_url:
+        if sync_url and not os.path.exists(srt_path):
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
                     sync_resp = await client.get(sync_url)
@@ -1511,60 +1490,92 @@ async def _process_video(job_id: str, req: VideoRequest):
                 words_list = sync_data.get("words", [])
                 timepoints_list = sync_data.get("timepoints", [])
                 if words_list and timepoints_list:
-                    srt_built = build_srt_from_timepoints(
-                        words_list, timepoints_list, srt_path, words_per_block=5
-                    )
+                    build_srt_from_timepoints(words_list, timepoints_list, srt_path, words_per_block=5)
             except Exception:
-                srt_built = False
+                pass
 
-        if not srt_built:
+        if not os.path.exists(srt_path):
             nb_subtitles = len([t for t in subtitle_texts if t.strip()])
-            srt_segment_duration = (
-                real_total_duration / nb_subtitles if nb_subtitles > 0
-                else real_segment_duration
+            if nb_subtitles > 0:
+                srt_segment_duration = real_total_duration / nb_subtitles
+                write_srt(subtitle_texts, srt_segment_duration, srt_path)
+
+        # --- Pass 2: video + voice + optional subtitles ---
+        has_srt = os.path.exists(srt_path)
+        has_voice = bool(voice_path and os.path.exists(voice_path))
+        print(f"[FFmpeg P2 job={job_id}] stitched={os.path.exists(stitched_path)} voice={has_voice} srt={has_srt} music={bool(music_url)}")
+
+        subtitle_filter = None
+        if has_srt:
+            srt_escaped = escape_srt_path(os.path.abspath(srt_path))
+            subtitle_filter = (
+                f"subtitles='{srt_escaped}':"
+                "force_style='Alignment=2,MarginV=70,"
+                "PlayResX=405,PlayResY=720,"
+                "FontName=Arial,FontSize=24,Bold=1,"
+                "PrimaryColour=&H00FFFFFF,"
+                "OutlineColour=&H00000000,"
+                "BorderStyle=3,Outline=2,Shadow=0,"
+                "BackColour=&H99000000'"
             )
-            write_srt(subtitle_texts, srt_segment_duration, srt_path)
 
-        output_filename = f"{job_id}.mp4"
-        output_path = os.path.join(VIDEO_DIR, output_filename)
-
-        srt_escaped = escape_srt_path(os.path.abspath(srt_path))
-        subtitle_filter = (
-            f"subtitles='{srt_escaped}':"
-            "force_style='Alignment=2,MarginV=70,"
-            "PlayResX=405,PlayResY=720,"
-            "FontName=Arial,FontSize=24,Bold=1,"
-            "PrimaryColour=&H00FFFFFF,"
-            "OutlineColour=&H00000000,"
-            "BorderStyle=3,Outline=2,Shadow=0,"
-            "BackColour=&H99000000'"
-        )
-
-        if final_audio_path:
+        with_voice_path = os.path.join(job_dir, "with_voice.mp4")
+        if has_voice and subtitle_filter:
             await async_run_cmd([
                 "ffmpeg", "-y",
-                "-i", stitched_path,
-                "-i", final_audio_path,
+                "-i", stitched_path, "-i", voice_path,
                 "-vf", subtitle_filter,
                 "-map", "0:v:0", "-map", "1:a:0",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                "-r", "25",
-                "-c:a", "aac", "-b:a", "128k",
-                "-pix_fmt", "yuv420p",
+                "-r", "25", "-c:a", "aac", "-b:a", "128k",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                with_voice_path
+            ])
+        elif has_voice:
+            await async_run_cmd([
+                "ffmpeg", "-y",
+                "-i", stitched_path, "-i", voice_path,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+                with_voice_path
+            ])
+        elif subtitle_filter:
+            await async_run_cmd([
+                "ffmpeg", "-y",
+                "-i", stitched_path,
+                "-vf", subtitle_filter,
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-r", "25", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                "-an", with_voice_path
+            ])
+        else:
+            shutil.copy2(stitched_path, with_voice_path)
+
+        # --- Pass 3: mix music on top ---
+        music_path = None
+        if music_url:
+            music_path = os.path.join(job_dir, "music.mp3")
+            await download_audio_file(music_url, music_path)
+        has_music = bool(music_path and os.path.exists(music_path))
+        print(f"[FFmpeg P3 job={job_id}] with_voice={os.path.exists(with_voice_path)} music={has_music}")
+
+        if has_music:
+            await async_run_cmd([
+                "ffmpeg", "-y",
+                "-fflags", "+genpts",
+                "-i", with_voice_path,
+                "-stream_loop", "-1", "-i", music_path,
+                "-filter_complex",
+                f"[1:a]volume=0.15,atrim=0:{real_total_duration}[bg];"
+                f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+                "-map", "0:v:0", "-map", "[aout]",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                 "-movflags", "+faststart",
                 output_path
             ])
         else:
-            await async_run_cmd([
-                "ffmpeg", "-y",
-                "-i", stitched_path,
-                "-vf", subtitle_filter,
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                "-r", "25",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                output_path
-            ])
+            shutil.copy2(with_voice_path, output_path)
 
         shutil.rmtree(job_dir, ignore_errors=True)
 

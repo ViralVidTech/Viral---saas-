@@ -1160,7 +1160,10 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
 
     // 5 — Voxtral
     let subtitles = '';
-    if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p1Status');
+    if (wantSubs && audioUrl) {
+      subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p1Status');
+      if (!subtitles) setStatus('p1Status', '⚠️ Sous-titres non disponibles, on continue sans eux.', 'ready');
+    }
 
     // 6 — FFmpeg: concatenate all scene clips + voice + music
     if (audioUrl || musicUrl || subtitles || clipUrls.length > 1) videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p1Status');
@@ -1214,7 +1217,10 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
 
     // 4 — Voxtral
     let subtitles = '';
-    if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p2Status');
+    if (wantSubs && audioUrl) {
+      subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p2Status');
+      if (!subtitles) setStatus('p2Status', '⚠️ Sous-titres non disponibles, on continue sans eux.', 'ready');
+    }
 
     // 5 — FFmpeg
     if (audioUrl || musicUrl || subtitles) videoUrl = await assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, 'p2Status');
@@ -1263,7 +1269,10 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
 
     // 3 — Voxtral
     let subtitles = '';
-    if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p3Status');
+    if (wantSubs && audioUrl) {
+      subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p3Status');
+      if (!subtitles) setStatus('p3Status', '⚠️ Sous-titres non disponibles, on continue sans eux.', 'ready');
+    }
 
     // 4 — FFmpeg (stock mode)
     setStatus('p3Status', '⏳ FFmpeg assemble la vidéo stock…', 'ready');
@@ -1368,7 +1377,10 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
 
     // 4 — Optional Voxtral
     let subtitles = '';
-    if (wantSubs && audioUrl) subtitles = await generateSubtitles(apiUrl, audioUrl, 'fr', 'p4Status');
+    if (wantSubs && audioUrl) {
+      subtitles = await generateSubtitles(apiUrl, audioUrl, 'fr', 'p4Status');
+      if (!subtitles) setStatus('p4Status', '⚠️ Sous-titres non disponibles, on continue sans eux.', 'ready');
+    }
 
     // 5 — Optional FFmpeg
     const musicUrl = useMusic ? document.getElementById('p4Music').value : '';
