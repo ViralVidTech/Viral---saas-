@@ -940,9 +940,9 @@ document.getElementById('wanDirectGenerateBtn').addEventListener('click', async 
           clearInterval(poll);
           setStatus('wanDirectStatus', `❌ Erreur RunPod : ${sd.detail || 'inconnue'}`, 'error');
           btn.disabled = false;
-        } else if (tries >= 90) { // 90 × 10s = 15 min max
+        } else if (tries >= 180) { // 180 × 10s = 30 min max
           clearInterval(poll);
-          setStatus('wanDirectStatus', '❌ Timeout — la génération dépasse 15 minutes.', 'error');
+          setStatus('wanDirectStatus', '❌ Timeout — la génération dépasse 30 minutes.', 'error');
           btn.disabled = false;
         } else {
           setStatus('wanDirectStatus', `⏳ Génération en cours… (${tries * 10}s) — ne ferme pas cette page.`, 'ready');

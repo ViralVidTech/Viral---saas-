@@ -1609,8 +1609,8 @@ async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps
             WAN_JOBS[job_id] = {"status": "error", "detail": "RunPod n'a pas retourné de job_id"}
             return
 
-        # Step 2 — poll RunPod every 10 seconds, max 90 attempts (15 min)
-        for attempt in range(90):
+        # Step 2 — poll RunPod every 10 seconds, max 180 attempts (30 min)
+        for attempt in range(180):
             await asyncio.sleep(10)
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
@@ -1625,7 +1625,7 @@ async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps
                 WAN_JOBS[job_id] = {"status": "error", "detail": sd.get("detail", "Erreur RunPod inconnue")}
                 return
         else:
-            WAN_JOBS[job_id] = {"status": "error", "detail": "Timeout: RunPod n'a pas terminé en 15 minutes"}
+            WAN_JOBS[job_id] = {"status": "error", "detail": "Timeout: RunPod n'a pas terminé en 30 minutes"}
             return
 
         # Step 3 — download finished video from RunPod
