@@ -161,8 +161,7 @@
     <div class="nav-section">
       <div class="nav-label">Main</div>
       <a href="#dashboard" class="active">Dashboard</a>
-      <a href="#generator">Generator</a>
-      <a href="#wanDirect">AI Pipeline</a>
+      <a href="#wanDirect">AI Pipelines</a>
       <a href="#detector">Viral Detector</a>
       <a href="#pricing">Pricing</a>
     </div>
@@ -203,47 +202,17 @@
       <div class="panel kpi-card"><span>Active languages</span><strong>4</strong><small>English-first experience</small></div>
     </section>
 
-    <!-- GENERATOR -->
-    <section class="workspace" id="generator">
-      <div class="panel form-panel">
-        <h2 class="section-title">Content Generator</h2>
-        <p class="section-subtitle">Use the live API deployed on Render.</p>
-        <div class="form-grid">
-          <div class="field"><label>API base URL</label><input id="apiUrl" type="text" placeholder="https://your-service.onrender.com" /></div>
-          <div class="field"><label>Niche</label><input id="niche" type="text" placeholder="money" /></div>
-          <div class="field">
-            <label>Content language</label>
-            <select id="contentLanguage"><option value="en">English</option><option value="fr">French</option><option value="es">Spanish</option><option value="pt">Portuguese</option></select>
-          </div>
-          <div class="actions">
-            <button class="primary-btn" id="generateBtn">Generate</button>
-            <button class="secondary-btn" id="copyBtn">Copy script</button>
-          </div>
-          <div class="status" id="status"></div>
-        </div>
-        <p class="footer-note">Tip: paste your Render URL above, without /docs. Example: <span class="link-accent">https://your-service.onrender.com</span></p>
-      </div>
-      <div class="panel results-panel">
-        <h2 class="section-title">Results</h2>
-        <p class="section-subtitle">Your generated titles and script will appear here.</p>
-        <div class="result-block">
-          <div class="result-card"><h3>Viral Titles</h3><ol class="titles-list" id="titlesList"><li>—</li><li>—</li><li>—</li></ol></div>
-          <div class="result-card"><h3>Script</h3><textarea id="scriptOutput" class="script-box" readonly placeholder="Your script will appear here..."></textarea></div>
-          <div class="wan-video-block" id="wanVideoBlock">
-            <strong style="color:var(--gold);">🎬 Wan 2.2 — AI Video Preview</strong>
-            <video id="wanVideoPlayer" controls playsinline></video>
-            <a id="wanVideoDownloadLink" href="#" download="wan_video.mp4">⬇ Download Wan Video</a>
-          </div>
-        </div>
-      </div>
-    </section>
 
     <!-- AI PIPELINE -->
     <!-- PIPELINES DE PRODUCTION -->
     <section class="panel form-panel" id="wanDirect" style="display:grid;gap:20px;">
-      <div>
+      <div style="display:grid;gap:10px;">
         <h2 class="section-title">🚀 Pipelines de Production</h2>
         <p class="section-subtitle">Choisissez un pipeline et configurez votre production vidéo.</p>
+        <div class="field" style="max-width:480px;">
+          <label style="font-size:0.85rem;">URL de l'API Render</label>
+          <input id="apiUrl" type="text" placeholder="https://viral-saas.onrender.com" style="font-size:0.88rem;">
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -631,233 +600,10 @@ function updateModeText(){
 }
 
 const apiUrlInput=document.getElementById('apiUrl');
-const nicheInput=document.getElementById('niche');
-const scriptOutput=document.getElementById('scriptOutput');
-const titlesList=document.getElementById('titlesList');
-const voicePreview=document.getElementById('voicePreview');
-const videoDuration=document.getElementById('videoDuration');
-const wanVideoBlock=document.getElementById('wanVideoBlock');
-const wanVideoPlayer=document.getElementById('wanVideoPlayer');
-const wanVideoDownloadLink=document.getElementById('wanVideoDownloadLink');
-const fluxImagePreview=document.getElementById('fluxImagePreview');
-const fluxGeneratedImage=document.getElementById('fluxGeneratedImage');
-const fluxImageDownload=document.getElementById('fluxImageDownload');
-const previewPlaceholder=document.getElementById('previewPlaceholder');
-const videoDownloadBlock=document.getElementById('videoDownloadBlock');
-const videoPlayer=document.getElementById('videoPlayer');
-const videoDownloadLink=document.getElementById('videoDownloadLink');
 const authModal=document.getElementById('authModal');
 const userBadge=document.getElementById('userBadge');
 const userBadgeText=document.getElementById('userBadgeText');
-const pipelineModeSelect=document.getElementById('pipelineMode');
-const videoTypeSelect=document.getElementById('videoType');
 
-// STEP 1 - Claude
-async function generateContent(){
-  const apiUrl=normalizeApiUrl(apiUrlInput.value);
-  const niche=nicheInput.value.trim();
-  if(!apiUrl)return setStatus('status','Enter your Render API URL first.','error');
-  if(!niche)return setStatus('status','Enter a niche first.','error');
-  document.getElementById('generateBtn').disabled=true;
-  markStep(1,false);
-  setStatus('status','⏳ Claude is generating your script...','ready');
-  wanVideoBlock.classList.remove('show');
-  try{
-    const res=await fetch(`${apiUrl}/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({niche,langue:document.getElementById('contentLanguage').value,duration:parseInt(videoDuration.value)||30})});
-    const ct=res.headers.get('content-type')||'';
-    if(!ct.includes('application/json'))throw new Error('Server waking up — please retry in a few seconds.');
-    const data=await res.json();
-    if(!res.ok||data.error)throw new Error(data.error||`HTTP ${res.status}`);
-    titlesList.innerHTML='';
-    (data.titles||[]).forEach(t=>{const li=document.createElement('li');li.textContent=t;titlesList.appendChild(li);});
-    scriptOutput.value=data.script||'';
-    const wanVideo=data.wan_video||'';
-    window._wanVideoUrl=wanVideo;
-    if(wanVideo){wanVideoPlayer.src=wanVideo;wanVideoDownloadLink.href=wanVideo;wanVideoBlock.classList.add('show');wanVideoPlayer.load();addActivity('Wan 2.2 video ready','An AI-animated video was generated by Wan 2.2.');}
-    for(let i=1;i<=32;i++)window[`_pexelsVideoUrl${i===1?'':i}`]=data[`video_url${i===1?'':i}`]||'';
-    for(let i=1;i<=8;i++)window[`_scene${i}`]=data[`scene${i}`]||'';
-    window._nb_scenes=data.nb_scenes||4;window._duration=data.duration||30;
-    updateFluxPromptFromType(true);
-    markStep(1,true);
-    if(getPipelineMode()==='ai_wan'){
-      setStatus('status','✅ Script generated! AI Mode selected: generate your Flux image, then Google voice, then final video.','success');
-    }else{
-      setStatus('status','✅ Script generated! Stock Mode selected: generate Google voice, then final video.','success');
-    }
-    const s=getState();s.scripts+=1;s.revenue+=19;s.topNiche=niche;s.growth=Math.min(99,s.growth+7);saveState(s);updateDashboard();
-    addActivity('Script generated',`Claude generated a script for "${niche}".`);
-    document.getElementById('wanDirect').scrollIntoView({behavior:'smooth'});
-  }catch(e){setStatus('status',e.message,'error');}
-  finally{document.getElementById('generateBtn').disabled=false;}
-}
-
-// STEP 2 - Flux 2 Pro
-async function generateImage(){
-  const apiUrl=normalizeApiUrl(apiUrlInput.value);
-  const prompt=document.getElementById('fluxPrompt').value.trim();
-  if(!apiUrl)return setStatus('imageStatus','Enter your API URL first.','error');
-  if(getPipelineMode()==='stock')return setStatus('imageStatus','Flux is only needed in AI Mode. Stock Mode uses Pexels/Pixabay.','error');
-  if(!prompt)return setStatus('imageStatus','Enter an image prompt first.','error');
-  document.getElementById('generateImageBtn').disabled=true;
-  markStep(2,false);setStatus('imageStatus','⏳ Flux 2 Pro is generating your image...','ready');
-  try{
-    const res=await fetch(`${apiUrl}/generate-image`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,image_size:document.getElementById('fluxImageSize').value,num_inference_steps:28,guidance_scale:3.5,num_images:1})});
-    const ct=res.headers.get('content-type')||'';
-    if(!ct.includes('application/json'))throw new Error('Server waking up — please retry.');
-    const data=await res.json();
-    if(!res.ok||data.error)throw new Error(data.error||'Flux failed');
-    if(!data.image_url)throw new Error('No image URL returned');
-    window._generatedImageUrl=data.image_url;
-    fluxGeneratedImage.src=data.image_url;fluxImageDownload.href=data.image_url;
-    fluxImagePreview.classList.add('show');previewPlaceholder.style.display='none';
-    markStep(2,true);setStatus('imageStatus','✅ Image generated! Now generate your voice with Fish Audio.','success');
-    addActivity('Image generated',`Flux 2 Pro created a character image.`);
-  }catch(e){setStatus('imageStatus',`❌ ${e.message}`,'error');document.getElementById('step2Status').textContent='❌ Failed';document.getElementById('step2Status').style.color='var(--danger)';}
-  finally{document.getElementById('generateImageBtn').disabled=false;}
-}
-
-// STEP 3 - Fish Audio
-async function generateVoice(){
-  const apiUrl=normalizeApiUrl(apiUrlInput.value);
-  const text=scriptOutput.value.trim();
-
-  if(!apiUrl)return setStatus('voiceStatus','Enter your API URL first.','error');
-  if(!text)return setStatus('voiceStatus','Generate your script first (Step 1).','error');
-
-  // Récupérer la voix Google TTS sélectionnée
-  const voiceSelect=document.getElementById('googleVoiceSelect');
-  const voiceParts=(voiceSelect?voiceSelect.value:'en-US-Neural2-C|en-US').split('|');
-  const voiceName=voiceParts[0];
-  const languageCode=voiceParts[1]||'en-US';
-
-  document.getElementById('generateVoiceBtn').disabled=true;
-  markStep(3,false);setStatus('voiceStatus','⏳ Google TTS génère la voix...','ready');
-
-  try{
-    // Appel Google TTS (déjà configuré et fonctionnel)
-    const res=await fetch(`${apiUrl}/generate-audio`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text,voiceName,languageCode,speakingRate:1.0})
-    });
-    const ct=res.headers.get('content-type')||'';
-    if(!ct.includes('application/json'))throw new Error('Server waking up — please retry.');
-    const data=await res.json();
-    if(!res.ok||data.error)throw new Error(data.error||'Google TTS failed');
-    if(!data.audio_url)throw new Error('No audio URL returned');
-
-    window._generatedVoiceUrl=data.audio_url;
-    window._syncUrl=data.sync_url||'';
-    voicePreview.src=data.audio_url;voicePreview.load();
-
-    markStep(3,true);setStatus('voiceStatus','✅ Voix générée ! Créez maintenant votre vidéo.','success');
-    addActivity('Voice generated','Google TTS created a voice track.');
-
-    /* ── Fish Audio — conservé pour activation future ──────────────────
-    const fishVoiceId=document.getElementById('fishVoiceId').value;
-    const resFish=await fetch(`${apiUrl}/generate-audio-fish`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text,voice_id:fishVoiceId,format:'mp3',latency:'balanced'})
-    });
-    ────────────────────────────────────────────────────────────────── */
-
-  }catch(e){
-    setStatus('voiceStatus',`❌ ${e.message}`,'error');
-    document.getElementById('step3Status').textContent='❌ Failed';
-    document.getElementById('step3Status').style.color='var(--danger)';
-  }finally{
-    document.getElementById('generateVoiceBtn').disabled=false;
-  }
-}
-
-// STEP 4 - WAN/Stock + FFmpeg
-async function createVideo(){
-  const apiUrl=normalizeApiUrl(apiUrlInput.value);
-  const chosenDuration=parseInt(videoDuration.value)||30;
-  const chosenMusicUrl=document.getElementById('musicSelect')?.value||'';
-  const mode=getPipelineMode();
-
-  if(!apiUrl)return setStatus('videoStatus','Enter your API URL first.','error');
-  if(!scriptOutput.value.trim())return setStatus('videoStatus','Generate your script first (Step 1).','error');
-  if(!window._generatedVoiceUrl)return setStatus('videoStatus','Generate the Google TTS voice first (Step 3).','error');
-
-  if(mode==='ai_wan' && !window._wanVideoUrl){
-    return setStatus('videoStatus','AI Mode needs a WAN video. Check that RunPod is ON and WAN_API_URL is set in Render, then click Generate again.','error');
-  }
-  if(mode==='stock' && !window._pexelsVideoUrl && !window._pexelsVideoUrl2){
-    return setStatus('videoStatus','Stock Mode needs Pexels/Pixabay videos. Click Generate again or check your stock video API keys.','error');
-  }
-
-  document.getElementById('createVideoBtn').disabled=true;
-  markStep(4,false);
-  setStatus('videoStatus',mode==='ai_wan'
-    ? `⏳ AI Mode: FFmpeg assembling WAN video + Google voice + music + subtitles...`
-    : `⏳ Stock Mode: FFmpeg assembling Pexels/Pixabay + Google voice + music + subtitles...`,'ready');
-  videoDownloadBlock.classList.remove('show');
-
-  const body={
-    text1:window._scene1||'',text2:window._scene2||'',text3:window._scene3||'',text4:window._scene4||'',
-    text5:window._scene5||'',text6:window._scene6||'',text7:window._scene7||'',text8:window._scene8||'',
-    audio_url:window._generatedVoiceUrl||'',
-    sync_url:window._syncUrl||'',
-    music_url:chosenMusicUrl,
-    duration:chosenDuration,
-    pipeline_mode:mode,
-    video_type:getVideoType()
-  };
-
-  if(mode==='ai_wan'){
-    body.wan_video=window._wanVideoUrl||'';
-    for(let i=1;i<=40;i++)body[`video_url${i===1?'':i}`]='';
-  }else{
-    body.wan_video='';
-    for(let i=1;i<=40;i++)body[`video_url${i===1?'':i}`]=window[`_pexelsVideoUrl${i===1?'':i}`]||'';
-  }
-
-  try{
-    const res=await fetch(`${apiUrl}/create-video`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const ct=res.headers.get('content-type')||'';
-    if(!ct.includes('application/json')){setStatus('videoStatus','Server error — retry.','error');document.getElementById('createVideoBtn').disabled=false;return;}
-    const data=await res.json();
-    if(!res.ok||data.error){setStatus('videoStatus',`Error: ${data.error}`,'error');document.getElementById('createVideoBtn').disabled=false;return;}
-    const jobId=data.job_id;
-    if(!jobId){setStatus('videoStatus','No job ID returned.','error');document.getElementById('createVideoBtn').disabled=false;return;}
-
-    let tries=0,consErrors=0;
-    const poll=setInterval(async()=>{
-      tries++;
-      try{
-        const sr=await fetch(`${apiUrl}/video-status/${jobId}`);
-        const sct=sr.headers.get('content-type')||'';
-        if(!sct.includes('application/json')){consErrors++;return;}
-        const sd=await sr.json();consErrors=0;
-        if(sd.status==='done'&&sd.video_url){
-          clearInterval(poll);
-          videoPlayer.src=sd.video_url;videoDownloadLink.href=sd.video_url;
-          videoDownloadBlock.classList.add('show');videoPlayer.load();previewPlaceholder.style.display='none';
-          markStep(4,true);setStatus('videoStatus','✅ Video ready! Download or share it.','success');
-          addActivity('Video ready',mode==='ai_wan'?'AI Mode video completed with WAN.':'Stock Mode video completed with Pexels/Pixabay.');
-          const s=getState();s.scripts+=1;saveState(s);updateDashboard();
-          document.getElementById('createVideoBtn').disabled=false;
-        }else if(sd.status==='failed'){
-          clearInterval(poll);setStatus('videoStatus',`Error: ${sd.error||'failed'}`,'error');
-          document.getElementById('step4Status').textContent='❌ Failed';document.getElementById('step4Status').style.color='var(--danger)';
-          document.getElementById('createVideoBtn').disabled=false;
-        }else if(tries>=240){
-          clearInterval(poll);setStatus('videoStatus','Timeout.','error');document.getElementById('createVideoBtn').disabled=false;
-        }else{setStatus('videoStatus',`⏳ Rendering... (${tries*5}s)`,'ready');}
-      }catch(pe){consErrors++;if(consErrors>=3)setStatus('videoStatus',`⏳ Rendering... (${tries*5}s) — retrying...`,'ready');}
-    },5000);
-  }catch(e){setStatus('videoStatus',`Error: ${e.message}`,'error');document.getElementById('createVideoBtn').disabled=false;}
-}
-
-// COPY
-async function copyScript(){
-  if(!scriptOutput.value.trim())return setStatus('status','No script to copy yet.','error');
-  try{await navigator.clipboard.writeText(scriptOutput.value);}catch{scriptOutput.select();document.execCommand('copy');}
-  setStatus('status','Script copied.','success');
-}
 
 // DETECTOR
 window._detectorResults=[];
@@ -876,7 +622,7 @@ function renderDetector(results){
     const meta=document.createElement('div');meta.className='detector-meta';meta.style.cssText='margin:10px 0 8px;';
     [['📱',item.platform],['🎯',item.niche],['⏱',item.bestDuration],['🌍',item.targetAudience]].forEach(([icon,val])=>{const span=document.createElement('span');span.textContent=`${icon} ${val}`;meta.appendChild(span);});
     const makeP=(label,val,muted)=>{const p=document.createElement('p');p.style.cssText=`margin:6px 0 4px;font-size:0.9rem;${muted?' color:var(--muted);':''}`;const strong=document.createElement('strong');strong.textContent=label;p.appendChild(strong);p.appendChild(document.createTextNode(' '+(val||'')));return p;};
-    const btn=document.createElement('button');btn.className='primary-btn';btn.style.cssText='font-size:0.82rem;padding:6px 14px;margin-top:10px;';btn.textContent='✨ Use this idea';btn.onclick=()=>{const item=window._detectorResults[index];if(!item)return;document.getElementById('niche').value=item.niche||item.title;document.getElementById('generator').scrollIntoView({behavior:'smooth'});addActivity('Idea applied',`"${item.title}" applied.`);};
+    const btn=document.createElement('button');btn.className='primary-btn';btn.style.cssText='font-size:0.82rem;padding:6px 14px;margin-top:10px;';btn.textContent='✨ Use this idea';btn.onclick=()=>{const item=window._detectorResults[index];if(!item)return;addActivity('Idea applied',`"${item.title}" applied.`);document.getElementById('wanDirect').scrollIntoView({behavior:'smooth'});};
     el.appendChild(header);el.appendChild(meta);el.appendChild(makeP('Why viral:',item.whyViral,false));el.appendChild(makeP('Hook:',item.hookIdea,true));el.appendChild(makeP('Hashtags:',item.hashtags,true));el.appendChild(btn);
     det.appendChild(el);
   });
@@ -919,25 +665,18 @@ function loginUser(){
 function logoutUser(){localStorage.removeItem('viral_user');updateAuthUI();setStatus('status','You have been logged out.','success');}
 
 // INIT
-const savedApiUrl=localStorage.getItem('viral_api_url');if(savedApiUrl)apiUrlInput.value=savedApiUrl;
-apiUrlInput.addEventListener('input',()=>localStorage.setItem('viral_api_url',apiUrlInput.value.trim()));
-document.getElementById('generateBtn').addEventListener('click',generateContent);
-document.getElementById('copyBtn').addEventListener('click',copyScript);
-document.getElementById('generateImageBtn')?.addEventListener('click',generateImage);
-document.getElementById('generateVoiceBtn')?.addEventListener('click',generateVoice);
-document.getElementById('createVideoBtn')?.addEventListener('click',createVideo);
+const savedApiUrl=localStorage.getItem('viral_api_url');if(savedApiUrl&&apiUrlInput)apiUrlInput.value=savedApiUrl;
+if(apiUrlInput)apiUrlInput.addEventListener('input',()=>localStorage.setItem('viral_api_url',apiUrlInput.value.trim()));
 document.getElementById('scanBtn').addEventListener('click',scanTrends);
 document.getElementById('openLoginBtn').addEventListener('click',()=>authModal.classList.add('open'));
 document.getElementById('closeModalBtn').addEventListener('click',()=>authModal.classList.remove('open'));
 document.getElementById('loginBtn').addEventListener('click',loginUser);
 document.getElementById('logoutBtn').addEventListener('click',logoutUser);
 authModal.addEventListener('click',e=>{if(e.target===authModal)authModal.classList.remove('open');});
-if(pipelineModeSelect){pipelineModeSelect.addEventListener('change',()=>{updateModeText();updateFluxPromptFromType(false);});}
-if(videoTypeSelect){videoTypeSelect.addEventListener('change',()=>updateFluxPromptFromType(true));}
 document.getElementById('plan1Btn').addEventListener('click',()=>addActivity('Plan selected','Starter plan clicked.'));
 document.getElementById('plan2Btn').addEventListener('click',()=>addActivity('Plan selected','Pro plan clicked.'));
 document.getElementById('plan3Btn').addEventListener('click',()=>addActivity('Plan selected','Business plan clicked.'));
-updateModeText();updateFluxPromptFromType(false);updateDashboard();updateAuthUI();renderDetector([]);
+updateDashboard();updateAuthUI();renderDetector([]);
 
 // ══════════════════════════════════════════════════════════════════════
 // PIPELINES DE PRODUCTION
@@ -999,18 +738,32 @@ async function generateScript(apiUrl, niche, narStyle, lang, scriptEl, statusId)
 
 async function runGenerateScript(prefix) {
   const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
+  console.log(`[runGenerateScript] prefix=${prefix} apiUrl=${apiUrl}`);
   const nicheEl    = document.getElementById(`${prefix}Niche`);
   const narStyleEl = document.getElementById(`${prefix}NarStyle`);
   const langEl     = document.getElementById(`${prefix}Lang`);
   const scriptEl   = document.getElementById(`${prefix}Script`);
+  console.log(`[runGenerateScript] niche=${nicheEl?.value} narStyle=${narStyleEl?.value} lang=${langEl?.value}`);
   if (!nicheEl || !scriptEl) return setStatus(`${prefix}Status`, 'Éléments introuvables.', 'error');
   if (!nicheEl.value) return setStatus(`${prefix}Status`, 'Choisissez une niche d\'abord.', 'error');
   const btn = document.getElementById(`${prefix}ScriptBtn`);
   if (btn) btn.disabled = true;
   try {
-    await generateScript(apiUrl, nicheEl.value, narStyleEl?.value || '', langEl?.value || 'fr', scriptEl, `${prefix}Status`);
+    const payload = { niche: nicheEl.value, narrative_style: narStyleEl?.value || '', language: langEl?.value || 'fr', user_plan: 'premium' };
+    console.log(`[runGenerateScript] POST ${apiUrl}/generate-script`, payload);
+    setStatus(`${prefix}Status`, '⏳ Claude génère le script…', 'ready');
+    const res = await fetch(`${apiUrl}/generate-script`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    console.log(`[runGenerateScript] response status=${res.status} ok=${res.ok}`);
+    const data = await res.json();
+    console.log(`[runGenerateScript] response data=`, data);
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    scriptEl.value = data.script || data.text || '';
     setStatus(`${prefix}Status`, '✅ Script généré !', 'success');
   } catch(e) {
+    console.error(`[runGenerateScript] error:`, e);
     setStatus(`${prefix}Status`, `❌ ${e.message}`, 'error');
   } finally {
     if (btn) btn.disabled = false;
