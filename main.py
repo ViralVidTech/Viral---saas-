@@ -1576,6 +1576,7 @@ class WanGenerateRequest(BaseModel):
     resolution: str = "480p"
     num_frames: int = 81
     num_inference_steps: int = 20
+    image_url: str = ""
 
 
 WAN_SIZE_MAP = {
@@ -1589,14 +1590,17 @@ WAN_SIZE_MAP = {
 }
 
 
-async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps: int):
+async def _process_wan_job(job_id: str, prompt: str, wan_size: str, sample_steps: int, image_url: str = ""):
     base = RUNPOD_API_URL.rstrip("/")
     try:
         # Step 1 — submit job to RunPod, get runpod_job_id instantly
+        payload = {"prompt": prompt, "size": wan_size, "sample_steps": str(sample_steps)}
+        if image_url:
+            payload["image_url"] = image_url
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
                 f"{base}/wan/generate",
-                data={"prompt": prompt, "size": wan_size, "sample_steps": str(sample_steps)},
+                data=payload,
             )
         if res.status_code != 200:
             try:
@@ -1647,7 +1651,7 @@ async def wan_generate(req: WanGenerateRequest):
     job_id = uuid.uuid4().hex
     WAN_JOBS[job_id] = {"status": "processing"}
 
-    asyncio.create_task(_process_wan_job(job_id, req.prompt, wan_size, req.num_inference_steps))
+    asyncio.create_task(_process_wan_job(job_id, req.prompt, wan_size, req.num_inference_steps, req.image_url))
 
     return JSONResponse(status_code=200, content={
         "job_id": job_id,

@@ -43,18 +43,31 @@ async def wan_generate(
     prompt: str = Form(...),
     size: str = Form("832*480"),
     sample_steps: int = Form(20),
+    image_url: str = Form(""),
 ):
     job_id = uuid.uuid4().hex
     output_path = f"{WORK_DIR}/{job_id}.mp4"
-    cmd = [
-        "python3", f"{WAN_CODE}/generate.py",
-        "--task", "t2v-A14B",
-        "--size", size,
-        "--ckpt_dir", WAN_T2V_CKPT,
-        "--prompt", prompt,
-        "--sample_steps", str(sample_steps),
-        "--save_file", output_path
-    ]
+    if image_url:
+        cmd = [
+            "python3", f"{WAN_CODE}/generate.py",
+            "--task", "i2v-A14B",
+            "--size", size,
+            "--ckpt_dir", WAN_ANIMATE_CKPT,
+            "--image", image_url,
+            "--prompt", prompt,
+            "--sample_steps", str(sample_steps),
+            "--save_file", output_path
+        ]
+    else:
+        cmd = [
+            "python3", f"{WAN_CODE}/generate.py",
+            "--task", "t2v-A14B",
+            "--size", size,
+            "--ckpt_dir", WAN_T2V_CKPT,
+            "--prompt", prompt,
+            "--sample_steps", str(sample_steps),
+            "--save_file", output_path
+        ]
     WAN_JOBS[job_id] = {"status": "processing"}
     asyncio.create_task(_run_wan_job(job_id, cmd))
     return JSONResponse({"job_id": job_id, "status": "processing"})

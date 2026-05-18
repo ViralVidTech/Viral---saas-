@@ -822,10 +822,16 @@ async function assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitle
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ wan_video: videoUrl, audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, pipeline_mode: 'ai_wan' })
   });
-  if (!ffRes.ok) return videoUrl;
+  if (!ffRes.ok) {
+    const errData = await ffRes.json().catch(() => ({}));
+    throw new Error(`FFmpeg assembly échouée (${ffRes.status}): ${errData.error || 'erreur inconnue'}`);
+  }
   const ffData = await ffRes.json();
-  if (!ffData.job_id) return ffData.video_url || videoUrl;
-  let finalUrl = videoUrl, ffTries = 0;
+  if (!ffData.job_id) {
+    if (ffData.video_url) return ffData.video_url;
+    throw new Error('FFmpeg assembly échouée: pas de job_id retourné');
+  }
+  let finalUrl = null, ffTries = 0;
   await new Promise(resolve => {
     const iv = setInterval(async () => {
       ffTries++;
@@ -833,11 +839,13 @@ async function assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitle
         const sr = await fetch(`${apiUrl}/video-status/${ffData.job_id}`);
         const sd = await sr.json();
         if (sd.status === 'done' && sd.video_url) { clearInterval(iv); finalUrl = sd.video_url; resolve(); }
-        else if (sd.status === 'failed' || ffTries >= 120) { clearInterval(iv); resolve(); }
+        else if (sd.status === 'failed') { clearInterval(iv); resolve(); }
+        else if (ffTries >= 120) { clearInterval(iv); resolve(); }
         else setStatus(statusId, `⏳ FFmpeg… (${ffTries * 5}s)`, 'ready');
       } catch { if (ffTries >= 5) { clearInterval(iv); resolve(); } }
     }, 5000);
   });
+  if (!finalUrl) throw new Error('FFmpeg assembly échouée: le rendu a expiré ou a échoué');
   return finalUrl;
 }
 
@@ -1109,11 +1117,11 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     const fluxD = await fluxR.json();
     if (!fluxD.image_url) throw new Error("Flux n'a pas retourné d'image");
 
-    // 3 — Wan T2V
+    // 3 — Wan I2V (using Flux image as reference)
     setStatus('p1Status', '⏳ Wan 2.2 génère la vidéo…', 'ready');
     const wanR = await fetch(`${apiUrl}/wan/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0,200), resolution: res, num_frames: 81, num_inference_steps: steps })
+      body: JSON.stringify({ prompt: script.slice(0,200), resolution: res, num_frames: 81, num_inference_steps: steps, image_url: fluxD.image_url })
     });
     if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
     const wanD = await wanR.json();
