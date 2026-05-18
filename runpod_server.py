@@ -98,7 +98,7 @@ async def wan_animate(
         f.write(await reference_video.read())
     cmd = [
         "python3", f"{WAN_CODE}/generate.py",
-        "--task", "animate-14B",
+        "--task", "i2v-A14B",
         "--ckpt_dir", WAN_ANIMATE_CKPT,
         "--image", img_path,
         "--pose_video", vid_path,
