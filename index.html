@@ -1118,41 +1118,17 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
       script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p1Script'), 'p1Status');
     }
 
-    // 2+3 — Generate 4 scenes SEQUENTIALLY: Flux → Wan submit → poll → next scene
-    // (Only one Wan job active at a time — prevents CUDA OOM)
-    function splitScenes(text, n) {
-      let chunks = text.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
-      if (chunks.length < n) chunks = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
-      if (chunks.length >= n) return chunks.slice(0, n);
-      const sz = Math.ceil(text.length / n);
-      return Array.from({ length: n }, (_, i) => text.slice(i * sz, (i + 1) * sz).trim() || text.slice(0, 200));
-    }
-    const sceneCount = 3;
-    const scenePrompts = splitScenes(script, sceneCount).map(s => s.slice(0, 200));
-
-    const clipUrls = [];
-    for (let i = 0; i < sceneCount; i++) {
-      const scenePmt = scenePrompts[i];
-      setStatus('p1Status', `🎬 Génération scène ${i + 1}/${sceneCount}…`, 'ready');
-
-      // Step A: (Flux skipped — T2V 1.3B is text-only, no image conditioning)
-
-      // Step B: submit Wan T2V 1.3B job (no image_url → uses T2V path on server)
-      const wanR = await fetch(`${apiUrl}/wan/generate`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: scenePmt, resolution: res, num_frames: 81, num_inference_steps: steps })
-      });
-      if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
-      const wanD = await wanR.json();
-      if (!wanD.job_id) throw new Error("Wan n'a pas retourné de job_id");
-
-      // Step C: poll until done
-      const done = await pollWithStatus(apiUrl, `/wan/status/${wanD.job_id}`, 'p1Status', `Scène ${i + 1}/${sceneCount}`);
-
-      // Step D: collect URL
-      clipUrls.push(`${apiUrl}${done.video_url}`);
-      if (i + 1 < sceneCount) setStatus('p1Status', `✅ Scène ${i + 1}/${sceneCount} — Génération scène ${i + 2}/${sceneCount}…`, 'ready');
-    }
+    // 2 — Generate single Wan T2V clip from full script (looped to voice duration in _process_video)
+    setStatus('p1Status', '🎬 Génération vidéo Wan…', 'ready');
+    const wanR = await fetch(`${apiUrl}/wan/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, num_frames: 81, num_inference_steps: steps })
+    });
+    if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
+    const wanD = await wanR.json();
+    if (!wanD.job_id) throw new Error("Wan n'a pas retourné de job_id");
+    const done = await pollWithStatus(apiUrl, `/wan/status/${wanD.job_id}`, 'p1Status', 'Vidéo');
+    const clipUrls = [`${apiUrl}${done.video_url}`];
     let videoUrl = clipUrls[0];
 
     // 4 — Fish Audio

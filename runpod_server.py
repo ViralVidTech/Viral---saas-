@@ -22,13 +22,6 @@ WAN_ENV = {
     "CUDA_LAUNCH_BLOCKING": "0",
 }
 
-TI2V_SIZE_MAP = {
-    "832*480":  "1280*704",
-    "480*832":  "704*1280",
-    "1280*720": "1280*704",
-    "720*1280": "704*1280",
-}
-
 WAN_JOBS = {}
 
 @app.get("/health")
@@ -87,11 +80,10 @@ async def wan_generate(
             "--save_file", output_path
         ]
     else:
-        ti2v_size = TI2V_SIZE_MAP.get(size, "1280*704")
         cmd = [
             "python3", f"{WAN_CODE}/generate.py",
-            "--task", "ti2v-5B",
-            "--size", ti2v_size,
+            "--task", "t2v-A14B",
+            "--size", size,
             "--ckpt_dir", WAN_T2V_CKPT,
             "--prompt", prompt,
             "--sample_steps", str(sample_steps),

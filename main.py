@@ -1420,8 +1420,9 @@ async def _process_video(job_id: str, req: VideoRequest):
             src, dst = args
             if not os.path.exists(src):
                 return
+            loop_args = ["-stream_loop", "-1"] if nb_clips_total == 1 else []
             run_cmd([
-                "ffmpeg", "-y", "-i", src,
+                "ffmpeg", "-y", *loop_args, "-i", src,
                 "-t", str(clip_duration),
                 "-vf", "scale=405:720:force_original_aspect_ratio=increase,"
                        "crop=405:720,fps=25,format=yuv420p",
