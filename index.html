@@ -1118,28 +1118,30 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
       script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p1Script'), 'p1Status');
     }
 
-    // 2 — Flux 2 Pro
-    setStatus('p1Status', '⏳ Flux 2 Pro génère l\'image…', 'ready');
-    const fluxR = await fetch(`${apiUrl}/generate-image`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: `${script.slice(0,120)}, viral short video character, colorful, cartoon style`, image_size: 'portrait_4_3', num_inference_steps: 28, guidance_scale: 3.5, num_images: 1 })
-    });
-    if (!fluxR.ok) throw new Error(`Flux erreur ${fluxR.status}`);
-    const fluxD = await fluxR.json();
-    if (!fluxD.image_url) throw new Error("Flux n'a pas retourné d'image");
+    // 2+3 — Split into 4 distinct scenes; generate one Flux image + Wan I2V clip per scene
+    function splitScenes(text, n) {
+      let chunks = text.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
+      if (chunks.length < n) chunks = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+      if (chunks.length >= n) return chunks.slice(0, n);
+      // Fewer paragraphs than needed — divide text into n equal length segments
+      const sz = Math.ceil(text.length / n);
+      return Array.from({ length: n }, (_, i) => text.slice(i * sz, (i + 1) * sz).trim() || text.slice(0, 200));
+    }
+    const sceneCount = 4;
+    const scenePrompts = splitScenes(script, sceneCount).map(s => s.slice(0, 200));
 
-    // 3 — Split script into scenes, generate one Wan I2V clip per scene
-    const sceneLines = script.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
-    const sceneCount = Math.min(Math.max(sceneLines.length, 1), 4);
-    const scenePrompts = Array.from({ length: sceneCount }, (_, i) =>
-      (sceneLines[i] || script).slice(0, 200)
-    );
-
-    setStatus('p1Status', `⏳ Wan 2.2 soumet ${sceneCount} clips…`, 'ready');
+    setStatus('p1Status', `⏳ Flux + Wan : ${sceneCount} scènes en cours…`, 'ready');
     const wanJobIds = await Promise.all(scenePrompts.map(async (scenePmt) => {
+      // One Flux image per scene
+      const fluxR = await fetch(`${apiUrl}/generate-image`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: `${scenePmt.slice(0, 80)}, viral short video, colorful, cartoon style`, image_size: 'portrait_4_3', num_inference_steps: 28, guidance_scale: 3.5, num_images: 1 })
+      });
+      const imageUrl = fluxR.ok ? ((await fluxR.json()).image_url || '') : '';
+      // Wan I2V job using that scene's image
       const r = await fetch(`${apiUrl}/wan/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: scenePmt, resolution: res, num_frames: 97, num_inference_steps: steps, image_url: fluxD.image_url })
+        body: JSON.stringify({ prompt: scenePmt, resolution: res, num_frames: 97, num_inference_steps: steps, image_url: imageUrl })
       });
       if (!r.ok) throw new Error(`Wan erreur ${r.status}`);
       const d = await r.json();
@@ -1149,7 +1151,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
 
     const clipUrls = [];
     for (let i = 0; i < wanJobIds.length; i++) {
-      const done = await pollWithStatus(apiUrl, `/wan/status/${wanJobIds[i]}`, 'p1Status', `Clip ${i + 1}/${wanJobIds.length}`);
+      const done = await pollWithStatus(apiUrl, `/wan/status/${wanJobIds[i]}`, 'p1Status', `Clip ${i + 1}/${sceneCount}`);
       clipUrls.push(`${apiUrl}${done.video_url}`);
     }
     let videoUrl = clipUrls[0];

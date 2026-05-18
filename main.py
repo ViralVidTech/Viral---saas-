@@ -1473,6 +1473,7 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         # --- Build SRT ---
         srt_path = os.path.join(job_dir, "subtitles.srt")
+        print(f"[SRT received job={job_id}] len={len(req.subtitles)} preview={repr(req.subtitles[:200])}")
 
         if req.subtitles:
             try:
@@ -1523,6 +1524,7 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         # --- Pass 2b: burn subtitles (fully isolated — skipped if SRT missing or empty) ---
         with_subtitles_path = os.path.join(job_dir, "with_subtitles.mp4")
+        print(f"[FFmpeg P2b job={job_id}] srt_exists={srt_exists} srt_size={srt_size} — {'RUNNING' if srt_exists and srt_size > 0 else 'SKIPPED'}")
         if srt_exists and srt_size > 0:
             try:
                 srt_escaped = escape_srt_path(os.path.abspath(srt_path))
@@ -1558,7 +1560,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             music_path = os.path.join(job_dir, "music.mp3")
             await download_audio_file(music_url, music_path)
         has_music = bool(music_path and os.path.exists(music_path))
-        print(f"[FFmpeg P3 job={job_id}] input={os.path.exists(with_subtitles_path)} music={has_music}")
+        print(f"[FFmpeg P3 job={job_id}] input={os.path.exists(with_subtitles_path)} music_url={repr(music_url)} music_exists={has_music}")
 
         if has_music:
             await async_run_cmd([
