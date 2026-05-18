@@ -11,10 +11,16 @@ app = FastAPI(title="ViralVidTech RunPod API", version="4.0.0")
 WORK_DIR = "/workspace/outputs"
 os.makedirs(WORK_DIR, exist_ok=True)
 
-WAN_CODE = "/workspace/wan2.2-code"
-WAN_T2V_CKPT    = "/workspace/wan2.2-t2v"        # A14B — 76 GB VRAM
-WAN_T2V_1_3B    = "/workspace/wan2.2-t2v-1.3b"    # 1.3B — ~8 GB VRAM
+WAN_CODE         = "/workspace/wan2.2-code"
+WAN_T2V_CKPT     = "/workspace/wan2.2-t2v"
 WAN_ANIMATE_CKPT = "/workspace/wan2.2-animate"
+
+# Env passed to every generate.py subprocess
+WAN_ENV = {
+    **os.environ,
+    "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+    "CUDA_LAUNCH_BLOCKING": "0",
+}
 
 WAN_JOBS = {}
 
@@ -28,7 +34,8 @@ async def _run_wan_job(job_id: str, cmd: list):
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=WAN_CODE
+            cwd=WAN_CODE,
+            env=WAN_ENV,
         )
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
@@ -76,12 +83,13 @@ async def wan_generate(
         # T2V uses 1.3B model (~8 GB VRAM) — safe for sequential multi-scene generation
         cmd = [
             "python3", f"{WAN_CODE}/generate.py",
-            "--task", "t2v-1.3B",
+            "--task", "t2v-A14B",
             "--size", size,
-            "--ckpt_dir", WAN_T2V_1_3B,
+            "--ckpt_dir", WAN_T2V_CKPT,
             "--prompt", prompt,
             "--sample_steps", str(sample_steps),
             "--frame_num", str(frame_num),
+            "--offload_model", "True",
             "--save_file", output_path
         ]
     WAN_JOBS[job_id] = {"status": "processing"}
