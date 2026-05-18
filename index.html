@@ -801,12 +801,19 @@ async function generateFishVoice(apiUrl, text, voiceId, statusId) {
 
 async function generateSubtitles(apiUrl, audioUrl, lang, statusId) {
   setStatus(statusId, '⏳ Voxtral génère les sous-titres…', 'ready');
-  const fd = new FormData();
-  fd.append('language', lang); fd.append('output_format', 'srt'); fd.append('video_path', audioUrl);
-  const res = await fetch(`${apiUrl}/voxtral/transcribe`, { method: 'POST', body: fd });
-  if (!res.ok) return '';
-  const data = await res.json();
-  return data.transcription || data.subtitles || '';
+  try {
+    const audioResp = await fetch(audioUrl);
+    if (!audioResp.ok) return '';
+    const audioBlob = await audioResp.blob();
+    const fd = new FormData();
+    fd.append('audio_file', audioBlob, 'audio.mp3');
+    fd.append('language', lang);
+    fd.append('output_format', 'srt');
+    const res = await fetch(`${apiUrl}/voxtral/transcribe`, { method: 'POST', body: fd });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.transcription || data.subtitles || '';
+  } catch { return ''; }
 }
 
 async function assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, statusId) {
