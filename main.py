@@ -15,6 +15,7 @@ app = FastAPI()
 
 VIDEO_JOBS = {}
 WAN_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
+WAN_ANIMATE_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
 
 app.add_middleware(
     CORSMiddleware,
@@ -2453,6 +2454,71 @@ async def qwen_generate_image(req: QwenImageRequest):
         return JSONResponse(status_code=500, content={"error": f"Erreur qwen/generate-image: {str(e)}"})
 
 
+async def _process_wan_animate_job(
+    job_id: str,
+    char_bytes: bytes,
+    char_filename: str,
+    ref_bytes: bytes,
+    mode: str,
+):
+    base = WAN_ANIMATE_API_URL.rstrip("/")
+    try:
+        # Step 1 — submit job to Vast.ai, get remote job_id instantly
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                f"{base}/wan/animate",
+                files={
+                    "character_image": (char_filename, char_bytes, "image/jpeg"),
+                    "reference_video": ("reference.mp4", ref_bytes, "video/mp4"),
+                },
+                data={"mode": mode},
+            )
+        if res.status_code != 200:
+            try:
+                detail = res.json()
+            except Exception:
+                detail = res.text[:500]
+            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"Vast.ai submit erreur {res.status_code}: {detail}"}
+            return
+        runpod_job_id = res.json().get("job_id")
+        if not runpod_job_id:
+            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": "Vast.ai n'a pas retourné de job_id"}
+            return
+
+        # Step 2 — poll every 10 seconds, max 180 attempts (30 min)
+        for attempt in range(180):
+            await asyncio.sleep(10)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    sr = await client.get(f"{base}/wan/status/{runpod_job_id}")
+                sd = sr.json()
+            except Exception:
+                continue
+            if sd.get("status") == "done":
+                break
+            if sd.get("status") == "error":
+                WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": sd.get("detail", "Erreur Vast.ai inconnue")}
+                return
+        else:
+            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": "Timeout: Vast.ai n'a pas terminé en 30 minutes"}
+            return
+
+        # Step 3 — download finished video
+        async with httpx.AsyncClient(timeout=300) as client:
+            video_resp = await client.get(f"{base}/wan/video/{runpod_job_id}")
+        if video_resp.status_code != 200:
+            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"Impossible de télécharger la vidéo ({video_resp.status_code})"}
+            return
+
+        video_path = f"/tmp/{job_id}.mp4"
+        with open(video_path, "wb") as f:
+            f.write(video_resp.content)
+        WAN_ANIMATE_JOBS[job_id] = {"status": "done", "video_path": video_path}
+
+    except Exception as e:
+        WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": str(e)}
+
+
 @app.post("/wan/animate")
 async def wan_animate(
     mode: str = Form("animation"),
@@ -2499,66 +2565,78 @@ async def wan_animate(
             ref_path = entry["path"] or reference_video_id.strip()
 
         if not char_path:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Fournissez character_image (fichier) ou character_image_url"},
-            )
+            return JSONResponse(status_code=400, content={"error": "Fournissez character_image (fichier) ou character_image_url"})
         if not ref_path:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Fournissez reference_video (fichier) ou reference_video_id"},
-            )
+            return JSONResponse(status_code=400, content={"error": "Fournissez reference_video (fichier) ou reference_video_id"})
 
-        try:
-            async with httpx.AsyncClient(timeout=900) as client:
-                if char_path.startswith("http"):
-                    dl = await client.get(char_path)
-                    char_bytes = dl.content
-                    char_filename = "character.jpg"
-                else:
-                    with open(char_path, "rb") as f:
-                        char_bytes = f.read()
-                    char_filename = os.path.basename(char_path)
+        # Read file bytes before handing off to background task
+        async with httpx.AsyncClient(timeout=30) as client:
+            if char_path.startswith("http"):
+                dl = await client.get(char_path)
+                char_bytes = dl.content
+                char_filename = "character.jpg"
+            else:
+                with open(char_path, "rb") as f:
+                    char_bytes = f.read()
+                char_filename = os.path.basename(char_path)
 
-                with open(ref_path, "rb") as f:
-                    ref_bytes = f.read()
+        with open(ref_path, "rb") as f:
+            ref_bytes = f.read()
 
-                response = await client.post(
-                    WAN_ANIMATE_API_URL.rstrip("/") + "/wan/animate",
-                    files={
-                        "character_image": (char_filename, char_bytes, "image/jpeg"),
-                        "reference_video": ("reference.mp4", ref_bytes, "video/mp4"),
-                    },
-                    data={"mode": mode},
-                )
-        except httpx.TimeoutException:
-            return JSONResponse(status_code=504, content={"error": "Wan Animate timed out"})
+        job_id = uuid.uuid4().hex
+        WAN_ANIMATE_JOBS[job_id] = {"status": "processing"}
+        asyncio.create_task(_process_wan_animate_job(job_id, char_bytes, char_filename, ref_bytes, mode))
 
-        if response.status_code != 200:
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text[:500]
-            return JSONResponse(
-                status_code=response.status_code,
-                content={"error": f"Wan Animate erreur {response.status_code}", "details": detail},
-            )
-
-        content_type = response.headers.get("content-type", "")
-        if "video" in content_type or "octet-stream" in content_type:
-            return StreamingResponse(
-                iter([response.content]),
-                media_type="video/mp4",
-                headers={"Content-Disposition": "inline; filename=animated.mp4"},
-            )
-
-        data = response.json()
-        return {"video_url": data.get("video_url", "")}
+        return JSONResponse(status_code=200, content={
+            "job_id": job_id,
+            "status": "processing",
+            "poll_url": f"/wan/animate/status/{job_id}",
+        })
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Erreur wan/animate: {str(e)}"})
     finally:
         shutil.rmtree(job_dir, ignore_errors=True)
+
+
+@app.get("/wan/animate/status/{job_id}")
+async def wan_animate_status(job_id: str):
+    job = WAN_ANIMATE_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    if job["status"] == "done":
+        return JSONResponse(status_code=200, content={
+            "status": "done",
+            "video_url": f"/wan/animate/video/{job_id}",
+        })
+    if job["status"] == "error":
+        return JSONResponse(status_code=200, content={
+            "status": "error",
+            "detail": job.get("detail", "Erreur inconnue"),
+        })
+    return JSONResponse(status_code=200, content={"status": "processing"})
+
+
+@app.get("/wan/animate/video/{job_id}")
+async def wan_animate_video(job_id: str):
+    job = WAN_ANIMATE_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    if job["status"] != "done":
+        return JSONResponse(status_code=202, content={"status": job["status"]})
+    video_path = job.get("video_path")
+    if not video_path or not os.path.exists(video_path):
+        return JSONResponse(status_code=404, content={"error": "Fichier vidéo introuvable"})
+    def iter_file():
+        with open(video_path, "rb") as f:
+            yield from iter(lambda: f.read(65536), b"")
+        os.remove(video_path)
+        del WAN_ANIMATE_JOBS[job_id]
+    return StreamingResponse(
+        iter_file(),
+        media_type="video/mp4",
+        headers={"Content-Disposition": "inline; filename=animated.mp4"},
+    )
 
 
 @app.post("/voxtral/transcribe")
