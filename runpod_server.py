@@ -3,13 +3,17 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 import uvicorn
 
+# Free fragmented VRAM between sequential Wan jobs
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 app = FastAPI(title="ViralVidTech RunPod API", version="4.0.0")
 
 WORK_DIR = "/workspace/outputs"
 os.makedirs(WORK_DIR, exist_ok=True)
 
 WAN_CODE = "/workspace/wan2.2-code"
-WAN_T2V_CKPT = "/workspace/wan2.2-t2v"
+WAN_T2V_CKPT    = "/workspace/wan2.2-t2v"        # A14B — 76 GB VRAM
+WAN_T2V_1_3B    = "/workspace/Wan2.2-T2V-1.3B"   # 1.3B — ~8 GB VRAM
 WAN_ANIMATE_CKPT = "/workspace/wan2.2-animate"
 
 WAN_JOBS = {}
@@ -50,12 +54,13 @@ async def wan_generate(
     prompt: str = Form(...),
     size: str = Form("832*480"),
     sample_steps: int = Form(20),
-    frame_num: int = Form(97),
+    frame_num: int = Form(81),
     image_url: str = Form(""),
 ):
     job_id = uuid.uuid4().hex
     output_path = f"{WORK_DIR}/{job_id}.mp4"
     if image_url:
+        # I2V still uses A14B (only run for Pipeline 4 single-clip animation)
         cmd = [
             "python3", f"{WAN_CODE}/generate.py",
             "--task", "i2v-A14B",
@@ -68,11 +73,12 @@ async def wan_generate(
             "--save_file", output_path
         ]
     else:
+        # T2V uses 1.3B model (~8 GB VRAM) — safe for sequential multi-scene generation
         cmd = [
             "python3", f"{WAN_CODE}/generate.py",
-            "--task", "t2v-A14B",
+            "--task", "t2v-1.3B",
             "--size", size,
-            "--ckpt_dir", WAN_T2V_CKPT,
+            "--ckpt_dir", WAN_T2V_1_3B,
             "--prompt", prompt,
             "--sample_steps", str(sample_steps),
             "--frame_num", str(frame_num),

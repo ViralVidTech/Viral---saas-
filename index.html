@@ -1135,17 +1135,12 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
       const scenePmt = scenePrompts[i];
       setStatus('p1Status', `🎬 Génération scène ${i + 1}/${sceneCount}…`, 'ready');
 
-      // Step A: Flux image for this scene
-      const fluxR = await fetch(`${apiUrl}/generate-image`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: `${scenePmt.slice(0, 80)}, viral short video, colorful, cartoon style`, image_size: 'portrait_4_3', num_inference_steps: 28, guidance_scale: 3.5, num_images: 1 })
-      });
-      const imageUrl = fluxR.ok ? ((await fluxR.json()).image_url || '') : '';
+      // Step A: (Flux skipped — T2V 1.3B is text-only, no image conditioning)
 
-      // Step B: submit Wan job
+      // Step B: submit Wan T2V 1.3B job (no image_url → uses T2V path on server)
       const wanR = await fetch(`${apiUrl}/wan/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: scenePmt, resolution: res, num_frames: 97, num_inference_steps: steps, image_url: imageUrl })
+        body: JSON.stringify({ prompt: scenePmt, resolution: res, num_frames: 81, num_inference_steps: steps })
       });
       if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
       const wanD = await wanR.json();

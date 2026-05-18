@@ -1408,6 +1408,9 @@ async def _process_video(job_id: str, req: VideoRequest):
                 if url
             ])
 
+        downloaded = [p for p in raw_paths if os.path.exists(p)]
+        print(f"[Pass1 job={job_id}] clips_received={len(wan_clip_list or clip_urls)} downloaded={len(downloaded)} raw_paths={[os.path.basename(p) for p in raw_paths]}")
+
         from concurrent.futures import ThreadPoolExecutor
 
         norm_paths = [os.path.join(job_dir, f"seg_{i}.mp4")
@@ -1617,7 +1620,7 @@ async def create_video(req: VideoRequest):
 class WanGenerateRequest(BaseModel):
     prompt: str
     resolution: str = "480p"
-    num_frames: int = 97
+    num_frames: int = 81
     num_inference_steps: int = 20
     image_url: str = ""
 
