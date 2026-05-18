@@ -145,6 +145,8 @@
     .toggle input:checked+.toggle-slider{background:var(--emerald);}
     .toggle input:checked+.toggle-slider:before{transform:translateX(20px);}
     .section-divider{border:none;border-top:1px solid var(--border);margin:4px 0;}
+    .clone-panel{background:rgba(14,165,233,0.06);border:1px solid rgba(14,165,233,0.22);border-radius:14px;padding:16px;display:grid;gap:12px;margin-top:8px;}
+    .premium-badge{background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;font-size:0.72rem;font-weight:800;padding:3px 10px;border-radius:20px;white-space:nowrap;}
     @media(max-width:900px){.pipeline-tabs{grid-template-columns:repeat(2,1fr);}}
     @media(max-width:600px){.two-col,.three-col{grid-template-columns:1fr;}}
     @media (max-width:1180px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } .workspace { grid-template-columns:1fr; } .pricing-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr 1fr; } .pipeline-steps { grid-template-columns:repeat(2,1fr); } }
@@ -160,7 +162,7 @@
       <div class="nav-label">Main</div>
       <a href="#dashboard" class="active">Dashboard</a>
       <a href="#generator">Generator</a>
-      <a href="#videoCreation">AI Pipeline</a>
+      <a href="#wanDirect">AI Pipeline</a>
       <a href="#detector">Viral Detector</a>
       <a href="#pricing">Pricing</a>
     </div>
@@ -237,152 +239,6 @@
     </section>
 
     <!-- AI PIPELINE -->
-    <section class="panel detector-panel" id="videoCreation">
-      <h2 class="section-title">AI Video Pipeline</h2>
-      <p class="section-subtitle">Choose the production mode before creating the final video.</p>
-
-      <div class="mode-grid">
-        <div class="mode-card">
-          <strong>Pipeline mode</strong>
-          <select id="pipelineMode">
-            <option value="ai_wan" selected>🎨 AI Mode — Claude → Flux → Google TTS → WAN → FFmpeg</option>
-            <option value="stock">📹 Stock Mode — Claude → Google TTS → Pexels/Pixabay → FFmpeg</option>
-          </select>
-          <small>AI Mode is the default. Stock Mode is the secondary backup.</small>
-        </div>
-        <div class="mode-card">
-          <strong>Video type</strong>
-          <select id="videoType">
-            <option value="animated_objects" selected>🍎 Animated objects / talking food</option>
-            <option value="human_avatars">🧑 Realistic human avatars</option>
-            <option value="cartoon">🎨 Cartoon / colorful animation</option>
-            <option value="realistic">🎥 Realistic cinematic video</option>
-            <option value="faceless_business">💼 Faceless business / finance</option>
-            <option value="motivation_lifestyle">🎭 Motivation / lifestyle</option>
-          </select>
-          <small>This automatically prepares the Flux prompt for the right visual style.</small>
-        </div>
-      </div>
-
-      <div class="pipeline-steps">
-        <div class="pipeline-step" id="step1"><div class="step-icon">📝</div><div class="step-label">Step 1</div><div style="font-weight:700;font-size:0.9rem;">Claude</div><div class="step-status" id="step1Status" style="color:var(--muted);">Script</div></div>
-        <div class="pipeline-step" id="step2"><div class="step-icon">🎨</div><div class="step-label">Step 2</div><div style="font-weight:700;font-size:0.9rem;">Flux 2 Pro</div><div class="step-status" id="step2Status" style="color:var(--muted);">Image</div></div>
-        <div class="pipeline-step" id="step3"><div class="step-icon">🎙</div><div class="step-label">Step 3</div><div style="font-weight:700;font-size:0.9rem;">Google TTS</div><div class="step-status" id="step3Status" style="color:var(--muted);">Voice</div></div>
-        <div class="pipeline-step" id="step4"><div class="step-icon">🎬</div><div class="step-label">Step 4</div><div style="font-weight:700;font-size:0.9rem;">Wan + FFmpeg</div><div class="step-status" id="step4Status" style="color:var(--muted);">Video</div></div>
-      </div>
-
-      <div class="workspace" style="grid-template-columns:0.95fr 1.05fr; gap:18px;">
-        <div class="result-card" style="display:grid; gap:18px;">
-
-          <div style="border-left:3px solid var(--emerald); padding-left:12px;">
-            <strong style="color:var(--emerald);">① Claude — Script</strong>
-            <p style="margin:6px 0 0; color:var(--muted); font-size:0.9rem;">Generate your script above in the Content Generator section, then come back here.</p>
-          </div>
-
-          <div style="border-left:3px solid #7c3aed; padding-left:12px;">
-            <strong style="color:#a78bfa;">② Flux 2 Pro — Image</strong>
-            <div class="field" style="margin-top:10px;">
-              <label>Image prompt</label>
-              <textarea id="fluxPrompt" rows="3" placeholder="A cute smiling apple character with big eyes, cartoon style, colorful background, open mouth ready to speak"></textarea>
-            </div>
-            <div class="field">
-              <label>Image format</label>
-              <select id="fluxImageSize"><option value="portrait_4_3">Portrait 4:3 (recommended)</option><option value="square_hd">Square HD</option><option value="landscape_4_3">Landscape 4:3</option></select>
-            </div>
-            <div class="actions"><button class="flux-btn" id="generateImageBtn">🎨 Generate Image</button></div>
-            <div class="status" id="imageStatus"></div>
-          </div>
-
-          <div style="border-left:3px solid #0ea5e9; padding-left:12px;">
-            <strong style="color:#38bdf8;">③ Google TTS — Voice</strong>
-            <div style="margin-top:6px; padding:8px 12px; background:rgba(0,163,255,0.08); border-radius:10px; font-size:0.82rem; color:var(--muted);">
-              🐟 Fish Audio sera activé prochainement (plan payant requis)
-            </div>
-            <div class="field" style="margin-top:10px;">
-              <label>Voice (Google TTS)</label>
-              <select id="googleVoiceSelect">
-                <option value="en-US-Neural2-A|en-US">Male — American English (Neural)</option>
-                <option value="en-US-Neural2-C|en-US">Female — American English (Neural)</option>
-                <option value="en-US-Neural2-D|en-US">Male — Deep American (Neural)</option>
-                <option value="en-US-Neural2-F|en-US">Female — Soft American (Neural)</option>
-                <option value="en-GB-Neural2-B|en-GB">Male — British English (Neural)</option>
-                <option value="en-GB-Neural2-A|en-GB">Female — British English (Neural)</option>
-                <option value="fr-FR-Neural2-B|fr-FR">Male — French (Neural)</option>
-                <option value="fr-FR-Neural2-A|fr-FR">Female — French (Neural)</option>
-                <option value="es-ES-Neural2-B|es-ES">Male — Spanish (Neural)</option>
-                <option value="pt-BR-Neural2-B|pt-BR">Male — Portuguese (Neural)</option>
-              </select>
-            </div>
-            <!-- Fish Audio conservé pour activation future -->
-            <div id="fishVoiceSection" style="display:none;">
-              <select id="fishVoiceId">
-                <option value="">Default voice (Fish Audio)</option>
-                <option value="54a5170264694bfc8e411096a1353246">Female — English (Rachel)</option>
-                <option value="7f92f8efb8ec43bf8f646fd6cd7c7b2e">Male — English (Josh)</option>
-                <option value="e00d0e4c204342b99c7f3ff9a9fa3b80">Female — French</option>
-                <option value="e97ea6e4736d4a4e8e4e2e3e3a3b3c3d">Male — French</option>
-              </select>
-            </div>
-            <div class="actions"><button class="fish-btn" id="generateVoiceBtn">🎙 Generate Voice</button></div>
-            <div class="field" style="margin-top:8px;"><label>Voice preview</label><audio id="voicePreview" controls style="width:100%;"></audio></div>
-            <div class="status" id="voiceStatus"></div>
-          </div>
-
-          <div style="border-left:3px solid var(--gold); padding-left:12px;">
-            <strong style="color:var(--gold);">④ Wan + FFmpeg — Final Video</strong>
-            <div class="field" style="margin-top:10px;">
-              <label>Duration</label>
-              <select id="videoDuration"><option value="30">30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select>
-            </div>
-            <div class="field">
-              <label>Background music</label>
-              <select id="musicSelect">
-                <option value="">No music</option>
-                <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option>
-                <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option>
-                <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option>
-                <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3">Music 4</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Subtitle style</label>
-              <select id="subtitleStyle"><option value="bold-center">Bold Center</option><option value="bottom-clean">Bottom Clean</option><option value="highlight-words">Highlight Words</option></select>
-            </div>
-            <div class="actions"><button class="wan-btn" id="createVideoBtn">🎬 Create Video</button></div>
-            <div class="status" id="videoStatus"></div>
-          </div>
-
-        </div>
-
-        <div class="result-card" style="display:grid; gap:14px; align-content:start;">
-          <h3>Preview</h3>
-          <div class="flux-image-preview" id="fluxImagePreview">
-            <strong style="color:#a78bfa;">🎨 Flux 2 Pro — Generated Image</strong>
-            <img id="fluxGeneratedImage" src="" alt="Generated character" />
-            <a id="fluxImageDownload" href="#" download="character.jpg" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;font-weight:800;padding:10px 18px;border-radius:12px;text-decoration:none;text-align:center;">⬇ Download Image</a>
-          </div>
-          <div class="video-download-block" id="videoDownloadBlock">
-            <strong style="color:var(--success);">✅ Final Video Ready!</strong>
-            <video id="videoPlayer" controls playsinline></video>
-            <a id="videoDownloadLink" href="#" download="viralvidtech.mp4">⬇ Download Video</a>
-          </div>
-          <div id="previewPlaceholder" class="result-card" style="background:rgba(255,255,255,0.02);padding:24px;text-align:center;color:var(--muted);">
-            <div style="font-size:2.5rem;margin-bottom:12px;">🎬</div>
-            <p style="margin:0;">Your generated image and final video will appear here after each step.</p>
-          </div>
-          <div class="result-card" style="background:rgba(255,255,255,0.03);padding:14px;">
-            <strong>Pipeline</strong>
-            <p style="margin:8px 0 0;color:var(--muted);font-size:0.88rem;">
-              1. Claude generates the script<br>
-              2. Flux 2 Pro creates the character image<br>
-              3. Google TTS generates the voice for testing<br>
-              4. Wan animates the image → FFmpeg assembles + music + subtitles
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- PIPELINES DE PRODUCTION -->
     <section class="panel form-panel" id="wanDirect" style="display:grid;gap:20px;">
       <div>
@@ -415,6 +271,18 @@
         <div class="two-col">
           <div class="field"><label>Style de voix</label><select id="p1VoiceStyle"><option value="">Tous les styles</option></select></div>
           <div class="field"><label>Voix Fish Audio</label><select id="p1Voice"><option value="">Chargement…</option></select></div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="fish-btn" type="button" onclick="toggleClonePanel('p1')" style="font-size:0.85rem;padding:8px 14px;">🎤 Cloner ma voix</button>
+            <span class="premium-badge">✨ Premium</span>
+          </div>
+          <div id="p1ClonePanel" class="clone-panel" style="display:none;">
+            <div class="field"><label>Échantillon audio <small style="color:var(--muted);">(min. 10 sec)</small></label><input type="file" id="p1CloneFile" accept="audio/*"></div>
+            <div class="field"><label>Nom du clone</label><input type="text" id="p1CloneName" placeholder="Ex: Ma voix française"></div>
+            <button class="fish-btn" type="button" onclick="cloneVoice('p1')" style="align-self:start;">🎤 Cloner</button>
+            <div class="status" id="p1CloneStatus"></div>
+          </div>
         </div>
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
@@ -456,6 +324,18 @@
           <div class="field"><label>Style de voix</label><select id="p2VoiceStyle"><option value="">Tous les styles</option></select></div>
           <div class="field"><label>Voix Fish Audio</label><select id="p2Voice"><option value="">Chargement…</option></select></div>
         </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="fish-btn" type="button" onclick="toggleClonePanel('p2')" style="font-size:0.85rem;padding:8px 14px;">🎤 Cloner ma voix</button>
+            <span class="premium-badge">✨ Premium</span>
+          </div>
+          <div id="p2ClonePanel" class="clone-panel" style="display:none;">
+            <div class="field"><label>Échantillon audio <small style="color:var(--muted);">(min. 10 sec)</small></label><input type="file" id="p2CloneFile" accept="audio/*"></div>
+            <div class="field"><label>Nom du clone</label><input type="text" id="p2CloneName" placeholder="Ex: Ma voix française"></div>
+            <button class="fish-btn" type="button" onclick="cloneVoice('p2')" style="align-self:start;">🎤 Cloner</button>
+            <div class="status" id="p2CloneStatus"></div>
+          </div>
+        </div>
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p2Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
@@ -495,6 +375,18 @@
         <div class="two-col">
           <div class="field"><label>Style de voix</label><select id="p3VoiceStyle"><option value="">Tous les styles</option></select></div>
           <div class="field"><label>Voix Fish Audio</label><select id="p3Voice"><option value="">Chargement…</option></select></div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="fish-btn" type="button" onclick="toggleClonePanel('p3')" style="font-size:0.85rem;padding:8px 14px;">🎤 Cloner ma voix</button>
+            <span class="premium-badge">✨ Premium</span>
+          </div>
+          <div id="p3ClonePanel" class="clone-panel" style="display:none;">
+            <div class="field"><label>Échantillon audio <small style="color:var(--muted);">(min. 10 sec)</small></label><input type="file" id="p3CloneFile" accept="audio/*"></div>
+            <div class="field"><label>Nom du clone</label><input type="text" id="p3CloneName" placeholder="Ex: Ma voix française"></div>
+            <button class="fish-btn" type="button" onclick="cloneVoice('p3')" style="align-self:start;">🎤 Cloner</button>
+            <div class="status" id="p3CloneStatus"></div>
+          </div>
         </div>
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
@@ -557,6 +449,18 @@
           <label>Texte à lire</label>
           <textarea id="p4VoiceText" rows="2" placeholder="Texte pour la voix off…"></textarea>
         </div>
+        <div id="p4VoiceCloneRow" style="display:none;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button class="fish-btn" type="button" onclick="toggleClonePanel('p4')" style="font-size:0.85rem;padding:8px 14px;">🎤 Cloner ma voix</button>
+            <span class="premium-badge">✨ Premium</span>
+          </div>
+          <div id="p4ClonePanel" class="clone-panel" style="display:none;">
+            <div class="field"><label>Échantillon audio <small style="color:var(--muted);">(min. 10 sec)</small></label><input type="file" id="p4CloneFile" accept="audio/*"></div>
+            <div class="field"><label>Nom du clone</label><input type="text" id="p4CloneName" placeholder="Ex: Ma voix française"></div>
+            <button class="fish-btn" type="button" onclick="cloneVoice('p4')" style="align-self:start;">🎤 Cloner</button>
+            <div class="status" id="p4CloneStatus"></div>
+          </div>
+        </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p4UseMusic"><span class="toggle-slider"></span></label><span>Musique de fond (optionnel)</span></div>
         <div id="p4MusicArea" style="display:none;" class="field">
           <div style="display:flex;gap:10px;align-items:center;">
@@ -618,7 +522,7 @@
       <div class="detector-controls">
         <input id="detectorKeyword" type="text" placeholder="AI money"/>
         <select id="detectorPlatform"><option value="YouTube Shorts">YouTube Shorts</option><option value="TikTok">TikTok</option><option value="Instagram Reels">Instagram Reels</option><option value="Facebook Reels">Facebook Reels</option></select>
-        <select id="detectorLanguage"><option value="en">English</option><option value="fr">French</option><option value="es">Spanish</option><option value="pt">Portuguese</option></select>
+        <select id="detectorLanguage"><option value="">Chargement…</option></select>
         <button class="primary-btn" id="scanBtn">Scan trends</button>
       </div>
       <div class="detector-grid" id="detectorResults"></div>
@@ -779,8 +683,8 @@ async function generateContent(){
     }
     const s=getState();s.scripts+=1;s.revenue+=19;s.topNiche=niche;s.growth=Math.min(99,s.growth+7);saveState(s);updateDashboard();
     addActivity('Script generated',`Claude generated a script for "${niche}".`);
-    document.getElementById('videoCreation').scrollIntoView({behavior:'smooth'});
-  }catch(e){setStatus('status',e.message,'error');document.getElementById('step1Status').textContent='❌ Failed';document.getElementById('step1Status').style.color='var(--danger)';}
+    document.getElementById('wanDirect').scrollIntoView({behavior:'smooth'});
+  }catch(e){setStatus('status',e.message,'error');}
   finally{document.getElementById('generateBtn').disabled=false;}
 }
 
@@ -1016,9 +920,9 @@ const savedApiUrl=localStorage.getItem('viral_api_url');if(savedApiUrl)apiUrlInp
 apiUrlInput.addEventListener('input',()=>localStorage.setItem('viral_api_url',apiUrlInput.value.trim()));
 document.getElementById('generateBtn').addEventListener('click',generateContent);
 document.getElementById('copyBtn').addEventListener('click',copyScript);
-document.getElementById('generateImageBtn').addEventListener('click',generateImage);
-document.getElementById('generateVoiceBtn').addEventListener('click',generateVoice);
-document.getElementById('createVideoBtn').addEventListener('click',createVideo);
+document.getElementById('generateImageBtn')?.addEventListener('click',generateImage);
+document.getElementById('generateVoiceBtn')?.addEventListener('click',generateVoice);
+document.getElementById('createVideoBtn')?.addEventListener('click',createVideo);
 document.getElementById('scanBtn').addEventListener('click',scanTrends);
 document.getElementById('openLoginBtn').addEventListener('click',()=>authModal.classList.add('open'));
 document.getElementById('closeModalBtn').addEventListener('click',()=>authModal.classList.remove('open'));
@@ -1240,6 +1144,12 @@ async function loadPipelineData() {
         populateSelect(sel, langs, l => l.code, l => l.name, '— Langue —');
         if (cur) sel.value = cur;
       });
+      const detLang = document.getElementById('detectorLanguage');
+      if (detLang) {
+        const cur = detLang.value;
+        populateSelect(detLang, langs, l => l.code, l => l.name, '— Langue —');
+        if (cur) detLang.value = cur; else detLang.value = 'en';
+      }
     }
   } catch(e) {}
 
@@ -1300,6 +1210,46 @@ document.querySelectorAll('.pipeline-tab').forEach(tab => {
   });
 });
 
+// ── Voice cloning ─────────────────────────────────────────────────────
+function toggleClonePanel(prefix) {
+  const panel = document.getElementById(`${prefix}ClonePanel`);
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? 'grid' : 'none';
+}
+
+async function cloneVoice(prefix) {
+  const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
+  const fileInput = document.getElementById(`${prefix}CloneFile`);
+  const nameInput = document.getElementById(`${prefix}CloneName`);
+  if (!fileInput?.files[0]) return setStatus(`${prefix}CloneStatus`, 'Sélectionnez un fichier audio.', 'error');
+  if (!nameInput?.value.trim()) return setStatus(`${prefix}CloneStatus`, 'Entrez un nom pour le clone.', 'error');
+  setStatus(`${prefix}CloneStatus`, '⏳ Clonage en cours…', 'ready');
+  const fd = new FormData();
+  fd.append('audio_file', fileInput.files[0]);
+  fd.append('voice_name', nameInput.value.trim());
+  try {
+    const r = await fetch(`${apiUrl}/clone-voice`, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+    const voiceId = d.voice_id || d.id || '';
+    const voiceName = d.voice_name || nameInput.value.trim();
+    ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const opt = document.createElement('option');
+      opt.value = voiceId;
+      opt.textContent = `🎤 ${voiceName} (clone)`;
+      sel.appendChild(opt);
+    });
+    const thisSel = document.getElementById(`${prefix}Voice`);
+    if (thisSel) thisSel.value = voiceId;
+    setStatus(`${prefix}CloneStatus`, `✅ Voix "${voiceName}" clonée !`, 'success');
+    document.getElementById(`${prefix}ClonePanel`).style.display = 'none';
+  } catch(e) {
+    setStatus(`${prefix}CloneStatus`, e.message, 'error');
+  }
+}
+
 // ── Pipeline 4 — toggle image / video source ──────────────────────────
 document.querySelectorAll('input[name="p4ImgSrc"]').forEach(r => {
   r.addEventListener('change', () => {
@@ -1316,8 +1266,9 @@ document.querySelectorAll('input[name="p4VidSrc"]').forEach(r => {
   });
 });
 document.getElementById('p4UseVoice').addEventListener('change', e => {
-  document.getElementById('p4VoiceArea').style.display    = e.target.checked ? 'grid' : 'none';
-  document.getElementById('p4VoiceTextArea').style.display = e.target.checked ? '' : 'none';
+  document.getElementById('p4VoiceArea').style.display      = e.target.checked ? 'grid' : 'none';
+  document.getElementById('p4VoiceTextArea').style.display  = e.target.checked ? '' : 'none';
+  document.getElementById('p4VoiceCloneRow').style.display  = e.target.checked ? '' : 'none';
 });
 document.getElementById('p4UseMusic').addEventListener('change', e => {
   document.getElementById('p4MusicArea').style.display = e.target.checked ? '' : 'none';

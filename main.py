@@ -1894,6 +1894,7 @@ LANGUAGES = [
     {"code": "no", "name": "Norvégien"},
     {"code": "he", "name": "Hébreu"},
     {"code": "fa", "name": "Persan"},
+    {"code": "ht", "name": "Créole Haïtien"},
 ]
 
 MUSIC_CATALOG = [
