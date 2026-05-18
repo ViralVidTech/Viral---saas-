@@ -83,7 +83,7 @@ async def wan_generate(
         # T2V uses 1.3B model (~8 GB VRAM) — safe for sequential multi-scene generation
         cmd = [
             "python3", f"{WAN_CODE}/generate.py",
-            "--task", "t2v-A14B",
+            "--task", "ti2v-5B",
             "--size", size,
             "--ckpt_dir", WAN_T2V_CKPT,
             "--prompt", prompt,

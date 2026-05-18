@@ -1127,7 +1127,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
       const sz = Math.ceil(text.length / n);
       return Array.from({ length: n }, (_, i) => text.slice(i * sz, (i + 1) * sz).trim() || text.slice(0, 200));
     }
-    const sceneCount = 4;
+    const sceneCount = 3;
     const scenePrompts = splitScenes(script, sceneCount).map(s => s.slice(0, 200));
 
     const clipUrls = [];
