@@ -684,7 +684,7 @@ async def list_fish_voices():
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(
-                "https://api.fish.audio/v1/model",
+                "https://api.fish.audio/model",
                 headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
                 params={"page_size": 20, "sort_by": "task_count"},
             )
