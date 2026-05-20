@@ -2484,17 +2484,29 @@ async def _process_wan_animate_job(
     mode: str,
 ):
     base = WAN_ANIMATE_API_URL.rstrip("/")
+    print(f"[Pipeline 4] _process_wan_animate_job started — job_id={job_id} target={base!r} char_filename={char_filename!r} mode={mode!r}")
     try:
         # Step 1 — submit job to Vast.ai, get remote job_id instantly
-        async with httpx.AsyncClient(timeout=30) as client:
-            res = await client.post(
-                f"{base}/wan/animate",
-                files={
-                    "character_image": (char_filename, char_bytes, "image/jpeg"),
-                    "reference_video": ("reference.mp4", ref_bytes, "video/mp4"),
-                },
-                data={"mode": mode},
-            )
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                res = await client.post(
+                    f"{base}/wan/animate",
+                    files={
+                        "character_image": (char_filename, char_bytes, "image/jpeg"),
+                        "reference_video": ("reference.mp4", ref_bytes, "video/mp4"),
+                    },
+                    data={"mode": mode},
+                )
+        except httpx.ConnectError as e:
+            msg = str(e)
+            if "Name or service not known" in msg or "Errno -2" in msg or "getaddrinfo" in msg.lower():
+                WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"DNS resolution failed for WAN_ANIMATE_API_URL {base!r}: {msg}"}
+            else:
+                WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"Connection error to WAN_ANIMATE_API_URL {base!r}: {msg}"}
+            return
+        except httpx.TimeoutException:
+            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"Timeout connecting to WAN_ANIMATE_API_URL {base!r}"}
+            return
         if res.status_code != 200:
             try:
                 detail = res.json()
@@ -2545,6 +2557,15 @@ async def wan_animate(
     if not WAN_ANIMATE_API_URL:
         return JSONResponse(status_code=503, content={"error": "Wan Animate service not configured"})
 
+    print(
+        f"[Pipeline 4] /wan/animate called — "
+        f"mode={mode!r} "
+        f"character_image_url={character_image_url!r} "
+        f"reference_video_id={reference_video_id!r} "
+        f"character_image={getattr(character_image, 'filename', None)!r} "
+        f"reference_video={getattr(reference_video, 'filename', None)!r}"
+    )
+
     job_dir = os.path.join(WORK_DIR, f"animate_{uuid.uuid4().hex}")
     os.makedirs(job_dir, exist_ok=True)
 
@@ -2583,18 +2604,41 @@ async def wan_animate(
             return JSONResponse(status_code=400, content={"error": "Fournissez reference_video (fichier) ou reference_video_id"})
 
         # Read file bytes before handing off to background task
-        async with httpx.AsyncClient(timeout=30) as client:
-            if char_path.startswith("http"):
-                dl = await client.get(char_path)
+        if char_path.startswith("http"):
+            print(f"[Pipeline 4] Downloading character image from URL: {char_path!r}")
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    dl = await client.get(char_path)
                 char_bytes = dl.content
                 char_filename = "character.jpg"
-            else:
-                with open(char_path, "rb") as f:
-                    char_bytes = f.read()
-                char_filename = os.path.basename(char_path)
+                print(f"[Pipeline 4] Character image downloaded — {len(char_bytes)} bytes")
+            except httpx.ConnectError as e:
+                msg = str(e)
+                if "Name or service not known" in msg or "Errno -2" in msg or "getaddrinfo" in msg.lower():
+                    return JSONResponse(status_code=502, content={
+                        "error": f"DNS resolution failed for character_image_url {char_path!r}: {msg}"
+                    })
+                return JSONResponse(status_code=502, content={
+                    "error": f"Connection error downloading character_image_url {char_path!r}: {msg}"
+                })
+            except httpx.TimeoutException:
+                return JSONResponse(status_code=504, content={
+                    "error": f"Timeout downloading character_image_url {char_path!r}"
+                })
+            except Exception as e:
+                return JSONResponse(status_code=502, content={
+                    "error": f"Failed to download character_image_url {char_path!r}: {str(e)}"
+                })
+        else:
+            with open(char_path, "rb") as f:
+                char_bytes = f.read()
+            char_filename = os.path.basename(char_path)
+            print(f"[Pipeline 4] Character image read from disk: {char_path!r} — {len(char_bytes)} bytes")
 
+        print(f"[Pipeline 4] Reference video path: {ref_path!r}")
         with open(ref_path, "rb") as f:
             ref_bytes = f.read()
+        print(f"[Pipeline 4] Reference video read — {len(ref_bytes)} bytes")
 
         job_id = uuid.uuid4().hex
         WAN_ANIMATE_JOBS[job_id] = {"status": "processing"}
