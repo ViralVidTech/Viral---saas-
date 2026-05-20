@@ -708,14 +708,14 @@ function filterVoicesByStyle(voices, styleVal, voiceSel) {
   });
 }
 
-async function pollWithStatus(apiUrl, path, statusId, label, interval, maxTries) {
+async function pollWithStatus(apiUrl, path, statusId, label, interval, maxTries, extraHeaders) {
   interval = interval || 10000; maxTries = maxTries || 180;
   let tries = 0;
   return new Promise((resolve, reject) => {
     const iv = setInterval(async () => {
       tries++;
       try {
-        const r = await fetch(`${apiUrl}${path}`);
+        const r = await fetch(`${apiUrl}${path}`, extraHeaders ? { headers: extraHeaders } : undefined);
         const d = await r.json();
         if (d.status === 'done') { clearInterval(iv); resolve(d); }
         else if (d.status === 'error') { clearInterval(iv); reject(new Error(d.detail || 'Erreur')); }
@@ -1336,11 +1336,13 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
     if (refVideoId) fd.append('reference_video_id', refVideoId);
     else fd.append('reference_video', refVideoFile);
 
-    const animR = await fetch(`${apiUrl}/wan/animate`, { method: 'POST', body: fd });
+    // ngrok-skip-browser-warning bypasses the ngrok interstitial page on the Vast.ai server
+    const ngrokHeaders = { 'ngrok-skip-browser-warning': '1' };
+    const animR = await fetch(`${apiUrl}/wan/animate`, { method: 'POST', body: fd, headers: ngrokHeaders });
     if (!animR.ok) { const e = await animR.json().catch(() => ({})); throw new Error(e.error || `Wan Animate erreur ${animR.status}`); }
     const animD = await animR.json();
     if (!animD.job_id) throw new Error("Wan Animate n'a pas retourné de job_id");
-    const animDone = await pollWithStatus(apiUrl, `/wan/animate/status/${animD.job_id}`, 'p4Status', 'Wan Animate génère');
+    const animDone = await pollWithStatus(apiUrl, `/wan/animate/status/${animD.job_id}`, 'p4Status', 'Wan Animate génère', undefined, undefined, ngrokHeaders);
     let videoUrl = animDone.video_url ? `${apiUrl}${animDone.video_url}` : '';
     if (!videoUrl) throw new Error('Pas de video_url dans la réponse');
 

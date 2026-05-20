@@ -2496,6 +2496,7 @@ async def _process_wan_animate_job(
                         "reference_video": ("reference.mp4", ref_bytes, "video/mp4"),
                     },
                     data={"mode": mode},
+                    headers={"ngrok-skip-browser-warning": "1"},
                 )
         except httpx.ConnectError as e:
             msg = str(e)
@@ -2524,7 +2525,10 @@ async def _process_wan_animate_job(
             await asyncio.sleep(10)
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
-                    sr = await client.get(f"{base}/wan/status/{runpod_job_id}")
+                    sr = await client.get(
+                        f"{base}/wan/status/{runpod_job_id}",
+                        headers={"ngrok-skip-browser-warning": "1"},
+                    )
                 sd = sr.json()
             except Exception:
                 continue
@@ -2684,7 +2688,31 @@ async def wan_animate_video(job_id: str):
     video_url = job.get("video_url", "")
     if not video_url:
         return JSONResponse(status_code=404, content={"error": "URL vidéo introuvable"})
-    return RedirectResponse(url=video_url, status_code=302)
+    # Proxy the video through main.py instead of redirecting so the browser never
+    # hits the ngrok URL directly (which would show the browser-warning page).
+    print(f"[Pipeline 4] Proxying video from Vast.ai: {video_url!r}")
+    try:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+            upstream = await client.get(
+                video_url,
+                headers={"ngrok-skip-browser-warning": "1"},
+            )
+        if upstream.status_code != 200:
+            return JSONResponse(
+                status_code=upstream.status_code,
+                content={"error": f"Vast.ai returned {upstream.status_code} for video"},
+            )
+        return Response(
+            content=upstream.content,
+            media_type=upstream.headers.get("content-type", "video/mp4"),
+        )
+    except httpx.ConnectError as e:
+        msg = str(e)
+        if "Name or service not known" in msg or "Errno -2" in msg or "getaddrinfo" in msg.lower():
+            return JSONResponse(status_code=502, content={"error": f"DNS resolution failed for video URL {video_url!r}: {msg}"})
+        return JSONResponse(status_code=502, content={"error": f"Connection error fetching video {video_url!r}: {msg}"})
+    except httpx.TimeoutException:
+        return JSONResponse(status_code=504, content={"error": f"Timeout fetching video from Vast.ai: {video_url!r}"})
 
 
 @app.post("/voxtral/transcribe")
