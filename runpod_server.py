@@ -1,6 +1,7 @@
 import os, asyncio, uuid
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
+from fastapi.responses import StreamingResponse, JSONResponse, Response
+import httpx
 import uvicorn
 
 # Free fragmented VRAM between sequential Wan jobs
@@ -189,6 +190,52 @@ print(decoded[0])
     finally:
         if os.path.exists(audio_path):
             os.remove(audio_path)
+
+# ── LTX-Video 2.3 proxy ───────────────────────────────────────────────────────
+# ltx_server.py runs on port 8001 on the same machine.
+# All /ltx/* and /outputs/* requests are forwarded there so a single ngrok
+# tunnel on port 8000 covers both servers.
+
+LTX_LOCAL = "http://localhost:8001"
+
+
+async def _proxy_to_ltx(request: Request, path: str) -> Response:
+    url = f"{LTX_LOCAL}/{path}"
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            # Forward with the same method, headers (minus host), and body
+            fwd_headers = {
+                k: v for k, v in request.headers.items()
+                if k.lower() not in ("host", "content-length")
+            }
+            body = await request.body()
+            resp = await client.request(
+                method=request.method,
+                url=url,
+                headers=fwd_headers,
+                content=body,
+                params=dict(request.query_params),
+            )
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            headers=dict(resp.headers),
+        )
+    except httpx.ConnectError:
+        return JSONResponse(status_code=503, content={"error": "LTX server not reachable on port 8001"})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@app.api_route("/ltx/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def ltx_proxy(path: str, request: Request):
+    return await _proxy_to_ltx(request, f"ltx/{path}")
+
+
+@app.api_route("/outputs/{path:path}", methods=["GET"])
+async def ltx_outputs_proxy(path: str, request: Request):
+    return await _proxy_to_ltx(request, f"outputs/{path}")
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
