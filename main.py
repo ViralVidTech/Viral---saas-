@@ -41,6 +41,7 @@ QWEN_API_URL = os.getenv("QWEN_API_URL", "")
 WAN_ANIMATE_API_URL = os.getenv("WAN_ANIMATE_API_URL", "")
 VOXTRAL_API_URL = os.getenv("VOXTRAL_API_URL", "")
 LTX_API_URL = os.environ.get("LTX_API_URL", "")
+LTX_AUTH_TOKEN = os.environ.get("LTX_AUTH_TOKEN", "")
 
 AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
@@ -1795,8 +1796,9 @@ async def _process_ltx_job(
         if image_url:
             payload["image_url"] = image_url
 
+        ltx_headers = {"Authorization": f"Bearer {LTX_AUTH_TOKEN}"} if LTX_AUTH_TOKEN else {}
         async with httpx.AsyncClient(timeout=30) as client:
-            res = await client.post(f"{base}/ltx/generate", json=payload)
+            res = await client.post(f"{base}/ltx/generate", json=payload, headers=ltx_headers)
         if res.status_code != 200:
             try:
                 detail = res.json()
@@ -1814,7 +1816,7 @@ async def _process_ltx_job(
             await asyncio.sleep(10)
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
-                    sr = await client.get(f"{base}/ltx/status/{ltx_job_id}")
+                    sr = await client.get(f"{base}/ltx/status/{ltx_job_id}", headers=ltx_headers)
                 sd = sr.json()
             except Exception:
                 continue  # transient error, retry
