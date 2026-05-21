@@ -4,7 +4,16 @@ ltx_server.py — FastAPI inference server for LTX-Video 2.3 on Vast.ai
 
 Calls distilled.py directly via subprocess per job —
 the same subprocess isolation pattern used by runpod_server.py.
-Creates a multigpu stub on startup so ltx_pipelines imports don't crash.
+
+Performs two startup patches before any subprocess runs:
+  1. multigpu stub   — creates ltx_pipelines/multigpu/delegating_builder.py
+  2. encoder patch   — fixes encoder_configurator.py for transformers >= 4.47
+                       where Gemma3's vision_tower is SiglipVisionModel directly
+                       instead of SiglipModel (which had a .vision_model attribute)
+
+GEMMA_DIR must point to the root of a downloaded google/gemma-3-12b-it-qat-q4_0-unquantized
+model (i.e. the directory that directly contains tokenizer.model,
+preprocessor_config.json, and model-*.safetensors files).
 
 Endpoints:
     POST /ltx/generate         → {"job_id": "..."} (immediate)
@@ -35,6 +44,11 @@ LTX_PKG_SRC  = "/workspace/LTX-2/LTX-2/LTX-2/packages/ltx-pipelines/src"
 LTX_CORE_SRC = "/workspace/LTX-2/LTX-2/LTX-2/packages/ltx-core/src"
 LTX_CKPT     = "/workspace/ltx-2.3/ltx-2.3-22b-distilled.safetensors"
 LTX_UPSCALER = "/workspace/ltx-2.3/ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+# GEMMA_DIR must be the directory that directly contains tokenizer.model,
+# preprocessor_config.json, and model-*.safetensors — i.e. the root of a
+# downloaded google/gemma-3-12b-it-qat-q4_0-unquantized HuggingFace repo.
+# Example download: huggingface-cli download google/gemma-3-12b-it-qat-q4_0-unquantized \
+#                     --local-dir /workspace/gemma
 GEMMA_DIR    = "/workspace/gemma"
 OUTPUTS      = Path("/workspace/outputs")
 OUTPUTS.mkdir(parents=True, exist_ok=True)
@@ -117,6 +131,53 @@ def _ensure_multigpu_stub() -> None:
 
 
 _ensure_multigpu_stub()
+
+
+# ── encoder_configurator patch ────────────────────────────────────────────────
+# Root cause of 'SiglipVisionModel' object has no attribute 'vision_model':
+#
+#   encoder_configurator.py create_and_populate() does:
+#       v_model = model.model.vision_tower.vision_model
+#
+#   In transformers < 4.47, Gemma3's vision_tower was SiglipModel (a wrapper
+#   that owns .vision_model = SiglipVisionModel).  In transformers >= 4.47 the
+#   wrapper was removed and vision_tower IS SiglipVisionModel directly, so
+#   accessing .vision_model fails.
+#
+#   The patch replaces the hard-coded attribute chain with a getattr fallback
+#   that works for both versions:
+#       _tower = model.model.vision_tower
+#       v_model = getattr(_tower, 'vision_model', _tower)
+#
+#   Both SiglipModel.vision_model and SiglipVisionModel itself expose
+#   .embeddings.position_ids, so the rest of create_and_populate is unchanged.
+def _patch_encoder_configurator() -> None:
+    cfg_file = (
+        Path(LTX_CORE_SRC)
+        / "ltx_core" / "text_encoders" / "gemma" / "encoders" / "encoder_configurator.py"
+    )
+    if not cfg_file.exists():
+        log.warning("encoder_configurator.py not found at %s — skipping patch", cfg_file)
+        return
+
+    content = cfg_file.read_text()
+    old_line = "    v_model = model.model.vision_tower.vision_model"
+    if old_line not in content:
+        log.info("encoder_configurator.py already patched or line not found — skipping")
+        return
+
+    new_lines = (
+        "    # Compat patch applied by ltx_server.py at startup:\n"
+        "    # transformers >= 4.47 exposes SiglipVisionModel as vision_tower directly;\n"
+        "    # older versions wrapped it in SiglipModel(.vision_model).\n"
+        "    _tower = model.model.vision_tower\n"
+        "    v_model = getattr(_tower, 'vision_model', _tower)"
+    )
+    cfg_file.write_text(content.replace(old_line, new_lines))
+    log.info("Patched encoder_configurator.py for SiglipVisionModel/transformers compat")
+
+
+_patch_encoder_configurator()
 
 # ── State ─────────────────────────────────────────────────────────────────────
 JOBS: dict[str, dict] = {}
