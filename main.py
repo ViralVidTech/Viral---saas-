@@ -1778,6 +1778,39 @@ def duration_to_ltx_frames(duration_seconds: int, fps: int = 24) -> int:
     # 10s → 241 | 25s → 601 | 45s → 1081 | 60s → 1441
 
 
+def _build_video_prompt(script: str, video_type: str) -> str:
+    """
+    Transform a spoken script into a LTX-Video visual generation prompt.
+
+    LTX needs a VISUAL description, not a spoken narration. This function
+    wraps the raw script with strong visual directives per video_type so the
+    model renders the correct subject type instead of defaulting to a
+    realistic human narrator.
+    """
+    # Keep only the first 220 chars of the script — LTX prompt sweet-spot
+    excerpt = script.strip()[:220].rstrip(" ,;.")
+
+    if video_type == "talking_objects":
+        return (
+            "Anthropomorphic talking character — fruit, animal, or object with expressive visible mouth, "
+            "animated cartoon-realistic face, centered close-up framing, speaking directly to camera, "
+            "NO realistic human actor, vibrant colors, clear subject: "
+            + excerpt
+        )
+    elif video_type == "realistic_humans":
+        return (
+            "Realistic person speaking to camera, natural facial expressions, "
+            "professional or everyday setting, clear lighting, direct eye contact with lens: "
+            + excerpt
+        )
+    else:  # cinematic (default)
+        return (
+            "Cinematic shot, dramatic composition, realistic environment, "
+            "professional cinematography, motion, no forced talking close-up: "
+            + excerpt
+        )
+
+
 class LtxGenerateRequest(BaseModel):
     prompt: str
     image_url: str = ""
@@ -1881,9 +1914,16 @@ async def ltx_generate(req: LtxGenerateRequest):
     else:
         num_frames = duration_to_ltx_frames(10)   # default: 10 s → 241 frames
 
+    # Transform spoken script into a LTX-compatible visual prompt based on video_type
+    visual_prompt = _build_video_prompt(req.prompt, req.video_type)
+    print(
+        f"[LTX] video_type={req.video_type!r} | frames={num_frames} | "
+        f"resolution={w}x{h} | prompt_preview={visual_prompt[:80]!r}"
+    )
+
     job_id = uuid.uuid4().hex
     LTX_JOBS[job_id] = {"status": "processing"}
-    asyncio.create_task(_process_ltx_job(job_id, req.prompt, req.image_url, num_frames, w, h, req.video_type))
+    asyncio.create_task(_process_ltx_job(job_id, visual_prompt, req.image_url, num_frames, w, h, req.video_type))
 
     return JSONResponse(status_code=200, content={
         "job_id": job_id,
@@ -2014,6 +2054,29 @@ async def generate_script(req: GenerateScriptRequest):
     lang_map = {"fr": "français", "en": "anglais", "es": "espagnol", "pt": "portugais"}
     lang_label = lang_map.get(req.language.lower(), req.language)
 
+    # Video-type specific instructions injected into the Claude prompt
+    VIDEO_TYPE_RULES = {
+        "talking_objects": (
+            "Le sujet PRINCIPAL de la vidéo est un OBJET, FRUIT ou ANIMAL ANTHROPOMORPHIQUE qui parle. "
+            "JAMAIS un humain réaliste. Le personnage doit avoir une bouche visible et expressive, "
+            "un visage animé, être cadré en gros plan centré face caméra. "
+            "Exemples de sujets : une pomme qui parle, un avocat anthropomorphe, un chien expressif, "
+            "une carotte avec des yeux et une bouche. "
+            "Le script doit décrire ce personnage non-humain parlant directement à la caméra."
+        ),
+        "cinematic": (
+            "La vidéo est cinématographique : plans dramatiques, environnements réalistes, mouvement de caméra. "
+            "Le script décrit des scènes visuelles avec profondeur et atmosphère. "
+            "Pas de personnage forçant à parler en gros plan — privilegier les paysages, l'action, l'ambiance."
+        ),
+        "realistic_humans": (
+            "La vidéo met en scène UN HUMAIN RÉALISTE qui parle face caméra. "
+            "Expressions naturelles, cadre professionnel ou quotidien. "
+            "Le script est une narration directe par cette personne."
+        ),
+    }
+    vt_rule = VIDEO_TYPE_RULES.get(req.video_type, VIDEO_TYPE_RULES["cinematic"])
+
     prompt = f"""Tu es un expert en création de contenu vidéo viral pour les réseaux sociaux.
 
 Génère un script vidéo de {req.duration_seconds} secondes pour les paramètres suivants :
@@ -2022,9 +2085,11 @@ Génère un script vidéo de {req.duration_seconds} secondes pour les paramètre
 - Style narratif : {req.narrative_style}
 - Langue : {lang_label}
 
-RÈGLES :
+CONTRAINTE ABSOLUE SUR LE TYPE DE VIDÉO :
+{vt_rule}
+
+RÈGLES GÉNÉRALES :
 - Le script doit correspondre exactement au style narratif demandé
-- Adapte le ton et le rythme au type de vidéo
 - Durée cible : {req.duration_seconds} secondes à l'oral (environ {req.duration_seconds * 2} mots)
 - Écris uniquement le texte à dire, sans didascalies ni indications de mise en scène
 - Pas de titres de section, juste le texte continu à narrer

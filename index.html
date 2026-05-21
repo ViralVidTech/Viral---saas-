@@ -752,11 +752,11 @@ async function pollWithStatus(apiUrl, path, statusId, label, interval, maxTries,
   });
 }
 
-async function generateScript(apiUrl, niche, narStyle, lang, scriptEl, statusId) {
+async function generateScript(apiUrl, niche, narStyle, lang, scriptEl, statusId, videoType = 'cinematic', durationSecs = 10) {
   setStatus(statusId, '⏳ Claude génère le script…', 'ready');
   const res = await fetch(`${apiUrl}/generate-script`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ niche, narrative_style: narStyle, language: lang, user_plan: 'premium', video_type: 'Vidéo stock', duration_seconds: 60 })
+    body: JSON.stringify({ niche, narrative_style: narStyle, language: lang, user_plan: 'premium', video_type: videoType, duration_seconds: durationSecs })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Erreur script ${res.status}`); }
   const data = await res.json();
@@ -767,12 +767,15 @@ async function generateScript(apiUrl, niche, narStyle, lang, scriptEl, statusId)
 
 async function runGenerateScript(prefix) {
     console.log('runGenerateScript called with prefix:', prefix);
-    const niche = document.getElementById(prefix + 'Niche')?.value || 'Motivation';
-    const lang = document.getElementById(prefix + 'Lang')?.value || 'fr';
-    const style = document.getElementById(prefix + 'NarStyle')?.value || 'Inspirant';
-    const scriptEl = document.getElementById(prefix + 'Script');
+    const niche     = document.getElementById(prefix + 'Niche')?.value || 'Motivation';
+    const lang      = document.getElementById(prefix + 'Lang')?.value || 'fr';
+    const style     = document.getElementById(prefix + 'NarStyle')?.value || 'Inspirant';
+    const videoType = document.getElementById(prefix + 'VideoType')?.value || 'cinematic';
+    const duration  = parseInt(document.getElementById(prefix + 'Duration')?.value || '10');
+    const scriptEl  = document.getElementById(prefix + 'Script');
+    const apiUrl    = getPipelineApiUrl();
 
-    console.log('Niche:', niche, 'Lang:', lang, 'Style:', style);
+    console.log('Niche:', niche, 'Lang:', lang, 'Style:', style, 'VideoType:', videoType, 'Duration:', duration);
     console.log('Script element:', scriptEl);
 
     if (!scriptEl) {
@@ -783,10 +786,9 @@ async function runGenerateScript(prefix) {
     scriptEl.value = 'Génération en cours...';
 
     try {
-        const url = 'https://viral-saas.onrender.com/generate-script';
-        console.log('Calling URL:', url);
+        console.log('Calling URL:', apiUrl + '/generate-script');
 
-        const res = await fetch(url, {
+        const res = await fetch(`${apiUrl}/generate-script`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -794,8 +796,8 @@ async function runGenerateScript(prefix) {
                 narrative_style: style,
                 language: lang,
                 user_plan: 'premium',
-                video_type: 'Vidéo stock',
-                duration_seconds: 60
+                video_type: videoType,
+                duration_seconds: duration
             })
         });
 
@@ -1159,16 +1161,17 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     const musicUrl = document.getElementById('p1Music')?.value || '';
     const wantSubs = document.getElementById('p1Subs')?.checked || false;
 
-    // 1 — Script
+    const videoType1 = document.getElementById('p1VideoType')?.value || 'cinematic';
+    const duration1  = parseInt(document.getElementById('p1Duration')?.value || '10');
+
+    // 1 — Script (pass video_type so Claude generates appropriate content)
     let script = document.getElementById('p1Script').value.trim();
     if (document.getElementById('p1AutoScript').checked || !script) {
       if (!niche) { btn.disabled = false; return setStatus('p1Status', 'Choisissez une niche.', 'error'); }
-      script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p1Script'), 'p1Status');
+      script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p1Script'), 'p1Status', videoType1, duration1);
     }
 
     // 2 — Generate video via LTX-Video 2.3
-    const videoType1    = document.getElementById('p1VideoType')?.value || 'cinematic';
-    const duration1     = parseInt(document.getElementById('p1Duration')?.value || '10');
     setStatus('p1Status', '🎬 LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1219,16 +1222,17 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     const musicUrl = document.getElementById('p2Music')?.value || '';
     const wantSubs = document.getElementById('p2Subs')?.checked || false;
 
-    // 1 — Script
+    const videoType2 = document.getElementById('p2VideoType')?.value || 'cinematic';
+    const duration2  = parseInt(document.getElementById('p2Duration')?.value || '10');
+
+    // 1 — Script (pass video_type so Claude generates appropriate content)
     let script = document.getElementById('p2Script').value.trim();
     if (document.getElementById('p2AutoScript').checked || !script) {
       if (!niche) { btn.disabled = false; return setStatus('p2Status', 'Choisissez une niche.', 'error'); }
-      script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p2Script'), 'p2Status');
+      script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p2Script'), 'p2Status', videoType2, duration2);
     }
 
     // 2 — LTX-Video 2.3 T2V
-    const videoType2    = document.getElementById('p2VideoType')?.value || 'cinematic';
-    const duration2     = parseInt(document.getElementById('p2Duration')?.value || '10');
     setStatus('p2Status', '⏳ LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
