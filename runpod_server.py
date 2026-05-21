@@ -158,11 +158,11 @@ print(decoded[0])
             os.remove(audio_path)
 
 # ── LTX-Video 2.3 proxy ───────────────────────────────────────────────────────
-# ltx_server.py runs on port 1111 on the same machine (Vast.ai exposes 1111 publicly).
+# ltx_server.py runs on port 8001 on the same machine.
 # All /ltx/* and /outputs/* requests are forwarded there so a single ngrok
 # tunnel on port 8000 covers both servers.
 
-LTX_LOCAL = "http://localhost:1111"
+LTX_LOCAL = "http://localhost:8001"
 
 
 async def _proxy_to_ltx(request: Request, path: str) -> Response:
@@ -188,7 +188,7 @@ async def _proxy_to_ltx(request: Request, path: str) -> Response:
             headers=dict(resp.headers),
         )
     except httpx.ConnectError:
-        return JSONResponse(status_code=503, content={"error": "LTX server not reachable on port 1111"})
+        return JSONResponse(status_code=503, content={"error": "LTX server not reachable on port 8001"})
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
