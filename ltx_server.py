@@ -60,20 +60,60 @@ log = logging.getLogger("ltx_server")
 
 
 # ── multigpu stub ─────────────────────────────────────────────────────────────
-# ltx_pipelines/__init__.py imports ltx_pipelines.multigpu which doesn't ship
-# with the installed package.  Create a minimal stub so the import succeeds.
+# ltx_pipelines/utils/blocks.py line 69 does:
+#   from ltx_pipelines.multigpu.delegating_builder import DelegatingBuilder
+# That submodule doesn't ship with the package.  We need TWO files:
+#   multigpu/__init__.py          — makes it a package
+#   multigpu/delegating_builder.py — where DelegatingBuilder actually lives
+#
+# DelegatingBuilder[LTXModel] is used only as a type annotation in
+# DiffusionStage.__init__; it is NEVER instantiated in single-GPU inference.
+# The class therefore only needs to be importable and support Generic[T] syntax.
 def _ensure_multigpu_stub() -> None:
     stub_dir = Path(LTX_PKG_SRC) / "ltx_pipelines" / "multigpu"
-    stub_file = stub_dir / "__init__.py"
-    if stub_file.exists():
-        return
     stub_dir.mkdir(parents=True, exist_ok=True)
-    stub_file.write_text(
-        "# Auto-generated stub — satisfies 'from ltx_pipelines import multigpu'\n"
-        "class DelegatingBuilder:\n"
-        "    pass\n"
-    )
-    log.info("Created multigpu stub at %s", stub_file)
+
+    # ── multigpu/__init__.py ──────────────────────────────────────────────────
+    init_file = stub_dir / "__init__.py"
+    if not init_file.exists():
+        init_file.write_text(
+            "# Auto-generated stub — single-GPU mode\n"
+            "from ltx_pipelines.multigpu.delegating_builder import DelegatingBuilder\n"
+            "__all__ = ['DelegatingBuilder']\n"
+        )
+        log.info("Created multigpu __init__ stub at %s", init_file)
+
+    # ── multigpu/delegating_builder.py — the actual import target ────────────
+    db_file = stub_dir / "delegating_builder.py"
+    if not db_file.exists():
+        db_file.write_text(
+            "# Auto-generated stub — single-GPU mode.\n"
+            "#\n"
+            "# ltx_pipelines/utils/blocks.py imports:\n"
+            "#   from ltx_pipelines.multigpu.delegating_builder import DelegatingBuilder\n"
+            "#\n"
+            "# DelegatingBuilder[T] appears only as a type annotation in\n"
+            "# DiffusionStage.__init__; it is never instantiated during single-GPU\n"
+            "# inference (transformer_builder defaults to None, so the real Builder\n"
+            "# is constructed instead).  This stub makes the import succeed and\n"
+            "# supports DelegatingBuilder[LTXModel] generic syntax at runtime.\n"
+            "from __future__ import annotations\n"
+            "\n"
+            "from typing import Generic, TypeVar\n"
+            "\n"
+            "_T = TypeVar('_T')\n"
+            "\n"
+            "\n"
+            "class DelegatingBuilder(Generic[_T]):\n"
+            "    \"\"\"Stub: real multi-GPU DelegatingBuilder not available in single-GPU mode.\"\"\"\n"
+            "\n"
+            "    def __getattr__(self, name: str) -> object:\n"
+            "        raise RuntimeError(\n"
+            "            f'DelegatingBuilder.{name} was called — this is a single-GPU stub; '\n"
+            "            'multi-GPU inference is not configured.'\n"
+            "        )\n"
+        )
+        log.info("Created multigpu delegating_builder stub at %s", db_file)
 
 
 _ensure_multigpu_stub()
