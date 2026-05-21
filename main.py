@@ -16,6 +16,7 @@ app = FastAPI()
 VIDEO_JOBS = {}
 WAN_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
 WAN_ANIMATE_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
+LTX_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_url": str, "detail": str}
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,6 +40,7 @@ RUNPOD_TIMEOUT = float(os.getenv("RUNPOD_TIMEOUT", "300"))
 QWEN_API_URL = os.getenv("QWEN_API_URL", "")
 WAN_ANIMATE_API_URL = os.getenv("WAN_ANIMATE_API_URL", "")
 VOXTRAL_API_URL = os.getenv("VOXTRAL_API_URL", "")
+LTX_API_URL = os.environ.get("LTX_API_URL", "")
 
 AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
@@ -1744,6 +1746,133 @@ async def wan_status(job_id: str):
 @app.get("/wan/video/{job_id}")
 async def wan_video(job_id: str):
     job = WAN_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    if job["status"] != "done":
+        return JSONResponse(status_code=425, content={"error": "Vidéo pas encore prête", "status": job["status"]})
+    video_url = job.get("video_url", "")
+    if not video_url:
+        return JSONResponse(status_code=404, content={"error": "URL vidéo introuvable"})
+    return RedirectResponse(url=video_url, status_code=302)
+
+
+# ── LTX-Video 2.3 ─────────────────────────────────────────────────────────────
+
+LTX_RESOLUTION_MAP = {
+    "portrait":  (704, 1280),
+    "480p":      (1280, 704),
+    "720p":      (1280, 704),
+    "landscape": (1280, 704),
+}
+
+
+class LtxGenerateRequest(BaseModel):
+    prompt: str
+    image_url: str = ""
+    num_frames: int = 97
+    width: int = 1280
+    height: int = 704
+    resolution: str = ""   # "portrait" | "480p" | "720p" — overrides width/height when set
+
+
+async def _process_ltx_job(
+    job_id: str,
+    prompt: str,
+    image_url: str,
+    num_frames: int,
+    width: int,
+    height: int,
+) -> None:
+    base = LTX_API_URL.rstrip("/")
+    try:
+        # Step 1 — submit job to LTX server
+        payload: dict = {
+            "prompt": prompt,
+            "num_frames": num_frames,
+            "width": width,
+            "height": height,
+        }
+        if image_url:
+            payload["image_url"] = image_url
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(f"{base}/ltx/generate", json=payload)
+        if res.status_code != 200:
+            try:
+                detail = res.json()
+            except Exception:
+                detail = res.text[:500]
+            LTX_JOBS[job_id] = {"status": "error", "detail": f"LTX submit error {res.status_code}: {detail}"}
+            return
+        ltx_job_id = res.json().get("job_id")
+        if not ltx_job_id:
+            LTX_JOBS[job_id] = {"status": "error", "detail": "LTX server did not return job_id"}
+            return
+
+        # Step 2 — poll every 10 s, max 180 attempts (30 min)
+        for _ in range(180):
+            await asyncio.sleep(10)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    sr = await client.get(f"{base}/ltx/status/{ltx_job_id}")
+                sd = sr.json()
+            except Exception:
+                continue  # transient error, retry
+            if sd.get("status") == "completed":
+                raw_url = sd.get("video_url", "")
+                full_url = f"{base}{raw_url}" if raw_url.startswith("/") else raw_url
+                LTX_JOBS[job_id] = {"status": "done", "video_url": full_url}
+                return
+            if sd.get("status") == "failed":
+                LTX_JOBS[job_id] = {"status": "error", "detail": sd.get("error", "LTX generation failed")}
+                return
+        LTX_JOBS[job_id] = {"status": "error", "detail": "Timeout: LTX job did not complete in 30 minutes"}
+
+    except Exception as exc:
+        LTX_JOBS[job_id] = {"status": "error", "detail": str(exc)}
+
+
+@app.post("/ltx/generate")
+async def ltx_generate(req: LtxGenerateRequest):
+    if not LTX_API_URL:
+        return JSONResponse(status_code=503, content={"error": "LTX_API_URL non configurée"})
+    if not req.prompt.strip():
+        return JSONResponse(status_code=400, content={"error": "Le prompt est vide"})
+
+    w, h = LTX_RESOLUTION_MAP.get(req.resolution, (req.width, req.height))
+
+    job_id = uuid.uuid4().hex
+    LTX_JOBS[job_id] = {"status": "processing"}
+    asyncio.create_task(_process_ltx_job(job_id, req.prompt, req.image_url, req.num_frames, w, h))
+
+    return JSONResponse(status_code=200, content={
+        "job_id": job_id,
+        "status": "processing",
+        "poll_url": f"/ltx/status/{job_id}",
+    })
+
+
+@app.get("/ltx/status/{job_id}")
+async def ltx_status(job_id: str):
+    job = LTX_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    if job["status"] == "done":
+        return JSONResponse(status_code=200, content={
+            "status": "done",
+            "video_url": f"/ltx/video/{job_id}",
+        })
+    if job["status"] == "error":
+        return JSONResponse(status_code=200, content={
+            "status": "error",
+            "detail": job.get("detail", "Erreur inconnue"),
+        })
+    return JSONResponse(status_code=200, content={"status": "processing"})
+
+
+@app.get("/ltx/video/{job_id}")
+async def ltx_video(job_id: str):
+    job = LTX_JOBS.get(job_id)
     if not job:
         return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     if job["status"] != "done":

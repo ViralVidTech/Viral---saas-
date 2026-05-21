@@ -1140,16 +1140,16 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
       script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p1Script'), 'p1Status');
     }
 
-    // 2 — Generate single Wan T2V clip from full script (looped to voice duration in _process_video)
-    setStatus('p1Status', '🎬 Génération vidéo Wan…', 'ready');
-    const wanR = await fetch(`${apiUrl}/wan/generate`, {
+    // 2 — Generate video via LTX-Video 2.3
+    setStatus('p1Status', '🎬 LTX 2.3 génère la vidéo…', 'ready');
+    const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, num_frames: 81, num_inference_steps: steps })
+      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, num_frames: 97 })
     });
-    if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
-    const wanD = await wanR.json();
-    if (!wanD.job_id) throw new Error("Wan n'a pas retourné de job_id");
-    const done = await pollWithStatus(apiUrl, `/wan/status/${wanD.job_id}`, 'p1Status', 'Vidéo');
+    if (!ltxR.ok) throw new Error(`LTX erreur ${ltxR.status}`);
+    const ltxD = await ltxR.json();
+    if (!ltxD.job_id) throw new Error("LTX n'a pas retourné de job_id");
+    const done = await pollWithStatus(apiUrl, `/ltx/status/${ltxD.job_id}`, 'p1Status', 'LTX génère la vidéo');
     const clipUrls = [`${apiUrl}${done.video_url}`];
     let videoUrl = clipUrls[0];
 
@@ -1198,17 +1198,17 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
       script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p2Script'), 'p2Status');
     }
 
-    // 2 — Wan T2V
-    setStatus('p2Status', '⏳ Wan 2.2 génère la vidéo…', 'ready');
-    const wanR = await fetch(`${apiUrl}/wan/generate`, {
+    // 2 — LTX-Video 2.3 T2V
+    setStatus('p2Status', '⏳ LTX 2.3 génère la vidéo…', 'ready');
+    const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0,200), resolution: res, num_frames: 81, num_inference_steps: steps })
+      body: JSON.stringify({ prompt: script.slice(0, 200), resolution: res, num_frames: 97 })
     });
-    if (!wanR.ok) throw new Error(`Wan erreur ${wanR.status}`);
-    const wanD = await wanR.json();
-    if (!wanD.job_id) throw new Error("Wan n'a pas retourné de job_id");
-    const wanDone = await pollWithStatus(apiUrl, `/wan/status/${wanD.job_id}`, 'p2Status', 'Wan génère la vidéo');
-    let videoUrl = `${apiUrl}${wanDone.video_url}`;
+    if (!ltxR.ok) throw new Error(`LTX erreur ${ltxR.status}`);
+    const ltxD = await ltxR.json();
+    if (!ltxD.job_id) throw new Error("LTX n'a pas retourné de job_id");
+    const ltxDone = await pollWithStatus(apiUrl, `/ltx/status/${ltxD.job_id}`, 'p2Status', 'LTX génère la vidéo');
+    let videoUrl = `${apiUrl}${ltxDone.video_url}`;
 
     // 3 — Fish Audio
     let audioUrl = '';
