@@ -201,4 +201,4 @@ async def health():
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    uvicorn.run("ltx_server:app", host="0.0.0.0", port=8000, workers=1)
+    uvicorn.run("ltx_server:app", host="0.0.0.0", port=36292, workers=1)
