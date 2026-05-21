@@ -12,9 +12,8 @@ app = FastAPI(title="ViralVidTech RunPod API", version="4.0.0")
 WORK_DIR = "/workspace/outputs"
 os.makedirs(WORK_DIR, exist_ok=True)
 
-WAN_CODE         = "/workspace/wan2.2-code"
-WAN_T2V_CKPT     = "/workspace/wan2.2-t2v"
-WAN_ANIMATE_CKPT = "/workspace/wan2.2-animate"
+WAN_CODE     = "/workspace/wan2.2-code"
+WAN_T2V_CKPT = "/workspace/wan2.2-t2v"
 
 # Env passed to every generate.py subprocess
 WAN_ENV = {
@@ -63,35 +62,20 @@ async def wan_generate(
     size: str = Form("832*480"),
     sample_steps: int = Form(20),
     frame_num: int = Form(81),
-    image_url: str = Form(""),
 ):
     job_id = uuid.uuid4().hex
     output_path = f"{WORK_DIR}/{job_id}.mp4"
-    if image_url:
-        # I2V still uses A14B (only run for Pipeline 4 single-clip animation)
-        cmd = [
-            "python3", f"{WAN_CODE}/generate.py",
-            "--task", "i2v-A14B",
-            "--size", size,
-            "--ckpt_dir", WAN_ANIMATE_CKPT,
-            "--image", image_url,
-            "--prompt", prompt,
-            "--sample_steps", str(sample_steps),
-            "--frame_num", str(frame_num),
-            "--save_file", output_path
-        ]
-    else:
-        cmd = [
-            "python3", f"{WAN_CODE}/generate.py",
-            "--task", "t2v-A14B",
-            "--size", size,
-            "--ckpt_dir", WAN_T2V_CKPT,
-            "--prompt", prompt,
-            "--sample_steps", str(sample_steps),
-            "--frame_num", str(frame_num),
-            "--offload_model", "True",
-            "--save_file", output_path
-        ]
+    cmd = [
+        "python3", f"{WAN_CODE}/generate.py",
+        "--task", "t2v-A14B",
+        "--size", size,
+        "--ckpt_dir", WAN_T2V_CKPT,
+        "--prompt", prompt,
+        "--sample_steps", str(sample_steps),
+        "--frame_num", str(frame_num),
+        "--offload_model", "True",
+        "--save_file", output_path
+    ]
     WAN_JOBS[job_id] = {"status": "processing"}
     asyncio.create_task(_run_wan_job(job_id, cmd))
     return JSONResponse({"job_id": job_id, "status": "processing"})
@@ -123,28 +107,10 @@ async def wan_animate(
     mode: str = Form("animation"),
     sample_steps: int = Form(20),
 ):
-    job_id = uuid.uuid4().hex
-    img_path = f"{WORK_DIR}/{job_id}_img.jpg"
-    vid_path = f"{WORK_DIR}/{job_id}_ref.mp4"
-    out_path = f"{WORK_DIR}/{job_id}.mp4"
-    with open(img_path, "wb") as f:
-        f.write(await character_image.read())
-    with open(vid_path, "wb") as f:
-        f.write(await reference_video.read())
-    cmd = [
-        "python3", f"{WAN_CODE}/generate.py",
-        "--task", "i2v-A14B",
-        "--ckpt_dir", WAN_ANIMATE_CKPT,
-        "--image", img_path,
-        "--pose_video", vid_path,
-        "--save_file", out_path,
-        "--sample_steps", str(sample_steps),
-        "--size", "832*480",
-        "--offload_model", "True",
-    ]
-    WAN_JOBS[job_id] = {"status": "processing"}
-    asyncio.create_task(_run_wan_job(job_id, cmd))
-    return JSONResponse({"job_id": job_id, "status": "processing"})
+    return JSONResponse(
+        status_code=503,
+        content={"error": "Wan Animate service discontinued. Use /ltx/generate for image-to-video generation."},
+    )
 
 @app.post("/qwen/generate-image")
 async def qwen_generate():
@@ -192,11 +158,11 @@ print(decoded[0])
             os.remove(audio_path)
 
 # ── LTX-Video 2.3 proxy ───────────────────────────────────────────────────────
-# ltx_server.py runs on port 8001 on the same machine.
+# ltx_server.py runs on port 1111 on the same machine (Vast.ai exposes 1111 publicly).
 # All /ltx/* and /outputs/* requests are forwarded there so a single ngrok
 # tunnel on port 8000 covers both servers.
 
-LTX_LOCAL = "http://localhost:8001"
+LTX_LOCAL = "http://localhost:1111"
 
 
 async def _proxy_to_ltx(request: Request, path: str) -> Response:
@@ -222,7 +188,7 @@ async def _proxy_to_ltx(request: Request, path: str) -> Response:
             headers=dict(resp.headers),
         )
     except httpx.ConnectError:
-        return JSONResponse(status_code=503, content={"error": "LTX server not reachable on port 8001"})
+        return JSONResponse(status_code=503, content={"error": "LTX server not reachable on port 1111"})
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
