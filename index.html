@@ -220,7 +220,7 @@
         <button class="pipeline-tab active" data-tab="p1">Pipeline 1<small>Script + Image → Wan T2V</small></button>
         <button class="pipeline-tab" data-tab="p2">Pipeline 2<small>Script + Scènes Wan</small></button>
         <button class="pipeline-tab" data-tab="p3">Pipeline 3<small>Vidéo Stock</small></button>
-        <button class="pipeline-tab" data-tab="p4">Pipeline 4<small>Animation Wan</small></button>
+        <button class="pipeline-tab" data-tab="p4">Pipeline 4<small>Coming Soon</small></button>
       </div>
 
       <!-- ── PIPELINE 1 ── -->
@@ -1306,6 +1306,11 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
 
 // ── PIPELINE 4: Flux/Upload → Wan Animate (multi-scene) → Fish Audio → Voxtral ─────
 document.getElementById('p4Btn').addEventListener('click', async () => {
+  // Pipeline 4 (Wan Animate) — service discontinued, not compatible with LTX T2V
+  setStatus('p4Status', '⏳ Pipeline 4 — Character animation temporarily unavailable. Coming soon.', 'error');
+  return;
+
+  /* eslint-disable no-unreachable */
   const apiUrl = getPipelineApiUrl();
   if (!apiUrl) return setStatus('p4Status', "Entrez d'abord l'URL de l'API.", 'error');
   const btn = document.getElementById('p4Btn');
