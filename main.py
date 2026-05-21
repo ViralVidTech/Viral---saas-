@@ -380,6 +380,10 @@ class VideoRequest(BaseModel):
     wan_video2: str = ""
     wan_video3: str = ""
     wan_video4: str = ""
+    wan_video5: str = ""
+    wan_video6: str = ""
+    wan_video7: str = ""
+    wan_video8: str = ""
     duration: int = 30
     subtitles: str = ""
 
@@ -1321,7 +1325,10 @@ async def _process_video(job_id: str, req: VideoRequest):
             (req.text8 or "").strip()[:200],
         ]
 
-        wan_clip_list = [u for u in [req.wan_video, req.wan_video2, req.wan_video3, req.wan_video4] if u]
+        wan_clip_list = [u for u in [
+            req.wan_video, req.wan_video2, req.wan_video3, req.wan_video4,
+            req.wan_video5, req.wan_video6, req.wan_video7, req.wan_video8,
+        ] if u]
         if wan_clip_list:
             valid_video_urls_raw = wan_clip_list
         else:
@@ -1377,6 +1384,8 @@ async def _process_video(job_id: str, req: VideoRequest):
         if voice_url:
             voice_path = os.path.join(job_dir, "voice.mp3")
             await download_audio_file(voice_url, voice_path)
+            _voice_size = os.path.getsize(voice_path) if os.path.exists(voice_path) else 0
+            print(f"[Pass2 job={job_id}] voice.mp3 downloaded: exists={os.path.exists(voice_path)} size={_voice_size} bytes url={voice_url!r}")
             measured = get_audio_duration(voice_path)
             if measured > 1.0:
                 real_total_duration = measured
@@ -1420,7 +1429,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             src, dst = args
             if not os.path.exists(src):
                 return
-            loop_args = ["-stream_loop", "-1"] if nb_clips_total == 1 else []
+            loop_args = ["-stream_loop", "-1"] if (nb_clips_total == 1 or bool(wan_clip_list)) else []
             run_cmd([
                 "ffmpeg", "-y", *loop_args, "-i", src,
                 "-t", str(clip_duration),
@@ -1515,14 +1524,16 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         with_voice_path = os.path.join(job_dir, "with_voice.mp4")
         if has_voice:
-            await async_run_cmd([
+            _p2_cmd = [
                 "ffmpeg", "-y",
                 "-i", stitched_path, "-i", voice_path,
                 "-map", "0:v:0", "-map", "1:a:0",
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
-                with_voice_path
-            ])
+                with_voice_path,
+            ]
+            print(f"[Pass2 FFmpeg job={job_id}] {' '.join(_p2_cmd)}")
+            await async_run_cmd(_p2_cmd)
         else:
             shutil.copy2(stitched_path, with_voice_path)
 
@@ -1563,11 +1574,13 @@ async def _process_video(job_id: str, req: VideoRequest):
         if music_url:
             music_path = os.path.join(job_dir, "music.mp3")
             await download_audio_file(music_url, music_path)
+            _music_size = os.path.getsize(music_path) if os.path.exists(music_path) else 0
+            print(f"[Pass3 job={job_id}] music.mp3 downloaded: exists={os.path.exists(music_path)} size={_music_size} bytes url={music_url!r}")
         has_music = bool(music_path and os.path.exists(music_path))
         print(f"[FFmpeg P3 job={job_id}] input={os.path.exists(with_subtitles_path)} music_url={repr(music_url)} music_exists={has_music}")
 
         if has_music:
-            await async_run_cmd([
+            _p3_cmd = [
                 "ffmpeg", "-y",
                 "-fflags", "+genpts",
                 "-i", with_subtitles_path,
@@ -1578,8 +1591,10 @@ async def _process_video(job_id: str, req: VideoRequest):
                 "-map", "0:v:0", "-map", "[aout]",
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                 "-movflags", "+faststart",
-                output_path
-            ])
+                output_path,
+            ]
+            print(f"[Pass3 FFmpeg job={job_id}] {' '.join(_p3_cmd)}")
+            await async_run_cmd(_p3_cmd)
         else:
             shutil.copy2(with_subtitles_path, output_path)
 

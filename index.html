@@ -816,6 +816,24 @@ async function generateSubtitles(apiUrl, audioUrl, lang, statusId) {
   } catch { return ''; }
 }
 
+function splitScenes(text, numScenes) {
+  if (!text || !text.trim()) return Array(numScenes).fill('character animation scene');
+  const cleaned = text.trim();
+  const sentences = cleaned.match(/[^.!?]+[.!?]*/g) || [cleaned];
+  const filtered = sentences.map(s => s.trim()).filter(Boolean);
+  if (!filtered.length) return Array(numScenes).fill(cleaned);
+  if (filtered.length >= numScenes) {
+    const size = Math.ceil(filtered.length / numScenes);
+    return Array.from({ length: numScenes }, (_, i) =>
+      filtered.slice(i * size, (i + 1) * size).join(' ').trim() || filtered[filtered.length - 1]
+    );
+  }
+  const scenes = [...filtered];
+  let i = 0;
+  while (scenes.length < numScenes) scenes.push(filtered[i++ % filtered.length]);
+  return scenes;
+}
+
 async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId) {
   setStatus(statusId, '⏳ FFmpeg assemble la vidéo finale…', 'ready');
   const clips = Array.isArray(videoUrls) ? videoUrls : [videoUrls];
@@ -824,6 +842,10 @@ async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitl
     wan_video2: clips[1] || '',
     wan_video3: clips[2] || '',
     wan_video4: clips[3] || '',
+    wan_video5: clips[4] || '',
+    wan_video6: clips[5] || '',
+    wan_video7: clips[6] || '',
+    wan_video8: clips[7] || '',
     audio_url: audioUrl,
     music_url: musicUrl,
     subtitles,
@@ -1282,7 +1304,7 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 
-// ── PIPELINE 4: Flux/Upload → Wan Animate → Fish Audio → Voxtral ─────
+// ── PIPELINE 4: Flux/Upload → Wan Animate (multi-scene) → Fish Audio → Voxtral ─────
 document.getElementById('p4Btn').addEventListener('click', async () => {
   const apiUrl = getPipelineApiUrl();
   if (!apiUrl) return setStatus('p4Status', "Entrez d'abord l'URL de l'API.", 'error');
@@ -1295,8 +1317,10 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
     const useVoice = document.getElementById('p4UseVoice').checked;
     const useMusic = document.getElementById('p4UseMusic').checked;
     const wantSubs = document.getElementById('p4Subs').checked;
+    // ngrok-skip-browser-warning bypasses the ngrok interstitial page on the Vast.ai server
+    const ngrokHeaders = { 'ngrok-skip-browser-warning': '1' };
 
-    // 1a — Character image
+    // 1a — Character image (resolved once; reused for every scene)
     let charImageUrl = '', charImageFile = null;
     if (imgSrc === 'describe') {
       const desc = document.getElementById('p4ImgDesc').value.trim();
@@ -1316,7 +1340,7 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
       charImageFile = fi.files[0];
     }
 
-    // 1b — Reference video
+    // 1b — Reference video (same for every scene)
     let refVideoId = '', refVideoFile = null;
     if (vidSrc === 'library') {
       refVideoId = document.getElementById('p4RefVideo').value;
@@ -1327,24 +1351,40 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
       refVideoFile = vi.files[0];
     }
 
-    // 2 — Wan Animate
-    setStatus('p4Status', '⏳ Wan Animate génère l\'animation…', 'ready');
-    const fd = new FormData();
-    fd.append('mode', 'animation'); fd.append('resolution', '1280x720'); fd.append('num_frames', '81');
-    if (charImageUrl) fd.append('character_image_url', charImageUrl);
-    else fd.append('character_image', charImageFile);
-    if (refVideoId) fd.append('reference_video_id', refVideoId);
-    else fd.append('reference_video', refVideoFile);
+    // 1c — Split script into 4 scenes
+    const baseText = (useVoice ? document.getElementById('p4VoiceText').value.trim() : '') ||
+                     document.getElementById('p4ImgDesc').value.trim() ||
+                     'character animation';
+    const scenePrompts = splitScenes(baseText, 4);
 
-    // ngrok-skip-browser-warning bypasses the ngrok interstitial page on the Vast.ai server
-    const ngrokHeaders = { 'ngrok-skip-browser-warning': '1' };
-    const animR = await fetch(`${apiUrl}/wan/animate`, { method: 'POST', body: fd, headers: ngrokHeaders });
-    if (!animR.ok) { const e = await animR.json().catch(() => ({})); throw new Error(e.error || `Wan Animate erreur ${animR.status}`); }
-    const animD = await animR.json();
-    if (!animD.job_id) throw new Error("Wan Animate n'a pas retourné de job_id");
-    const animDone = await pollWithStatus(apiUrl, `/wan/animate/status/${animD.job_id}`, 'p4Status', 'Wan Animate génère', undefined, undefined, ngrokHeaders);
-    let videoUrl = animDone.video_url ? `${apiUrl}${animDone.video_url}` : '';
-    if (!videoUrl) throw new Error('Pas de video_url dans la réponse');
+    // 2 — Wan Animate: one job per scene, same character + reference video each time
+    const clipUrls = [];
+    for (let i = 0; i < scenePrompts.length; i++) {
+      setStatus('p4Status', `⏳ Wan Animate scène ${i + 1}/${scenePrompts.length}…`, 'ready');
+      const fd = new FormData();
+      fd.append('mode', 'animation');
+      fd.append('resolution', '1280x720');
+      fd.append('num_frames', '81');
+      if (charImageUrl) fd.append('character_image_url', charImageUrl);
+      else fd.append('character_image', charImageFile);
+      if (refVideoId) fd.append('reference_video_id', refVideoId);
+      else fd.append('reference_video', refVideoFile);
+
+      const animR = await fetch(`${apiUrl}/wan/animate`, { method: 'POST', body: fd, headers: ngrokHeaders });
+      if (!animR.ok) { const e = await animR.json().catch(() => ({})); throw new Error(e.error || `Wan Animate scène ${i + 1} erreur ${animR.status}`); }
+      const animD = await animR.json();
+      if (!animD.job_id) throw new Error(`Wan Animate scène ${i + 1}: pas de job_id`);
+      const animDone = await pollWithStatus(
+        apiUrl, `/wan/animate/status/${animD.job_id}`,
+        'p4Status', `Wan Animate scène ${i + 1}/${scenePrompts.length}`,
+        undefined, undefined, ngrokHeaders
+      );
+      const clipUrl = animDone.video_url ? `${apiUrl}${animDone.video_url}` : '';
+      if (!clipUrl) throw new Error(`Pas de video_url pour scène ${i + 1}`);
+      clipUrls.push(clipUrl);
+    }
+
+    let videoUrl = clipUrls[0];
 
     // 3 — Optional Fish Audio
     let audioUrl = '';
@@ -1361,13 +1401,14 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
       if (!subtitles) setStatus('p4Status', '⚠️ Sous-titres non disponibles, on continue sans eux.', 'ready');
     }
 
-    // 5 — Optional FFmpeg
+    // 5 — FFmpeg: assemble all scene clips + voice + music
     const musicUrl = useMusic ? document.getElementById('p4Music').value : '';
-    if (audioUrl || musicUrl || subtitles) videoUrl = await assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, 'p4Status');
+    if (audioUrl || musicUrl || subtitles || clipUrls.length > 1)
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p4Status');
 
     showPipelineVideo('p4VideoPlayer', 'p4DownloadLink', 'p4VideoBlock', videoUrl);
     setStatus('p4Status', '✅ Pipeline 4 terminé !', 'success');
-    addActivity('Pipeline 4 terminé', 'Animation Wan générée');
+    addActivity('Pipeline 4 terminé', `Animation Wan — ${scenePrompts.length} scènes`);
   } catch(e) { setStatus('p4Status', `❌ ${e.message}`, 'error'); }
   finally { btn.disabled = false; }
 });
