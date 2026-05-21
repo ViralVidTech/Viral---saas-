@@ -2,9 +2,9 @@
 """
 ltx_server.py — FastAPI inference server for LTX-Video 2.3 on Vast.ai
 
-Calls `python3 -m ltx_pipelines.distilled` via subprocess per job —
+Calls distilled.py directly via subprocess per job —
 the same subprocess isolation pattern used by runpod_server.py.
-This avoids in-process import issues (e.g. ltx_pipelines.multigpu).
+Creates a multigpu stub on startup so ltx_pipelines imports don't crash.
 
 Endpoints:
     POST /ltx/generate         → {"job_id": "..."} (immediate)
@@ -57,6 +57,26 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("ltx_server")
+
+
+# ── multigpu stub ─────────────────────────────────────────────────────────────
+# ltx_pipelines/__init__.py imports ltx_pipelines.multigpu which doesn't ship
+# with the installed package.  Create a minimal stub so the import succeeds.
+def _ensure_multigpu_stub() -> None:
+    stub_dir = Path(LTX_PKG_SRC) / "ltx_pipelines" / "multigpu"
+    stub_file = stub_dir / "__init__.py"
+    if stub_file.exists():
+        return
+    stub_dir.mkdir(parents=True, exist_ok=True)
+    stub_file.write_text(
+        "# Auto-generated stub — satisfies 'from ltx_pipelines import multigpu'\n"
+        "class DelegatingBuilder:\n"
+        "    pass\n"
+    )
+    log.info("Created multigpu stub at %s", stub_file)
+
+
+_ensure_multigpu_stub()
 
 # ── State ─────────────────────────────────────────────────────────────────────
 JOBS: dict[str, dict] = {}
