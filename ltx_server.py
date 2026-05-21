@@ -90,19 +90,23 @@ async def _run_job(job_id: str, req: GenerateRequest) -> None:
                 f.write(resp.content)
             log.info("[%s] Conditioning image saved (%d bytes)", job_id, len(resp.content))
 
-        # Build CLI command for python -m ltx_pipelines.distilled
+        # Call distilled.py directly (avoids __init__.py importing multigpu)
+        distilled_script = (
+            "/workspace/LTX-2/LTX-2/LTX-2/packages/ltx-pipelines/src"
+            "/ltx_pipelines/distilled.py"
+        )
         cmd = [
-            "python3", "-m", "ltx_pipelines.distilled",
-            "--distilled-checkpoint-path", LTX_CKPT,
-            "--spatial-upsampler-path",    LTX_UPSCALER,
-            "--gemma-root",                GEMMA_DIR,
-            "--prompt",                    req.prompt,
-            "--output-path",               out_path,
-            "--num-frames",                str(req.num_frames),
-            "--width",                     str(req.width),
-            "--height",                    str(req.height),
-            "--frame-rate",                "24",
-            "--quantization",              "fp8-cast",   # cast bf16→fp8 on the fly
+            "python3", distilled_script,
+            "--checkpoint-path",       LTX_CKPT,
+            "--spatial-upsampler-path", LTX_UPSCALER,
+            "--gemma-root",            GEMMA_DIR,
+            "--prompt",                req.prompt,
+            "--output-path",           out_path,
+            "--num-frames",            str(req.num_frames),
+            "--width",                 str(req.width),
+            "--height",                str(req.height),
+            "--frame-rate",            "24",
+            "--quantization",          "fp8-cast",
         ]
         # Image-to-video: condition on first frame (frame index 0, strength 1.0)
         if img_path:
