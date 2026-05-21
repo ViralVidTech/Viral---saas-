@@ -5,11 +5,15 @@ ltx_server.py — FastAPI inference server for LTX-Video 2.3 on Vast.ai
 Calls distilled.py directly via subprocess per job —
 the same subprocess isolation pattern used by runpod_server.py.
 
-Performs two startup patches before any subprocess runs:
-  1. multigpu stub   — creates ltx_pipelines/multigpu/delegating_builder.py
-  2. encoder patch   — fixes encoder_configurator.py for transformers >= 4.47
+Performs startup patches before any subprocess runs:
+  1. encoder patch   — fixes encoder_configurator.py for transformers >= 4.47
                        where Gemma3's vision_tower is SiglipVisionModel directly
                        instead of SiglipModel (which had a .vision_model attribute)
+  2. rope_config     — fixes rope_local_base_freq missing in transformers >= 4.51
+  3. gemma config    — copies rope_scaling['type'] → 'rope_type' for transformers >= 4.46
+
+NOTE: the ltx_pipelines.multigpu stub (blocks.py issue #216) is now applied
+once at infra level by startup.sh — not here.
 
 GEMMA_DIR must point to the root of a downloaded google/gemma-3-12b-it-qat-q4_0-unquantized
 model (i.e. the directory that directly contains tokenizer.model,
@@ -40,9 +44,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-LTX_PKG_SRC  = "/workspace/LTX-2/LTX-2/LTX-2/packages/ltx-pipelines/src"
-LTX_CORE_SRC = "/workspace/LTX-2/LTX-2/LTX-2/packages/ltx-core/src"
-LTX_CKPT     = "/workspace/ltx-2.3/ltx-2.3-22b-distilled.safetensors"
+LTX_ROOT     = "/workspace/LTX-2"
+LTX_PKG_SRC  = f"{LTX_ROOT}/packages/ltx-pipelines/src"
+LTX_CORE_SRC = f"{LTX_ROOT}/packages/ltx-core/src"
+VENV_PYTHON  = f"{LTX_ROOT}/.venv/bin/python3"
+LTX_CKPT     = "/workspace/ltx-2.3/ltx-2.3-22b-distilled-1.1.safetensors"
 LTX_UPSCALER = "/workspace/ltx-2.3/ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
 # GEMMA_DIR must be the directory that directly contains tokenizer.model,
 # preprocessor_config.json, and model-*.safetensors — i.e. the root of a
@@ -53,16 +59,12 @@ GEMMA_DIR    = "/workspace/gemma"
 OUTPUTS      = Path("/workspace/outputs")
 OUTPUTS.mkdir(parents=True, exist_ok=True)
 
-# Env forwarded to every subprocess — adds the ltx_pipelines src to PYTHONPATH
+# The venv created by `uv sync --frozen` carries all LTX deps;
+# no PYTHONPATH manipulation needed — VENV_PYTHON resolves packages itself.
 LTX_ENV = {
     **os.environ,
     "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
     "CUDA_LAUNCH_BLOCKING": "0",
-    "PYTHONPATH": os.pathsep.join(filter(None, [
-        LTX_PKG_SRC,
-        LTX_CORE_SRC,
-        os.environ.get("PYTHONPATH", ""),
-    ])),
 }
 
 logging.basicConfig(
@@ -71,66 +73,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("ltx_server")
-
-
-# ── multigpu stub ─────────────────────────────────────────────────────────────
-# ltx_pipelines/utils/blocks.py line 69 does:
-#   from ltx_pipelines.multigpu.delegating_builder import DelegatingBuilder
-# That submodule doesn't ship with the package.  We need TWO files:
-#   multigpu/__init__.py          — makes it a package
-#   multigpu/delegating_builder.py — where DelegatingBuilder actually lives
-#
-# DelegatingBuilder[LTXModel] is used only as a type annotation in
-# DiffusionStage.__init__; it is NEVER instantiated in single-GPU inference.
-# The class therefore only needs to be importable and support Generic[T] syntax.
-def _ensure_multigpu_stub() -> None:
-    stub_dir = Path(LTX_PKG_SRC) / "ltx_pipelines" / "multigpu"
-    stub_dir.mkdir(parents=True, exist_ok=True)
-
-    # ── multigpu/__init__.py ──────────────────────────────────────────────────
-    init_file = stub_dir / "__init__.py"
-    if not init_file.exists():
-        init_file.write_text(
-            "# Auto-generated stub — single-GPU mode\n"
-            "from ltx_pipelines.multigpu.delegating_builder import DelegatingBuilder\n"
-            "__all__ = ['DelegatingBuilder']\n"
-        )
-        log.info("Created multigpu __init__ stub at %s", init_file)
-
-    # ── multigpu/delegating_builder.py — the actual import target ────────────
-    db_file = stub_dir / "delegating_builder.py"
-    if not db_file.exists():
-        db_file.write_text(
-            "# Auto-generated stub — single-GPU mode.\n"
-            "#\n"
-            "# ltx_pipelines/utils/blocks.py imports:\n"
-            "#   from ltx_pipelines.multigpu.delegating_builder import DelegatingBuilder\n"
-            "#\n"
-            "# DelegatingBuilder[T] appears only as a type annotation in\n"
-            "# DiffusionStage.__init__; it is never instantiated during single-GPU\n"
-            "# inference (transformer_builder defaults to None, so the real Builder\n"
-            "# is constructed instead).  This stub makes the import succeed and\n"
-            "# supports DelegatingBuilder[LTXModel] generic syntax at runtime.\n"
-            "from __future__ import annotations\n"
-            "\n"
-            "from typing import Generic, TypeVar\n"
-            "\n"
-            "_T = TypeVar('_T')\n"
-            "\n"
-            "\n"
-            "class DelegatingBuilder(Generic[_T]):\n"
-            "    \"\"\"Stub: real multi-GPU DelegatingBuilder not available in single-GPU mode.\"\"\"\n"
-            "\n"
-            "    def __getattr__(self, name: str) -> object:\n"
-            "        raise RuntimeError(\n"
-            "            f'DelegatingBuilder.{name} was called — this is a single-GPU stub; '\n"
-            "            'multi-GPU inference is not configured.'\n"
-            "        )\n"
-        )
-        log.info("Created multigpu delegating_builder stub at %s", db_file)
-
-
-_ensure_multigpu_stub()
 
 
 # ── encoder_configurator patch ────────────────────────────────────────────────
@@ -205,6 +147,50 @@ def _patch_rope_config() -> None:
 
 _patch_rope_config()
 
+
+# ── gemma/config.json patch ───────────────────────────────────────────────────
+# Patch — KeyError: 'rope_type' (transformers >= 4.46)
+#   Newer transformers reads rope_scaling['rope_type'] directly.
+#   Older Gemma config files (google/gemma-3-12b-it-qat-q4_0-unquantized) store
+#   the same value under the key 'type' instead of 'rope_type'.
+#   Fix: copy 'type' → 'rope_type' in every rope_scaling dict found in config.json
+#   (top-level and nested under text_config).
+def _patch_gemma_config() -> None:
+    import json
+    cfg_file = Path(GEMMA_DIR) / "config.json"
+    if not cfg_file.exists():
+        log.warning("gemma/config.json not found at %s — skipping rope_type patch", cfg_file)
+        return
+
+    data = json.loads(cfg_file.read_text())
+    patched = False
+
+    def _fix_rope(obj: dict, label: str) -> None:
+        nonlocal patched
+        rs = obj.get("rope_scaling")
+        if not isinstance(rs, dict):
+            return
+        if "rope_type" in rs:
+            log.info("gemma/config.json [%s]: rope_type already present", label)
+            return
+        if "type" not in rs:
+            log.info("gemma/config.json [%s]: no 'type' key in rope_scaling — skipping", label)
+            return
+        rs["rope_type"] = rs["type"]
+        patched = True
+        log.info("gemma/config.json [%s]: added rope_type='%s'", label, rs["rope_type"])
+
+    _fix_rope(data, "root")
+    if "text_config" in data:
+        _fix_rope(data["text_config"], "text_config")
+
+    if patched:
+        cfg_file.write_text(json.dumps(data, indent=2))
+        log.info("gemma/config.json: rope_type patch written")
+
+
+_patch_gemma_config()
+
 # ── State ─────────────────────────────────────────────────────────────────────
 JOBS: dict[str, dict] = {}
 _job_sem = asyncio.Semaphore(1)   # one GPU job at a time
@@ -237,13 +223,10 @@ async def _run_job(job_id: str, req: GenerateRequest) -> None:
                 f.write(resp.content)
             log.info("[%s] Conditioning image saved (%d bytes)", job_id, len(resp.content))
 
-        # Call distilled.py directly (avoids __init__.py importing multigpu)
-        distilled_script = (
-            "/workspace/LTX-2/LTX-2/LTX-2/packages/ltx-pipelines/src"
-            "/ltx_pipelines/distilled.py"
-        )
+        # Call distilled.py directly via subprocess isolation
+        distilled_script = f"{LTX_PKG_SRC}/ltx_pipelines/distilled.py"
         cmd = [
-            "python3", distilled_script,
+            VENV_PYTHON, distilled_script,
             "--distilled-checkpoint-path", LTX_CKPT,
             "--spatial-upsampler-path", LTX_UPSCALER,
             "--gemma-root",            GEMMA_DIR,
