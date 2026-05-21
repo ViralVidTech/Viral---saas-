@@ -1899,7 +1899,54 @@ async def ltx_video(job_id: str):
     video_url = job.get("video_url", "")
     if not video_url:
         return JSONResponse(status_code=404, content={"error": "URL vidéo introuvable"})
-    return RedirectResponse(url=video_url, status_code=302)
+
+    # Proxy server-side : le navigateur reste sur HTTPS Render,
+    # Render fetch la vidéo en HTTP depuis Vast.ai et la stream directement.
+    # Évite le mixed-content HTTP→HTTPS et les erreurs CORS sur <video>.
+    client = httpx.AsyncClient(
+        timeout=httpx.Timeout(15.0, read=600.0),
+        follow_redirects=True,
+    )
+    try:
+        req = client.build_request("GET", video_url)
+        resp = await client.send(req, stream=True)
+
+        if resp.status_code == 404:
+            await client.aclose()
+            return JSONResponse(status_code=404, content={"error": "Vidéo introuvable sur le serveur LTX"})
+        if resp.status_code >= 400:
+            await client.aclose()
+            return JSONResponse(status_code=502, content={"error": f"Erreur serveur LTX ({resp.status_code})"})
+
+        async def _stream_and_close():
+            try:
+                async for chunk in resp.aiter_bytes(65536):
+                    yield chunk
+            finally:
+                await resp.aclose()
+                await client.aclose()
+
+        proxy_headers = {
+            "Content-Disposition": f'inline; filename="{job_id}.mp4"',
+            "Cache-Control": "no-cache",
+            "Accept-Ranges": "none",
+        }
+        if "content-length" in resp.headers:
+            proxy_headers["Content-Length"] = resp.headers["content-length"]
+
+        return StreamingResponse(
+            _stream_and_close(),
+            status_code=200,
+            media_type="video/mp4",
+            headers=proxy_headers,
+        )
+
+    except httpx.TimeoutException:
+        await client.aclose()
+        return JSONResponse(status_code=504, content={"error": "Timeout connexion serveur LTX"})
+    except Exception as exc:
+        await client.aclose()
+        return JSONResponse(status_code=502, content={"error": f"Erreur proxy vidéo : {str(exc)}"})
 
 
 class GenerateScriptRequest(BaseModel):
