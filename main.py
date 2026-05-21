@@ -40,8 +40,10 @@ RUNPOD_TIMEOUT = float(os.getenv("RUNPOD_TIMEOUT", "300"))
 QWEN_API_URL = os.getenv("QWEN_API_URL", "")
 WAN_ANIMATE_API_URL = os.getenv("WAN_ANIMATE_API_URL", "")
 VOXTRAL_API_URL = os.getenv("VOXTRAL_API_URL", "")
-LTX_API_URL = os.environ.get("LTX_API_URL", "")
-LTX_AUTH_TOKEN = os.environ.get("LTX_AUTH_TOKEN", "")
+LTX_API_URL     = os.environ.get("LTX_API_URL", "")
+LTX_AUTH_TOKEN  = os.environ.get("LTX_AUTH_TOKEN", "")
+LTX_TIMEOUT     = int(os.environ.get("LTX_TIMEOUT", "1800"))    # secondes — défaut 30 min
+LTX_MAX_RETRIES = int(os.environ.get("LTX_MAX_RETRIES", "3"))   # tentatives submit
 
 AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
@@ -1797,22 +1799,37 @@ async def _process_ltx_job(
             payload["image_url"] = image_url
 
         ltx_headers = {"Authorization": f"Bearer {LTX_AUTH_TOKEN}"} if LTX_AUTH_TOKEN else {}
-        async with httpx.AsyncClient(timeout=30) as client:
-            res = await client.post(f"{base}/ltx/generate", json=payload, headers=ltx_headers)
-        if res.status_code != 200:
+
+        # Step 1 — submit avec retry exponentiel
+        ltx_job_id = None
+        last_submit_err = ""
+        for attempt in range(LTX_MAX_RETRIES):
             try:
-                detail = res.json()
-            except Exception:
-                detail = res.text[:500]
-            LTX_JOBS[job_id] = {"status": "error", "detail": f"LTX submit error {res.status_code}: {detail}"}
-            return
-        ltx_job_id = res.json().get("job_id")
+                async with httpx.AsyncClient(timeout=30) as client:
+                    res = await client.post(f"{base}/ltx/generate", json=payload, headers=ltx_headers)
+                if res.status_code == 200:
+                    ltx_job_id = res.json().get("job_id")
+                    break
+                try:
+                    detail = res.json()
+                except Exception:
+                    detail = res.text[:500]
+                last_submit_err = f"HTTP {res.status_code}: {detail}"
+            except Exception as exc:
+                last_submit_err = str(exc)
+            if attempt < LTX_MAX_RETRIES - 1:
+                await asyncio.sleep(2 ** attempt)   # 1s, 2s, ...
+
         if not ltx_job_id:
-            LTX_JOBS[job_id] = {"status": "error", "detail": "LTX server did not return job_id"}
+            LTX_JOBS[job_id] = {
+                "status": "error",
+                "detail": f"LTX submit échoué après {LTX_MAX_RETRIES} tentatives : {last_submit_err}",
+            }
             return
 
-        # Step 2 — poll every 10 s, max 180 attempts (30 min)
-        for _ in range(180):
+        # Step 2 — poll toutes les 10 s (max LTX_TIMEOUT secondes)
+        _poll_max = max(1, LTX_TIMEOUT // 10)
+        for _ in range(_poll_max):
             await asyncio.sleep(10)
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
@@ -1828,7 +1845,7 @@ async def _process_ltx_job(
             if sd.get("status") == "failed":
                 LTX_JOBS[job_id] = {"status": "error", "detail": sd.get("error", "LTX generation failed")}
                 return
-        LTX_JOBS[job_id] = {"status": "error", "detail": "Timeout: LTX job did not complete in 30 minutes"}
+        LTX_JOBS[job_id] = {"status": "error", "detail": f"Timeout : job LTX non terminé après {LTX_TIMEOUT}s"}
 
     except Exception as exc:
         LTX_JOBS[job_id] = {"status": "error", "detail": str(exc)}
@@ -2629,69 +2646,7 @@ async def _process_wan_animate_job(
     ref_bytes: bytes,
     mode: str,
 ):
-    base = "http://localhost:8000"
-    print(f"[Pipeline 4] _process_wan_animate_job started — job_id={job_id} target={base!r} char_filename={char_filename!r} mode={mode!r}")
-    try:
-        # Step 1 — submit job to Vast.ai, get remote job_id instantly
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                res = await client.post(
-                    f"{base}/wan/animate",
-                    files={
-                        "character_image": (char_filename, char_bytes, "image/jpeg"),
-                        "reference_video": ("reference.mp4", ref_bytes, "video/mp4"),
-                    },
-                    data={"mode": mode},
-                    headers={"ngrok-skip-browser-warning": "1"},
-                )
-        except httpx.ConnectError as e:
-            msg = str(e)
-            if "Name or service not known" in msg or "Errno -2" in msg or "getaddrinfo" in msg.lower():
-                WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"DNS resolution failed for WAN_ANIMATE_API_URL {base!r}: {msg}"}
-            else:
-                WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"Connection error to WAN_ANIMATE_API_URL {base!r}: {msg}"}
-            return
-        except httpx.TimeoutException:
-            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"Timeout connecting to WAN_ANIMATE_API_URL {base!r}"}
-            return
-        if res.status_code != 200:
-            try:
-                detail = res.json()
-            except Exception:
-                detail = res.text[:500]
-            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": f"Vast.ai submit erreur {res.status_code}: {detail}"}
-            return
-        runpod_job_id = res.json().get("job_id")
-        if not runpod_job_id:
-            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": "Vast.ai n'a pas retourné de job_id"}
-            return
-
-        # Step 2 — poll every 10 seconds, max 180 attempts (30 min)
-        for attempt in range(180):
-            await asyncio.sleep(10)
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    sr = await client.get(
-                        f"{base}/wan/status/{runpod_job_id}",
-                        headers={"ngrok-skip-browser-warning": "1"},
-                    )
-                sd = sr.json()
-            except Exception:
-                continue
-            if sd.get("status") == "done":
-                break
-            if sd.get("status") == "error":
-                WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": sd.get("detail", "Erreur Vast.ai inconnue")}
-                return
-        else:
-            WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": "Timeout: Vast.ai n'a pas terminé en 30 minutes"}
-            return
-
-        # Step 3 — store Vast.ai video URL for redirect
-        WAN_ANIMATE_JOBS[job_id] = {"status": "done", "video_url": f"{base}/wan/video/{runpod_job_id}"}
-
-    except Exception as e:
-        WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": str(e)}
+    WAN_ANIMATE_JOBS[job_id] = {"status": "error", "detail": "Wan Animate service discontinued"}
 
 
 @app.post("/wan/animate")
@@ -2704,106 +2659,12 @@ async def wan_animate(
     character_image: UploadFile = File(None),
     reference_video: UploadFile = File(None),
 ):
-    if not WAN_ANIMATE_API_URL:
-        return JSONResponse(status_code=503, content={"error": "Wan Animate service not configured"})
-
-    print(
-        f"[Pipeline 4] /wan/animate called — "
-        f"mode={mode!r} "
-        f"character_image_url={character_image_url!r} "
-        f"reference_video_id={reference_video_id!r} "
-        f"character_image={getattr(character_image, 'filename', None)!r} "
-        f"reference_video={getattr(reference_video, 'filename', None)!r}"
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": "Wan Animate service discontinued. Use /ltx/generate for image-to-video generation.",
+        },
     )
-
-    job_dir = os.path.join(WORK_DIR, f"animate_{uuid.uuid4().hex}")
-    os.makedirs(job_dir, exist_ok=True)
-
-    try:
-        char_path = None
-        if character_image and character_image.filename:
-            ext = os.path.splitext(character_image.filename)[1].lower()
-            if ext not in {".jpg", ".jpeg", ".png"}:
-                return JSONResponse(status_code=400, content={"error": "character_image doit être jpg ou png"})
-            char_path = os.path.join(job_dir, f"character{ext}")
-            with open(char_path, "wb") as f:
-                f.write(await character_image.read())
-        elif character_image_url.strip():
-            char_path = character_image_url.strip()
-
-        ref_path = None
-        if reference_video and reference_video.filename:
-            ext = os.path.splitext(reference_video.filename)[1].lower()
-            if ext != ".mp4":
-                return JSONResponse(status_code=400, content={"error": "reference_video doit être mp4"})
-            ref_path = os.path.join(job_dir, "reference.mp4")
-            with open(ref_path, "wb") as f:
-                f.write(await reference_video.read())
-        elif reference_video_id.strip():
-            entry = _REF_VIDEO_FLAT.get(reference_video_id.strip())
-            if not entry:
-                return JSONResponse(
-                    status_code=404,
-                    content={"error": f"reference_video_id inconnu: '{reference_video_id}'"},
-                )
-            ref_path = entry["path"] or reference_video_id.strip()
-
-        if not char_path:
-            return JSONResponse(status_code=400, content={"error": "Fournissez character_image (fichier) ou character_image_url"})
-        if not ref_path:
-            return JSONResponse(status_code=400, content={"error": "Fournissez reference_video (fichier) ou reference_video_id"})
-
-        # Read file bytes before handing off to background task
-        if char_path.startswith("http"):
-            print(f"[Pipeline 4] Downloading character image from URL: {char_path!r}")
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    dl = await client.get(char_path)
-                char_bytes = dl.content
-                char_filename = "character.jpg"
-                print(f"[Pipeline 4] Character image downloaded — {len(char_bytes)} bytes")
-            except httpx.ConnectError as e:
-                msg = str(e)
-                if "Name or service not known" in msg or "Errno -2" in msg or "getaddrinfo" in msg.lower():
-                    return JSONResponse(status_code=502, content={
-                        "error": f"DNS resolution failed for character_image_url {char_path!r}: {msg}"
-                    })
-                return JSONResponse(status_code=502, content={
-                    "error": f"Connection error downloading character_image_url {char_path!r}: {msg}"
-                })
-            except httpx.TimeoutException:
-                return JSONResponse(status_code=504, content={
-                    "error": f"Timeout downloading character_image_url {char_path!r}"
-                })
-            except Exception as e:
-                return JSONResponse(status_code=502, content={
-                    "error": f"Failed to download character_image_url {char_path!r}: {str(e)}"
-                })
-        else:
-            with open(char_path, "rb") as f:
-                char_bytes = f.read()
-            char_filename = os.path.basename(char_path)
-            print(f"[Pipeline 4] Character image read from disk: {char_path!r} — {len(char_bytes)} bytes")
-
-        print(f"[Pipeline 4] Reference video path: {ref_path!r}")
-        with open(ref_path, "rb") as f:
-            ref_bytes = f.read()
-        print(f"[Pipeline 4] Reference video read — {len(ref_bytes)} bytes")
-
-        job_id = uuid.uuid4().hex
-        WAN_ANIMATE_JOBS[job_id] = {"status": "processing"}
-        asyncio.create_task(_process_wan_animate_job(job_id, char_bytes, char_filename, ref_bytes, mode))
-
-        return JSONResponse(status_code=200, content={
-            "job_id": job_id,
-            "status": "processing",
-            "poll_url": f"/wan/animate/status/{job_id}",
-        })
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Erreur wan/animate: {str(e)}"})
-    finally:
-        shutil.rmtree(job_dir, ignore_errors=True)
 
 
 @app.get("/wan/animate/status/{job_id}")
