@@ -1765,14 +1765,25 @@ LTX_RESOLUTION_MAP = {
     "portrait":  (704, 1280),
     "480p":      (1280, 704),
     "720p":      (1280, 704),
+
     "landscape": (1280, 704),
 }
+
+
+def duration_to_ltx_frames(duration_seconds: int, fps: int = 24) -> int:
+    """Convert a duration in seconds to the nearest valid LTX frame count (8n + 1)."""
+    target = duration_seconds * fps
+    n = max(0, round((target - 1) / 8))
+    return 8 * n + 1
+    # 10s → 241 | 25s → 601 | 45s → 1081 | 60s → 1441
 
 
 class LtxGenerateRequest(BaseModel):
     prompt: str
     image_url: str = ""
-    num_frames: int = 97
+    num_frames: int = 0           # ignored when duration_seconds > 0
+    duration_seconds: int = 10   # 10 | 25 | 45 | 60 — converted via duration_to_ltx_frames()
+    video_type: str = "cinematic" # talking_objects | cinematic | realistic_humans
     width: int = 1280
     height: int = 704
     resolution: str = ""   # "portrait" | "480p" | "720p" — overrides width/height when set
@@ -1785,6 +1796,7 @@ async def _process_ltx_job(
     num_frames: int,
     width: int,
     height: int,
+    video_type: str = "cinematic",
 ) -> None:
     base = LTX_API_URL.rstrip("/")
     try:
@@ -1794,6 +1806,7 @@ async def _process_ltx_job(
             "num_frames": num_frames,
             "width": width,
             "height": height,
+            "video_type": video_type,
         }
         if image_url:
             payload["image_url"] = image_url
@@ -1860,9 +1873,17 @@ async def ltx_generate(req: LtxGenerateRequest):
 
     w, h = LTX_RESOLUTION_MAP.get(req.resolution, (req.width, req.height))
 
+    # Use duration_seconds when provided; fall back to num_frames for legacy callers
+    if req.duration_seconds and req.duration_seconds > 0:
+        num_frames = duration_to_ltx_frames(req.duration_seconds)
+    elif req.num_frames and req.num_frames > 0:
+        num_frames = req.num_frames
+    else:
+        num_frames = duration_to_ltx_frames(10)   # default: 10 s → 241 frames
+
     job_id = uuid.uuid4().hex
     LTX_JOBS[job_id] = {"status": "processing"}
-    asyncio.create_task(_process_ltx_job(job_id, req.prompt, req.image_url, req.num_frames, w, h))
+    asyncio.create_task(_process_ltx_job(job_id, req.prompt, req.image_url, num_frames, w, h, req.video_type))
 
     return JSONResponse(status_code=200, content={
         "job_id": job_id,

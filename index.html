@@ -263,6 +263,19 @@
           </div>
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p1Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
+        <div class="two-col">
+          <div class="field"><label>Type de vidéo</label><select id="p1VideoType">
+            <option value="talking_objects">Fruits, animaux et objets parlants</option>
+            <option value="cinematic" selected>Vidéos cinématiques</option>
+            <option value="realistic_humans">Personnages humains réalistes</option>
+          </select></div>
+          <div class="field"><label>Durée de vidéo</label><select id="p1Duration">
+            <option value="10" selected>10 secondes</option>
+            <option value="25">25 secondes</option>
+            <option value="45">45 secondes</option>
+            <option value="60">60 secondes</option>
+          </select></div>
+        </div>
         <div class="three-col">
           <div class="field"><label>Résolution</label><select id="p1Res"><option value="480p" selected>1280×704 (16:9)</option><option value="portrait">704×1280 (9:16)</option></select></div>
           <div class="field"><label>Steps</label><select id="p1Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
@@ -316,6 +329,19 @@
           </div>
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p2Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
+        <div class="two-col">
+          <div class="field"><label>Type de vidéo</label><select id="p2VideoType">
+            <option value="talking_objects">Fruits, animaux et objets parlants</option>
+            <option value="cinematic" selected>Vidéos cinématiques</option>
+            <option value="realistic_humans">Personnages humains réalistes</option>
+          </select></div>
+          <div class="field"><label>Durée de vidéo</label><select id="p2Duration">
+            <option value="10" selected>10 secondes</option>
+            <option value="25">25 secondes</option>
+            <option value="45">45 secondes</option>
+            <option value="60">60 secondes</option>
+          </select></div>
+        </div>
         <div class="three-col">
           <div class="field"><label>Résolution</label><select id="p2Res"><option value="480p" selected>832×480 (16:9)</option><option value="portrait">480×832 (9:16)</option><option value="720p">1280×720 (HD)</option></select></div>
           <div class="field"><label>Steps</label><select id="p2Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
@@ -1141,10 +1167,12 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     }
 
     // 2 — Generate video via LTX-Video 2.3
+    const videoType1    = document.getElementById('p1VideoType')?.value || 'cinematic';
+    const duration1     = parseInt(document.getElementById('p1Duration')?.value || '10');
     setStatus('p1Status', '🎬 LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, num_frames: 97 })
+      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, video_type: videoType1, duration_seconds: duration1 })
     });
     if (!ltxR.ok) throw new Error(`LTX erreur ${ltxR.status}`);
     const ltxD = await ltxR.json();
@@ -1199,10 +1227,12 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     }
 
     // 2 — LTX-Video 2.3 T2V
+    const videoType2    = document.getElementById('p2VideoType')?.value || 'cinematic';
+    const duration2     = parseInt(document.getElementById('p2Duration')?.value || '10');
     setStatus('p2Status', '⏳ LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0, 200), resolution: res, num_frames: 97 })
+      body: JSON.stringify({ prompt: script.slice(0, 200), resolution: res, video_type: videoType2, duration_seconds: duration2 })
     });
     if (!ltxR.ok) throw new Error(`LTX erreur ${ltxR.status}`);
     const ltxD = await ltxR.json();
