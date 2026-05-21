@@ -133,48 +133,66 @@ def _ensure_multigpu_stub() -> None:
 _ensure_multigpu_stub()
 
 
-# ── encoder_configurator patch ────────────────────────────────────────────────
-# Root cause of 'SiglipVisionModel' object has no attribute 'vision_model':
+# ── encoder_configurator patches ─────────────────────────────────────────────
+# LTX-2's encoder_configurator.py was written against an older transformers.
+# Each patch is independent and idempotent — applied only if the old line is
+# still present; safe to re-run on every server start.
 #
-#   encoder_configurator.py create_and_populate() does:
-#       v_model = model.model.vision_tower.vision_model
+# Patch 1 — SiglipVisionModel compat (transformers >= 4.47)
+#   Old: v_model = model.model.vision_tower.vision_model
+#   Pre-4.47: vision_tower = SiglipModel  →  .vision_model = SiglipVisionModel ✓
+#   Post-4.47: vision_tower IS SiglipVisionModel directly  →  .vision_model fails
+#   Fix: _tower = model.model.vision_tower
+#        v_model = getattr(_tower, 'vision_model', _tower)
+#   Both branches expose .embeddings.position_ids so the rest is unchanged.
 #
-#   In transformers < 4.47, Gemma3's vision_tower was SiglipModel (a wrapper
-#   that owns .vision_model = SiglipVisionModel).  In transformers >= 4.47 the
-#   wrapper was removed and vision_tower IS SiglipVisionModel directly, so
-#   accessing .vision_model fails.
-#
-#   The patch replaces the hard-coded attribute chain with a getattr fallback
-#   that works for both versions:
-#       _tower = model.model.vision_tower
-#       v_model = getattr(_tower, 'vision_model', _tower)
-#
-#   Both SiglipModel.vision_model and SiglipVisionModel itself expose
-#   .embeddings.position_ids, so the rest of create_and_populate is unchanged.
+# Patch 2 — rope_local_base_freq removed (transformers >= 4.51+)
+#   Old: base = config.rope_local_base_freq
+#   New transformers moved this into rope_parameters dict; the attribute no
+#   longer exists on Gemma3TextConfig directly.
+#   Fix: base = getattr(config, 'rope_local_base_freq', 10000)
+#   10000 is the value from GEMMA3_CONFIG_FOR_LTX (Gemma3TextConfig default).
 def _patch_encoder_configurator() -> None:
     cfg_file = (
         Path(LTX_CORE_SRC)
         / "ltx_core" / "text_encoders" / "gemma" / "encoders" / "encoder_configurator.py"
     )
     if not cfg_file.exists():
-        log.warning("encoder_configurator.py not found at %s — skipping patch", cfg_file)
+        log.warning("encoder_configurator.py not found at %s — skipping patches", cfg_file)
         return
 
     content = cfg_file.read_text()
-    old_line = "    v_model = model.model.vision_tower.vision_model"
-    if old_line not in content:
-        log.info("encoder_configurator.py already patched or line not found — skipping")
-        return
+    patched = False
 
-    new_lines = (
-        "    # Compat patch applied by ltx_server.py at startup:\n"
-        "    # transformers >= 4.47 exposes SiglipVisionModel as vision_tower directly;\n"
-        "    # older versions wrapped it in SiglipModel(.vision_model).\n"
-        "    _tower = model.model.vision_tower\n"
-        "    v_model = getattr(_tower, 'vision_model', _tower)"
-    )
-    cfg_file.write_text(content.replace(old_line, new_lines))
-    log.info("Patched encoder_configurator.py for SiglipVisionModel/transformers compat")
+    # ── Patch 1: vision_tower.vision_model ────────────────────────────────────
+    old1 = "    v_model = model.model.vision_tower.vision_model"
+    if old1 in content:
+        content = content.replace(old1, (
+            "    # Compat patch 1 (ltx_server.py): transformers >= 4.47 exposes\n"
+            "    # SiglipVisionModel as vision_tower directly; older versions\n"
+            "    # wrapped it in SiglipModel(.vision_model).\n"
+            "    _tower = model.model.vision_tower\n"
+            "    v_model = getattr(_tower, 'vision_model', _tower)"
+        ))
+        patched = True
+        log.info("encoder_configurator patch 1 applied (SiglipVisionModel compat)")
+
+    # ── Patch 2: rope_local_base_freq ─────────────────────────────────────────
+    old2 = "    base = config.rope_local_base_freq"
+    if old2 in content:
+        content = content.replace(old2, (
+            "    # Compat patch 2 (ltx_server.py): rope_local_base_freq removed from\n"
+            "    # Gemma3TextConfig in newer transformers (moved into rope_parameters).\n"
+            "    # 10000 is the GEMMA3_CONFIG_FOR_LTX default.\n"
+            "    base = getattr(config, 'rope_local_base_freq', 10000)"
+        ))
+        patched = True
+        log.info("encoder_configurator patch 2 applied (rope_local_base_freq compat)")
+
+    if patched:
+        cfg_file.write_text(content)
+    else:
+        log.info("encoder_configurator.py: all patches already applied")
 
 
 _patch_encoder_configurator()
