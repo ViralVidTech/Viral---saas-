@@ -31,7 +31,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-LTX_PKG_SRC  = "/workspace/LTX-2/packages/ltx-pipelines/src"
+LTX_PKG_SRC  = "/workspace/LTX-2/LTX-2/LTX-2/packages/ltx-pipelines/src"
+LTX_CORE_SRC = "/workspace/LTX-2/LTX-2/LTX-2/packages/ltx-core/src"
 LTX_CKPT     = "/workspace/ltx-2.3/ltx-2.3-22b-distilled.safetensors"
 LTX_UPSCALER = "/workspace/ltx-2.3/ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
 GEMMA_DIR    = "/workspace/gemma"
@@ -43,7 +44,11 @@ LTX_ENV = {
     **os.environ,
     "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
     "CUDA_LAUNCH_BLOCKING": "0",
-    "PYTHONPATH": LTX_PKG_SRC + os.pathsep + os.environ.get("PYTHONPATH", ""),
+    "PYTHONPATH": os.pathsep.join(filter(None, [
+        LTX_PKG_SRC,
+        LTX_CORE_SRC,
+        os.environ.get("PYTHONPATH", ""),
+    ])),
 }
 
 logging.basicConfig(
