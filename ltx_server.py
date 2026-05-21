@@ -157,7 +157,7 @@ async def _run_job(job_id: str, req: GenerateRequest) -> None:
         )
         cmd = [
             "python3", distilled_script,
-            "--checkpoint-path",       LTX_CKPT,
+            "--distilled-checkpoint-path", LTX_CKPT,
             "--spatial-upsampler-path", LTX_UPSCALER,
             "--gemma-root",            GEMMA_DIR,
             "--prompt",                req.prompt,
