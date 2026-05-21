@@ -2629,7 +2629,7 @@ async def _process_wan_animate_job(
     ref_bytes: bytes,
     mode: str,
 ):
-    base = WAN_ANIMATE_API_URL.rstrip("/")
+    base = "http://localhost:8000"
     print(f"[Pipeline 4] _process_wan_animate_job started — job_id={job_id} target={base!r} char_filename={char_filename!r} mode={mode!r}")
     try:
         # Step 1 — submit job to Vast.ai, get remote job_id instantly
