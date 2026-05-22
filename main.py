@@ -557,14 +557,16 @@ class TTSRequest(BaseModel):
 
 class FishTTSRequest(BaseModel):
     text: str
-    voice_id: str = "a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1"
+    voice_id: str = ""          # vide = voix par défaut Fish Audio
+    tts_provider: str = "fish"  # "fish" | "openai" | "google" | "playht" | "cartesia"
     language: str = "en"
     format: str = "mp3"
     latency: str = "normal"
 
 
 class VoicePreviewRequest(BaseModel):
-    voice_id: str
+    voice_id: str = ""
+    tts_provider: str = "fish"
     language: str = "fr"
     text: str = "Bonjour, voici un aperçu de cette voix ViralVidTech."
 
@@ -815,6 +817,48 @@ async def serve_video(filename: str):
     return FileResponse(file_path, media_type="video/mp4", filename=filename)
 
 
+# ── TTS PROVIDER ROUTING ────────────────────────────────────────────────────
+# Seul Fish Audio est implémenté. Pour ajouter un provider :
+#   1. Créer la fonction async _<provider>_tts_request(text, voice_id, **kw)
+#   2. L'ajouter à _TTS_PROVIDERS_AVAILABLE
+#   3. Brancher dans /generate-audio-fish et /preview-fish-voice si besoin
+#
+# async def _openai_tts_request(text, voice_id, **kw): ...   # TODO
+# async def _google_tts_request(text, voice_id, **kw): ...   # TODO
+# async def _playht_tts_request(text, voice_id, **kw): ...   # TODO
+# async def _cartesia_tts_request(text, voice_id, **kw): ... # TODO
+
+_TTS_PROVIDERS_AVAILABLE = {"fish"}
+
+
+async def _fish_tts_request(
+    text: str,
+    voice_id: str = "",
+    fmt: str = "mp3",
+    latency: str = "balanced",
+    timeout: int = 120,
+) -> httpx.Response:
+    """Appelle Fish Audio TTS. Retente sans reference_id si la voix est refusée."""
+    headers = {
+        "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload: dict = {"text": text, "format": fmt, "latency": latency, "normalize": True}
+    if voice_id:
+        payload["reference_id"] = voice_id
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post("https://api.fish.audio/v1/tts", headers=headers, json=payload)
+
+    if resp.status_code != 200 and voice_id:
+        print(f"[fish-tts] voice_id={voice_id!r} refusé ({resp.status_code}) — fallback voix par défaut")
+        payload.pop("reference_id", None)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post("https://api.fish.audio/v1/tts", headers=headers, json=payload)
+
+    return resp
+
+
 # ── FISH AUDIO TTS ──────────────────────────────────────────────────────────
 @app.post("/generate-audio-fish")
 async def generate_audio_fish(req: FishTTSRequest):
@@ -825,28 +869,9 @@ async def generate_audio_fish(req: FishTTSRequest):
     if not req.text.strip():
         return {"error": "Le texte est vide"}
 
+    print(f"[Fish TTS] provider={req.tts_provider!r} voice_id={req.voice_id!r} lang={req.language!r}")
     try:
-        payload = {
-            "text": req.text,
-            "format": "mp3",
-            "latency": "balanced",
-            "normalize": True,
-        }
-
-        if req.voice_id:
-            payload["reference_id"] = req.voice_id
-
-        print(f"[Fish TTS] Generating Fish TTS with voice_id={req.voice_id!r} language={req.language!r}")
-
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                "https://api.fish.audio/v1/tts",
-                headers={
-                    "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
+        response = await _fish_tts_request(req.text, req.voice_id, fmt="mp3", latency="balanced", timeout=120)
 
         if response.status_code != 200:
             try:
@@ -908,31 +933,11 @@ async def preview_fish_voice(req: VoicePreviewRequest):
     if not FISH_AUDIO_API_KEY:
         return JSONResponse(status_code=422, content={"error": "FISH_AUDIO_API_KEY manquante dans Render"})
 
-    text = (req.text or "Bonjour, voici un apercu de cette voix ViralVidTech.").strip()
-
-    async def _tts(voice_id=None):
-        payload = {"text": text, "format": "mp3", "latency": "balanced", "normalize": True}
-        if voice_id:
-            payload["reference_id"] = voice_id
-        async with httpx.AsyncClient(timeout=30) as client:
-            return await client.post(
-                "https://api.fish.audio/v1/tts",
-                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}", "Content-Type": "application/json"},
-                json=payload,
-            )
+    text = (req.text or "Bonjour, voici un aperçu de cette voix ViralVidTech.").strip()
+    print(f"[preview-fish-voice] provider={req.tts_provider!r} voice_id={req.voice_id!r}")
 
     try:
-        print(f"[preview-fish-voice] voice_id={req.voice_id!r}")
-        resp = await _tts(req.voice_id)
-
-        if resp.status_code != 200 and req.voice_id:
-            # Voix spécifique refusée → réessayer avec la voix par défaut (sans reference_id)
-            try:
-                detail = resp.json()
-            except Exception:
-                detail = resp.text[:300]
-            print(f"[preview-fish-voice] voix refusée ({resp.status_code}), retry sans reference_id: {detail}")
-            resp = await _tts(None)
+        resp = await _fish_tts_request(text, req.voice_id, fmt="mp3", latency="balanced", timeout=30)
 
         if resp.status_code != 200:
             try:
@@ -941,7 +946,7 @@ async def preview_fish_voice(req: VoicePreviewRequest):
                 detail = resp.text[:300]
             print(f"[preview-fish-voice] ERREUR Fish Audio {resp.status_code}: {detail}")
             return JSONResponse(status_code=502, content={
-                "error": f"Apercu audio indisponible (Fish Audio {resp.status_code}). Verifiez votre cle API Fish Audio.",
+                "error": f"Aperçu audio indisponible (Fish Audio {resp.status_code}). Vérifiez votre clé API Fish Audio.",
                 "detail": str(detail),
             })
 
@@ -951,7 +956,7 @@ async def preview_fish_voice(req: VoicePreviewRequest):
             f.write(resp.content)
 
         if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
-            return JSONResponse(status_code=502, content={"error": "Fichier audio vide recu de Fish Audio"})
+            return JSONResponse(status_code=502, content={"error": "Fichier audio vide reçu de Fish Audio"})
 
         base = (PUBLIC_BASE_URL or "").rstrip("/")
         audio_url = f"{base}/audio/{filename}"
@@ -1057,10 +1062,12 @@ def _catalog_as_fish_voices():
 
 
 _DEFAULT_VOICE_ENTRY = {
-    "id": "", "name": "Voix par défaut", "display_label": "Voix par défaut Fish Audio",
+    "id": "", "name": "Fish Audio — voix par défaut",
+    "display_label": "Fish Audio — voix par défaut",
     "language": "fr", "language_name": "Français",
     "gender": "", "gender_label": "", "accent": "", "style_hint": "",
-    "description": "Voix standard Fish Audio — fonctionne toujours", "tags": [],
+    "provider": "fish", "voice_type": "default",
+    "description": "Voix standard Fish Audio — toujours disponible", "tags": [],
 }
 
 
@@ -1070,48 +1077,38 @@ async def list_fish_voices():
         print("[fish-voices] Pas de FISH_AUDIO_API_KEY — voix par défaut uniquement")
         return {"success": True, "voices": [_DEFAULT_VOICE_ENTRY], "source": "local"}
 
-    def _parse_items(items):
+    def _parse_cloned(items) -> list:
         result = []
         for item in items:
             voice_id = item.get("_id", "")
             if not voice_id:
                 continue
             langs = item.get("languages") or []
-            lang_code = langs[0].split("-")[0].lower() if langs else "unknown"
+            lang_code = langs[0].split("-")[0].lower() if langs else "fr"
             lang_name = _LANG_LABELS.get(lang_code, lang_code.upper())
             title = item.get("title", voice_id)
-            tags = item.get("tags", [])
-            title_lower = title.lower()
-            tags_lower = [t.lower() for t in tags]
-            gender_raw = ""
-            if any(w in title_lower or w in " ".join(tags_lower) for w in ["female", "woman", "femme", "girl"]):
-                gender_raw = "female"
-            elif any(w in title_lower or w in " ".join(tags_lower) for w in ["male", "man", "homme", "boy"]):
-                gender_raw = "male"
-            gender_label = "Femme" if gender_raw == "female" else ("Homme" if gender_raw == "male" else "")
-            display_label = f"{title} — {lang_name}" + (f", {gender_label}" if gender_label else "")
             result.append({
-                "id": voice_id, "name": title, "display_label": display_label,
+                "id": voice_id,
+                "name": title,
+                "display_label": f"Fish Audio — {title} (clonée)",
                 "language": lang_code, "language_name": lang_name,
-                "gender": gender_raw, "gender_label": gender_label,
-                "accent": "", "style_hint": gender_label,
-                "description": item.get("description", ""), "tags": tags,
+                "gender": "", "gender_label": "", "accent": "", "style_hint": "",
+                "provider": "fish", "voice_type": "cloned",
+                "description": item.get("description", ""), "tags": item.get("tags", []),
             })
         return result
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            # Uniquement les voix que l'utilisateur possède — garanties compatibles TTS API
             r_self = await client.get(
                 "https://api.fish.audio/v1/model",
                 headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
                 params={"page_size": 50, "self": "true", "type": "tts"},
             )
-            own_voices = _parse_items(r_self.json().get("items", [])) if r_self.status_code == 200 else []
-
-        own_voices.sort(key=lambda v: (_LANG_PRIORITY.get(v["language"], 9), v["name"]))
+        own_voices = _parse_cloned(r_self.json().get("items", [])) if r_self.status_code == 200 else []
+        own_voices.sort(key=lambda v: v["name"].lower())
         voices = [_DEFAULT_VOICE_ENTRY] + own_voices
-        print(f"[fish-voices] {len(own_voices)} voix utilisateur + voix par défaut")
+        print(f"[fish-voices] {len(own_voices)} voix clonées + voix par défaut")
         return {"success": True, "voices": voices, "source": "live"}
 
     except Exception as e:

@@ -770,12 +770,8 @@ function filterVoicesByStyle(voices, styleVal, voiceSel) {
     items.forEach(v => {
       const opt = document.createElement('option');
       opt.value = v.id || v.voice_id || '';
-      // Construire un label lisible
-      const baseLabel = v.display_label || v.name || v.voice_name || opt.value;
-      const genderFr = v.gender_label || (v.gender === 'female' ? 'Femme' : v.gender === 'male' ? 'Homme' : '');
-      const accent   = v.accent || '';
-      const hint     = v.style_hint || [genderFr, accent].filter(Boolean).join(', ');
-      opt.textContent = hint ? `${baseLabel} (${hint})` : baseLabel;
+      // display_label contient déjà toutes les infos (provider, nom, type)
+      opt.textContent = v.display_label || v.name || v.voice_name || opt.value || '—';
       og.appendChild(opt);
     });
     voiceSel.appendChild(og);
