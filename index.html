@@ -908,7 +908,37 @@ function splitScenes(text, numScenes) {
 }
 
 async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId, ltxAudioMode) {
-  setStatus(statusId, '⏳ FFmpeg assemble la vidéo finale…', 'ready');
+  // ── Désactiver le bouton Generate pendant le rendu ───────────────────────
+  const btnId  = statusId.replace('Status', 'Btn');
+  const btnEl  = document.getElementById(btnId);
+  if (btnEl) { btnEl.disabled = true; btnEl._prevText = btnEl.textContent; btnEl.textContent = '⏳ Rendu en cours…'; }
+
+  // ── Injecter la barre de progression sous le statut ─────────────────────
+  const progBarId = statusId + '_progress';
+  let progBarEl = document.getElementById(progBarId);
+  if (!progBarEl) {
+    const wrap = document.createElement('div');
+    wrap.id = progBarId + '_wrap';
+    wrap.style.cssText = 'width:100%;background:#2a2a2a;border-radius:4px;height:6px;margin-top:6px;overflow:hidden;';
+    progBarEl = document.createElement('div');
+    progBarEl.id = progBarId;
+    progBarEl.style.cssText = 'height:100%;background:#f5c518;width:0%;transition:width 0.4s ease;border-radius:4px;';
+    wrap.appendChild(progBarEl);
+    const statusEl = document.getElementById(statusId);
+    if (statusEl) statusEl.after(wrap);
+  }
+
+  const setProgress = (pct) => { if (progBarEl) progBarEl.style.width = `${pct}%`; };
+  const removeProgress = () => { const w = document.getElementById(progBarId + '_wrap'); if (w) w.remove(); };
+
+  const cleanup = () => {
+    removeProgress();
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = btnEl._prevText || '🎬 Générer'; }
+  };
+
+  setStatus(statusId, '⏳ Envoi du job au serveur…', 'ready');
+  setProgress(5);
+
   const clips = Array.isArray(videoUrls) ? videoUrls : [videoUrls];
   const payload = {
     wan_video:  clips[0] || '',
@@ -925,34 +955,83 @@ async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitl
     subtitles,
     duration: 30
   };
-  const ffRes = await fetch(`${apiUrl}/create-video`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  if (!ffRes.ok) {
-    const errData = await ffRes.json().catch(() => ({}));
-    throw new Error(`FFmpeg assembly échouée (${ffRes.status}): ${errData.error || 'erreur inconnue'}`);
+
+  let ffData;
+  try {
+    const ffRes = await fetch(`${apiUrl}/create-video`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    // 429 = queue pleine
+    if (ffRes.status === 429) {
+      const errData = await ffRes.json().catch(() => ({}));
+      cleanup();
+      throw new Error(errData.error || 'File d\'attente pleine — réessayez dans quelques minutes.');
+    }
+    if (!ffRes.ok) {
+      const errData = await ffRes.json().catch(() => ({}));
+      cleanup();
+      throw new Error(`Erreur serveur (${ffRes.status}): ${errData.error || 'erreur inconnue'}`);
+    }
+    ffData = await ffRes.json();
+  } catch(fetchErr) {
+    cleanup();
+    throw fetchErr;
   }
-  const ffData = await ffRes.json();
+
   if (!ffData.job_id) {
+    cleanup();
     if (ffData.video_url) return ffData.video_url;
-    throw new Error('FFmpeg assembly échouée: pas de job_id retourné');
+    throw new Error('Pas de job_id retourné par le serveur');
   }
+
+  // ── Affichage initial selon le statut retourné ───────────────────────────
+  if (ffData.status === 'queued') {
+    setStatus(statusId, `⏳ Job en file d'attente (position ${ffData.queue_position})…`, 'ready');
+  } else {
+    setStatus(statusId, '⏳ Rendu démarré…', 'ready');
+  }
+
+  // ── Polling toutes les 3 secondes ────────────────────────────────────────
   let finalUrl = null, ffTries = 0, ffmpegError = '';
+  const MAX_TRIES = 200; // 200 × 3s = 10 min
   await new Promise(resolve => {
     const iv = setInterval(async () => {
       ffTries++;
       try {
-        const sr = await fetch(`${apiUrl}/video-status/${ffData.job_id}`);
-        const sd = await sr.json();
-        if (sd.status === 'done' && sd.video_url) { clearInterval(iv); finalUrl = sd.video_url; resolve(); }
-        else if (sd.status === 'failed') { clearInterval(iv); ffmpegError = sd.error || 'statut échoué'; resolve(); }
-        else if (ffTries >= 120) { clearInterval(iv); ffmpegError = 'délai dépassé (10 min)'; resolve(); }
-        else setStatus(statusId, `⏳ FFmpeg… (${ffTries * 5}s)`, 'ready');
-      } catch { if (ffTries >= 5) { clearInterval(iv); ffmpegError = 'erreur réseau répétée'; resolve(); } }
-    }, 5000);
+        const sr  = await fetch(`${apiUrl}/video-jobs/${ffData.job_id}/status`);
+        const sd  = await sr.json();
+        const pct = sd.progress ?? 0;
+        setProgress(pct);
+
+        if (sd.status === 'done' && sd.video_url) {
+          clearInterval(iv);
+          setProgress(100);
+          finalUrl = sd.video_url;
+          resolve();
+        } else if (sd.status === 'failed') {
+          clearInterval(iv);
+          if (progBarEl) progBarEl.style.background = '#e74c3c';
+          ffmpegError = sd.error || 'statut échoué';
+          resolve();
+        } else if (sd.status === 'queued') {
+          setStatus(statusId, `⏳ En file d'attente… (${ffTries * 3}s)`, 'ready');
+        } else if (ffTries >= MAX_TRIES) {
+          clearInterval(iv);
+          ffmpegError = 'Délai dépassé (10 min)';
+          resolve();
+        } else {
+          const msg = sd.message || sd.step || 'Rendu en cours…';
+          setStatus(statusId, `⏳ ${msg} — ${pct}%`, 'ready');
+        }
+      } catch {
+        if (ffTries >= 5) { clearInterval(iv); ffmpegError = 'Erreur réseau répétée'; resolve(); }
+      }
+    }, 3000);
   });
-  if (!finalUrl) throw new Error(`FFmpeg assembly échouée: ${ffmpegError}`);
+
+  cleanup();
+  if (!finalUrl) throw new Error(`Rendu échoué: ${ffmpegError}`);
   return finalUrl;
 }
 
