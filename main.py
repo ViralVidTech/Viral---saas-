@@ -906,36 +906,53 @@ async def generate_audio_fish(req: FishTTSRequest):
 @app.post("/preview-fish-voice")
 async def preview_fish_voice(req: VoicePreviewRequest):
     if not FISH_AUDIO_API_KEY:
-        return JSONResponse(status_code=422, content={"error": "FISH_AUDIO_API_KEY manquante"})
-    try:
-        payload = {
-            "text": req.text or "Bonjour, voici un apercu de cette voix.",
-            "format": "mp3",
-            "latency": "balanced",
-            "normalize": True,
-            "reference_id": req.voice_id,
-        }
+        return JSONResponse(status_code=422, content={"error": "FISH_AUDIO_API_KEY manquante dans Render"})
+
+    text = (req.text or "Bonjour, voici un apercu de cette voix ViralVidTech.").strip()
+
+    async def _tts(voice_id=None):
+        payload = {"text": text, "format": "mp3", "latency": "balanced", "normalize": True}
+        if voice_id:
+            payload["reference_id"] = voice_id
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
+            return await client.post(
                 "https://api.fish.audio/v1/tts",
                 headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}", "Content-Type": "application/json"},
                 json=payload,
             )
-        if response.status_code != 200:
-            return JSONResponse(status_code=502, content={"error": f"Fish Audio {response.status_code}"})
+
+    try:
+        print(f"[preview-fish-voice] voice_id={req.voice_id!r}")
+        resp = await _tts(req.voice_id)
+
+        # Si la voix specifique echoue (ex: faux UUID du catalogue local), retenter sans voice
+        if resp.status_code != 200:
+            print(f"[preview-fish-voice] voice specifique echec {resp.status_code}, retry sans voice")
+            resp = await _tts(None)
+
+        if resp.status_code != 200:
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = resp.text[:300]
+            print(f"[preview-fish-voice] ERREUR Fish Audio {resp.status_code}: {detail}")
+            return JSONResponse(status_code=502, content={"error": f"Fish Audio {resp.status_code}", "detail": str(detail)})
+
         filename = f"preview_{uuid.uuid4().hex[:8]}.mp3"
         filepath = os.path.join(AUDIO_DIR, filename)
         with open(filepath, "wb") as f:
-            f.write(response.content)
-        if os.path.getsize(filepath) == 0:
-            os.remove(filepath)
-            return JSONResponse(status_code=502, content={"error": "Fish Audio a retourne un fichier vide"})
-        # Toujours retourner une URL locale — evite les problemes CORS R2 dans le navigateur
+            f.write(resp.content)
+
+        if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
+            return JSONResponse(status_code=502, content={"error": "Fichier audio vide recu de Fish Audio"})
+
         base = (PUBLIC_BASE_URL or "").rstrip("/")
         audio_url = f"{base}/audio/{filename}"
-        print(f"[preview-fish-voice] OK — {len(response.content)} bytes → {audio_url}")
+        print(f"[preview-fish-voice] OK {len(resp.content)} bytes → {audio_url}")
         return {"success": True, "audio_url": audio_url}
+
     except Exception as e:
+        print(f"[preview-fish-voice] EXCEPTION: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 

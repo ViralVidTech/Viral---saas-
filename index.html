@@ -1055,24 +1055,25 @@ function _getPreviewAudio() {
 
 async function previewFishVoice(prefix) {
   const sel = document.getElementById(prefix + 'Voice');
-  const statusId = prefix + 'Status';
-  if (!sel || !sel.value) { setStatus(statusId, "Choisissez une voix avant d'ecouter.", 'error'); return; }
+  if (!sel || !sel.value) { alert("Selectionnez une voix d'abord."); return; }
   const btn = document.getElementById(prefix + 'VoicePreviewBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
   const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
   let audioUrl = '';
   try {
+    console.log('[preview-voice] appel POST', apiUrl + '/preview-fish-voice', 'voice_id=', sel.value);
     const r = await fetch(apiUrl + '/preview-fish-voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ voice_id: sel.value, language: 'fr' })
     });
     const d = await r.json();
-    if (!r.ok || d.error) throw new Error(d.error || 'HTTP ' + r.status);
+    console.log('[preview-voice] reponse serveur:', d);
+    if (!r.ok || d.error) throw new Error(d.error || ('HTTP ' + r.status));
     audioUrl = d.audio_url;
-    // Recupere l'audio en blob pour eviter les problemes CORS et autoplay
+    console.log('[preview-voice] audio_url:', audioUrl);
     const blobResp = await fetch(audioUrl);
-    if (!blobResp.ok) throw new Error('Fichier audio inaccessible (' + blobResp.status + ')');
+    if (!blobResp.ok) throw new Error('Audio inaccessible (' + blobResp.status + ') : ' + audioUrl);
     const blob = await blobResp.blob();
     const blobUrl = URL.createObjectURL(blob);
     const audio = _getPreviewAudio();
@@ -1080,17 +1081,17 @@ async function previewFishVoice(prefix) {
     audio.load();
     const playP = audio.play();
     if (playP) {
-      playP.then(() => {
+      playP.then(function() {
         audio.onended = function() { URL.revokeObjectURL(blobUrl); };
-      }).catch(function() {
+      }).catch(function(playErr) {
+        console.warn('[preview-voice] play() bloque, ouverture onglet:', playErr);
         URL.revokeObjectURL(blobUrl);
         window.open(audioUrl, '_blank');
       });
     }
   } catch(e) {
-    console.error('[preview-voice]', e.message);
-    setStatus(statusId, 'Apercu voix impossible : ' + e.message, 'error');
-    if (audioUrl) window.open(audioUrl, '_blank');
+    console.error('[preview-voice] ERREUR:', e.message);
+    alert('Apercu voix echoue :\n' + e.message + (audioUrl ? '\n\nURL: ' + audioUrl : ''));
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '▶'; }
   }
