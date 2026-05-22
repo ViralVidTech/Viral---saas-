@@ -1166,18 +1166,24 @@ async function loadPipelineData() {
     }
   } catch(e) {}
 
-  // Fish voices — {"success":true,"voices":[{"id":...,"name":...}]}
+  // Fish voices — {"success":true,"voices":[{"id":...,"voice_id":...,"name":...}]}
   try {
-    const r = await fetch(`${apiUrl}/fish-voices`);
-    if (r.ok) {
-      const d = await r.json();
-      _pipelineVoices = d.voices || [];
-      ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
-        const sel = document.getElementById(id);
-        if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
-      });
-    }
-  } catch(e) {}
+    const r = await fetch(`${apiUrl}/fish-voices`, { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+    _pipelineVoices = d.voices || d.items || d.models || [];
+    ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
+    });
+    console.log(`[Fish voices] ${_pipelineVoices.length} voix chargées depuis ${d.source || 'API'}`);
+  } catch(e) {
+    console.error('[Fish voices] Chargement impossible:', e);
+    ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (sel) sel.innerHTML = '<option value="">Erreur chargement voix — vérifiez /fish-voices</option>';
+    });
+  }
 
   // Voice styles — {"voice_styles":{"energique":...,"doux":...}}
   try {
