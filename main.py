@@ -557,6 +557,12 @@ class FishTTSRequest(BaseModel):
     latency: str = "normal"
 
 
+class VoicePreviewRequest(BaseModel):
+    voice_id: str
+    language: str = "fr"
+    text: str = "Bonjour, voici un aperçu de cette voix ViralVidTech."
+
+
 class FluxImageRequest(BaseModel):
     prompt: str
     image_size: str = "portrait_4_3"
@@ -576,6 +582,15 @@ class VideoRequest(BaseModel):
     text7: str = ""
     text8: str = ""
     ltx_audio_mode: str = "fish"  # "fish" = voix Fish Audio | "ltx" = conserver audio original LTX
+    video_format: str = "hd"       # "hd" = 1920x1080 par défaut | "tiktok" = 1080x1920 | "square" = 1080x1080
+    video_source: str = ""         # nom générique pour une vidéo source unique
+    video_source2: str = ""
+    video_source3: str = ""
+    video_source4: str = ""
+    video_source5: str = ""
+    video_source6: str = ""
+    video_source7: str = ""
+    video_source8: str = ""
     video_url: str = ""
     video_url2: str = ""
     video_url3: str = ""
@@ -774,6 +789,24 @@ def get_audio_duration(audio_path: str) -> float:
         return 0.0
 
 
+def get_video_format_settings(video_format: str) -> dict:
+    """Retourne les dimensions de sortie. HD est le format par défaut."""
+    fmt = (video_format or "hd").strip().lower()
+    formats = {
+        "hd": {"key": "hd", "label": "HD 16:9", "width": 1920, "height": 1080},
+        "tiktok": {"key": "tiktok", "label": "TikTok 9:16", "width": 1080, "height": 1920},
+        "vertical": {"key": "tiktok", "label": "TikTok 9:16", "width": 1080, "height": 1920},
+        "square": {"key": "square", "label": "Carré 1:1", "width": 1080, "height": 1080},
+        "carre": {"key": "square", "label": "Carré 1:1", "width": 1080, "height": 1080},
+    }
+    return formats.get(fmt, formats["hd"])
+
+
+def _media_type_for_audio(filename: str) -> str:
+    ext = os.path.splitext(filename)[1].lower()
+    return {".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".aac": "audio/aac"}.get(ext, "audio/mpeg")
+
+
 # ── ROUTES ──────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -792,7 +825,7 @@ async def serve_audio(filename: str):
         return {"error": "Audio file not found"}
     if filename.endswith(".json"):
         return FileResponse(file_path, media_type="application/json", filename=filename)
-    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
+    return FileResponse(file_path, media_type=_media_type_for_audio(filename), filename=filename)
 
 
 @app.get("/video/{filename}")
@@ -889,6 +922,34 @@ async def generate_audio_fish(req: FishTTSRequest):
 
     except Exception as e:
         return {"error": f"Erreur Fish Audio: {str(e)}"}
+@app.post("/preview-fish-voice")
+async def preview_fish_voice(req: VoicePreviewRequest):
+    """Génère un court aperçu audio pour écouter une voix avant sélection."""
+    clean_text = " ".join((req.text or "").strip().split())
+    if not clean_text:
+        clean_text = "Bonjour, voici un aperçu de cette voix ViralVidTech."
+    clean_text = clean_text[:180]
+
+    result = await generate_audio_fish(FishTTSRequest(
+        text=clean_text,
+        voice_id=req.voice_id,
+        language=req.language or "fr",
+        format="mp3",
+        latency="balanced",
+    ))
+    if isinstance(result, dict) and result.get("audio_url"):
+        return {
+            "success": True,
+            "audio_url": result.get("audio_url"),
+            "sync_url": result.get("sync_url", ""),
+        }
+    return JSONResponse(status_code=502, content={
+        "success": False,
+        "error": "Aperçu Fish Audio indisponible",
+        "details": result,
+    })
+
+
 @app.post("/generate-image")
 async def generate_image(req: FluxImageRequest):
     if not FAL_API_KEY:
@@ -968,8 +1029,11 @@ def _catalog_as_fish_voices():
         display = v.get("display_label") or f"{v['voice_name']} — {lang_name}"
         result.append({
             "id": v["voice_id"],
+            "voice_id": v["voice_id"],
             "name": v["voice_name"],
+            "voice_name": v["voice_name"],
             "display_label": display,
+            "label": display,
             "language": lang_code,
             "language_name": lang_name,
             "gender": gender_raw,
@@ -977,7 +1041,9 @@ def _catalog_as_fish_voices():
             "accent": accent,
             "style_hint": ", ".join(parts) if parts else "",
             "description": "",
-            "tags": [],
+            "tags": v.get("styles", []),
+            "preview_url": v.get("preview_url") or "",
+            "preview_text": f"Bonjour, je suis {v.get('voice_name', 'une voix')} de ViralVidTech.",
         })
     return result
 
@@ -1027,8 +1093,11 @@ async def list_fish_voices():
 
             voices.append({
                 "id": voice_id,
+                "voice_id": voice_id,
                 "name": title,
+                "voice_name": title,
                 "display_label": display_label,
+                "label": display_label,
                 "language": lang_code,
                 "language_name": lang_name,
                 "gender": gender_raw,
@@ -1037,7 +1106,13 @@ async def list_fish_voices():
                 "style_hint": gender_label,
                 "description": item.get("description", ""),
                 "tags": tags,
+                "preview_url": "",
+                "preview_text": f"Bonjour, je suis {title}, une voix {lang_name} pour ViralVidTech.",
             })
+
+        if not voices:
+            print("[fish-voices] API Fish Audio a retourné 0 voix — fallback local")
+            return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback_empty"}
 
         # Priorité : Français d'abord
         voices.sort(key=lambda v: (_LANG_PRIORITY.get(v["language"], 9), v["name"]))
@@ -1608,6 +1683,10 @@ async def _process_video(job_id: str, req: VideoRequest):
             return
 
         chosen_duration = req.duration if req.duration in [30, 45, 60] else 30
+        fmt_settings = get_video_format_settings(getattr(req, "video_format", "hd"))
+        out_w = int(fmt_settings["width"])
+        out_h = int(fmt_settings["height"])
+        print(f"[Format job={job_id}] video_format={fmt_settings['key']} {out_w}x{out_h}")
 
         if chosen_duration == 60:
             nb_scenes = 8
@@ -1617,6 +1696,14 @@ async def _process_video(job_id: str, req: VideoRequest):
             nb_scenes = 4
 
         all_video_urls = [
+            (getattr(req, "video_source", "") or "").strip(),
+            (getattr(req, "video_source2", "") or "").strip(),
+            (getattr(req, "video_source3", "") or "").strip(),
+            (getattr(req, "video_source4", "") or "").strip(),
+            (getattr(req, "video_source5", "") or "").strip(),
+            (getattr(req, "video_source6", "") or "").strip(),
+            (getattr(req, "video_source7", "") or "").strip(),
+            (getattr(req, "video_source8", "") or "").strip(),
             (req.video_url or "").strip(),
             (req.video_url2 or "").strip(),
             (req.video_url3 or "").strip(),
@@ -1807,8 +1894,8 @@ async def _process_video(job_id: str, req: VideoRequest):
             run_cmd([
                 "ffmpeg", "-y", *loop_args, "-i", src,
                 "-t", str(clip_duration),
-                "-vf", "scale=405:720:force_original_aspect_ratio=increase,"
-                       "crop=405:720,fps=25,format=yuv420p",
+                "-vf", f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+                       f"crop={out_w}:{out_h},fps=25,format=yuv420p",
                 "-an", "-c:v", "libx264",
                 "-preset", "ultrafast", "-crf", "28", "-r", "25",
                 dst
@@ -1953,9 +2040,9 @@ async def _process_video(job_id: str, req: VideoRequest):
                 srt_escaped = escape_srt_path(os.path.abspath(srt_path))
                 subtitle_filter = (
                     f"subtitles='{srt_escaped}':"
-                    "force_style='Alignment=2,MarginV=70,"
-                    "PlayResX=405,PlayResY=720,"
-                    "FontName=Arial,FontSize=24,Bold=1,"
+                    f"force_style='Alignment=2,MarginV={max(70, int(out_h * 0.08))},"
+                    f"PlayResX={out_w},PlayResY={out_h},"
+                    f"FontName=Arial,FontSize={max(24, int(out_h * 0.034))},Bold=1,"
                     "PrimaryColour=&H00FFFFFF,"
                     "OutlineColour=&H00000000,"
                     "BorderStyle=3,Outline=2,Shadow=0,"
@@ -3172,7 +3259,7 @@ async def serve_music(filename: str):
     file_path = os.path.join(MUSIC_DIR, filename)
     if not os.path.exists(file_path):
         return JSONResponse(status_code=404, content={"error": "Fichier music introuvable"})
-    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
+    return FileResponse(file_path, media_type=_media_type_for_audio(filename), filename=filename)
 
 
 @app.get("/static-music/{filename}")
@@ -3232,6 +3319,18 @@ async def available_music(style: str = ""):
 @app.get("/languages")
 async def get_languages():
     return {"languages": LANGUAGES}
+
+
+@app.get("/video-formats")
+async def get_video_formats():
+    return {
+        "default": "hd",
+        "formats": [
+            {"id": "hd", "label": "HD — 1920×1080", "width": 1920, "height": 1080},
+            {"id": "tiktok", "label": "TikTok — 1080×1920", "width": 1080, "height": 1920},
+            {"id": "square", "label": "Carré — 1080×1080", "width": 1080, "height": 1080},
+        ],
+    }
 
 
 @app.get("/voice-styles")
