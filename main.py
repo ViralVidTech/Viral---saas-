@@ -128,6 +128,38 @@ async def delete_file_from_storage(remote_key: str):
     await loop.run_in_executor(None, _do_delete)
     print(f"[R2] Deleted {remote_key}")
 
+def cleanup_job_files(job_id: str, job_dir: str = None, extra_files: list = None) -> int:
+    """Supprime les fichiers temporaires d'un job et log chaque suppression.
+    - job_dir  : répertoire de travail FFmpeg (tous les fichiers intermédiaires)
+    - extra_files : fichiers hors job_dir à supprimer (ex : vidéo finale après upload R2)
+    Retourne le nombre de fichiers supprimés."""
+    deleted = 0
+
+    if job_dir and os.path.isdir(job_dir):
+        for dirpath, _, filenames in os.walk(job_dir, topdown=False):
+            for fname in filenames:
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    os.remove(fpath)
+                    print(f"[Cleanup job={job_id}] deleted file {fpath}")
+                    deleted += 1
+                except Exception as exc:
+                    print(f"[Cleanup job={job_id}] failed to delete {fpath}: {exc}")
+        shutil.rmtree(job_dir, ignore_errors=True)
+
+    for fpath in (extra_files or []):
+        if fpath and os.path.exists(fpath):
+            try:
+                os.remove(fpath)
+                print(f"[Cleanup job={job_id}] deleted file {fpath}")
+                deleted += 1
+            except Exception as exc:
+                print(f"[Cleanup job={job_id}] failed to delete {fpath}: {exc}")
+
+    print(f"[Cleanup job={job_id}] completed ({deleted} files deleted)")
+    return deleted
+
+
 def _runpod_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=RUNPOD_BASE_URL, timeout=RUNPOD_TIMEOUT)
 
@@ -1856,26 +1888,27 @@ async def _process_video(job_id: str, req: VideoRequest):
             shutil.copy2(with_subtitles_path, output_path)
             print(f"[Pass3 job={job_id}] Sortie finale = copie de with_subtitles (pas de musique)")
 
-        shutil.rmtree(job_dir, ignore_errors=True)
+        # Nettoyage des fichiers intermédiaires (job_dir) — vidéo finale conservée
+        cleanup_job_files(job_id, job_dir=job_dir)
 
         r2_url = await upload_file_to_storage(output_path, f"videos/{output_filename}")
         if r2_url:
             video_url = r2_url
-            os.remove(output_path)
-            print(f"[Storage job={job_id}] vidéo uploadée R2, fichier local supprimé")
+            # Vidéo finale supprimée seulement après upload R2 réussi
+            cleanup_job_files(job_id, extra_files=[output_path])
         else:
             video_url = f"{PUBLIC_BASE_URL}/video/{output_filename}"
 
         VIDEO_JOBS[job_id] = {"status": "done", "video_url": video_url}
 
     except httpx.HTTPError as e:
-        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
+        cleanup_job_files(job_id, job_dir=job_dir) if job_dir else None
         VIDEO_JOBS[job_id] = {"status": "failed", "error": f"Erreur téléchargement: {str(e)}"}
     except RuntimeError as e:
-        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
+        cleanup_job_files(job_id, job_dir=job_dir) if job_dir else None
         VIDEO_JOBS[job_id] = {"status": "failed", "error": f"Erreur FFmpeg: {str(e)}"}
     except Exception as e:
-        shutil.rmtree(job_dir, ignore_errors=True) if job_dir else None
+        cleanup_job_files(job_id, job_dir=job_dir) if job_dir else None
         VIDEO_JOBS[job_id] = {"status": "failed", "error": f"Erreur create-video: {str(e)}"}
 
 
