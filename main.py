@@ -2483,21 +2483,38 @@ async def create_video_job(request: Request, req: VideoRequest):
     return await _create_video_job(req, user_id=cu["user_id"] if cu else None)
 
 
-@app.get("/video-jobs/{job_id}")
-async def get_video_job(job_id: str):
-    """Retourne le job complet (tous les champs)."""
+async def _check_job_access(job_id: str, request: Request):
+    """Retourne (job, error_response).
+    Règle : si job.user_id est non-null, le token est obligatoire et doit correspondre.
+    Si job.user_id est None (mode invité), accès libre."""
     job = VIDEO_JOBS.get(job_id)
     if not job:
-        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+        return None, JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    owner_id = job.get("user_id")
+    if owner_id is not None:
+        cu = await get_current_user_optional(request)
+        if not cu:
+            return None, JSONResponse(status_code=403, content={"error": "Authentification requise pour accéder à ce job"})
+        if cu["user_id"] != owner_id:
+            return None, JSONResponse(status_code=403, content={"error": "Accès refusé"})
+    return job, None
+
+
+@app.get("/video-jobs/{job_id}")
+async def get_video_job(job_id: str, request: Request):
+    """Retourne le job complet (tous les champs)."""
+    job, err = await _check_job_access(job_id, request)
+    if err:
+        return err
     return JSONResponse(status_code=200, content=job)
 
 
 @app.get("/video-jobs/{job_id}/status")
-async def get_video_job_status(job_id: str):
+async def get_video_job_status(job_id: str, request: Request):
     """Retourne statut + progression + message (endpoint léger pour polling)."""
-    job = VIDEO_JOBS.get(job_id)
-    if not job:
-        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+    job, err = await _check_job_access(job_id, request)
+    if err:
+        return err
     return JSONResponse(status_code=200, content={
         "job_id":    job["job_id"],
         "status":    job["status"],
@@ -4116,10 +4133,10 @@ async def wan_image2video(
 
 
 @app.get("/video-status/{job_id}")
-async def video_status(job_id: str):
-    job = VIDEO_JOBS.get(job_id)
-    if not job:
-        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
+async def video_status(job_id: str, request: Request):
+    job, err = await _check_job_access(job_id, request)
+    if err:
+        return err
     return JSONResponse(status_code=200, content=job)
 
 
