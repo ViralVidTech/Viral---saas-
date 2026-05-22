@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query, Request
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse, Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -11,19 +11,13 @@ import subprocess
 import shutil
 import asyncio
 import re
-import hmac
-import hashlib
-import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 app = FastAPI()
 
 VIDEO_JOBS: dict = {}   # job_id → full job dict (source de vérité)
 _active_job_count: int = 0          # jobs actuellement en cours de rendu
-_job_queue: list = []               # [(job_id, processor), ...] jobs en attente
-
-# Queue in-memory acceptable for MVP / single Render instance only.
-# Production multi-instance => PostgreSQL or Redis queue required.
+_job_queue: list = []               # [(job_id, req), ...] jobs en attente
 
 WAN_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
 WAN_ANIMATE_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
@@ -59,7 +53,6 @@ LTX_MAX_RETRIES = int(os.environ.get("LTX_MAX_RETRIES", "3"))   # tentatives sub
 # Concurrence des rendus vidéo
 MAX_CONCURRENT_VIDEO_JOBS = int(os.getenv("MAX_CONCURRENT_VIDEO_JOBS", "1"))
 MAX_VIDEO_QUEUE_SIZE      = int(os.getenv("MAX_VIDEO_QUEUE_SIZE", "10"))
-DEBUG_MODE                = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
 # Stockage durable (Cloudflare R2 ou AWS S3 compatible)
 R2_ENDPOINT_URL      = os.getenv("R2_ENDPOINT_URL", "").rstrip("/")
@@ -81,12 +74,6 @@ os.makedirs(MUSIC_DIR, exist_ok=True)
 os.makedirs(STATIC_MUSIC_DIR, exist_ok=True)
 
 print(f"[Startup] Fish Audio API key detected: {'YES' if FISH_AUDIO_API_KEY else 'NO'}")
-print("[BOOT] route /fish-voices registered")
-print("[BOOT] route /preview-fish-voice registered")
-print("[BOOT] route /voice-styles registered")
-print("[BOOT] route /available-music registered")
-print("[BOOT] route /music/{filename} registered")
-print("[BOOT] route /static-music/{filename} registered")
 print(f"[Startup] Video job concurrency: max_concurrent={MAX_CONCURRENT_VIDEO_JOBS} queue_size={MAX_VIDEO_QUEUE_SIZE}")
 print(f"[Startup] R2 Storage: {'ENABLED (bucket=' + R2_BUCKET_NAME + ')' if R2_ENDPOINT_URL and R2_BUCKET_NAME else 'DISABLED (local only)'}")
 
@@ -211,332 +198,20 @@ def cleanup_job_files(job_id: str, job_dir: str = None, extra_files: list = None
     return deleted
 
 
-# ── PHASE 3 — Base de données / Authentification ────────────────────────────
-
-DATABASE_URL       = os.getenv("DATABASE_URL", "")
-JWT_SECRET         = os.getenv("JWT_SECRET", "")
-JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "10080"))
-BCRYPT_ROUNDS      = int(os.getenv("BCRYPT_ROUNDS", "12"))
-
-# ── PHASE 4 — Quotas / Plans / Watermark ─────────────────────────────────────
-FREE_MONTHLY_VIDEO_LIMIT     = int(os.getenv("FREE_MONTHLY_VIDEO_LIMIT",     "5"))
-PRO_MONTHLY_VIDEO_LIMIT      = int(os.getenv("PRO_MONTHLY_VIDEO_LIMIT",      "100"))
-BUSINESS_MONTHLY_VIDEO_LIMIT = int(os.getenv("BUSINESS_MONTHLY_VIDEO_LIMIT", "500"))
-GUEST_MONTHLY_VIDEO_LIMIT    = int(os.getenv("GUEST_MONTHLY_VIDEO_LIMIT",    "2"))
-_WATERMARK_TEXT_RAW          = os.getenv("WATERMARK_TEXT", "Made with ViralVidTech")
-WATERMARK_TEXT               = _WATERMARK_TEXT_RAW.replace("'", "").replace(":", "\\:")
-ADMIN_SECRET                 = os.getenv("ADMIN_SECRET", "")
-QUOTA_HMAC_SECRET            = os.getenv("QUOTA_HMAC_SECRET", "")  # HMAC key for IP hashing
-_PLAN_LIMITS: dict[str, int] = {
-    "guest":    GUEST_MONTHLY_VIDEO_LIMIT,
-    "free":     FREE_MONTHLY_VIDEO_LIMIT,
-    "pro":      PRO_MONTHLY_VIDEO_LIMIT,
-    "business": BUSINESS_MONTHLY_VIDEO_LIMIT,
-}
-_WATERMARK_PLANS = {"guest", "free"}
-
-try:
-    from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, func as sql_func
-    from sqlalchemy.orm import declarative_base, sessionmaker
-    from passlib.context import CryptContext
-    from jose import JWTError, jwt as _jose_jwt
-    _AUTH_DEPS_OK = True
-except ImportError as _e:
-    print(f"[Startup] Auth/DB deps manquantes: {_e}")
-    _AUTH_DEPS_OK = False
-
-_db_enabled = bool(DATABASE_URL) and _AUTH_DEPS_OK
-
-# Stubs — redéfinis dans le bloc _db_enabled ci-dessous si DB active
-_engine       = None
-_SessionLocal = None
-_pwd_ctx      = None
-DBUser           = None
-DBVideoJob       = None
-DBGeneratedVideo = None
-DBUploadedMusic  = None
-DBUsageLog       = None
-
-if _db_enabled:
-    _Base = declarative_base()
-
-    class DBUser(_Base):
-        __tablename__ = "users"
-        id            = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
-        email         = Column(String(255), unique=True, nullable=False, index=True)
-        password_hash = Column(String(255), nullable=False)
-        plan          = Column(String(50), default="free")
-        created_at    = Column(DateTime(timezone=True), server_default=sql_func.now())
-        updated_at    = Column(DateTime(timezone=True), server_default=sql_func.now(), onupdate=sql_func.now())
-
-    class DBVideoJob(_Base):
-        __tablename__ = "video_jobs"
-        id         = Column(String(32), primary_key=True)
-        user_id    = Column(String(32), nullable=True)   # nullable — compat invités
-        status     = Column(String(20), default="queued")
-        progress   = Column(Integer, default=0)
-        step       = Column(String(50), default="")
-        message    = Column(Text, default="")
-        video_url  = Column(Text, nullable=True)
-        error      = Column(Text, nullable=True)
-        created_at = Column(DateTime(timezone=True), server_default=sql_func.now())
-        updated_at = Column(DateTime(timezone=True), server_default=sql_func.now(), onupdate=sql_func.now())
-
-    class DBGeneratedVideo(_Base):
-        __tablename__    = "generated_videos"
-        id               = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
-        user_id          = Column(String(32), nullable=True)
-        job_id           = Column(String(32), nullable=False)
-        title            = Column(String(255), default="")
-        video_url        = Column(Text, nullable=False)
-        duration_seconds = Column(Integer, default=0)
-        created_at       = Column(DateTime(timezone=True), server_default=sql_func.now())
-
-    class DBUploadedMusic(_Base):
-        __tablename__ = "uploaded_music"
-        id          = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
-        user_id     = Column(String(32), nullable=True)
-        name        = Column(String(255), default="")
-        storage_url = Column(Text, nullable=False)
-        created_at  = Column(DateTime(timezone=True), server_default=sql_func.now())
-
-    class DBUsageLog(_Base):
-        __tablename__ = "usage_logs"
-        id        = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
-        user_id   = Column(String(32), nullable=True, index=True)
-        guest_id  = Column(String(32), nullable=True, index=True)  # 32-char hex, client-provided
-        ip_hash   = Column(String(32), nullable=True, index=True)  # 32-char HMAC of client IP
-        action    = Column(String(50), nullable=False)
-        month_key = Column(String(7),  nullable=False, index=True)
-        created_at = Column(DateTime(timezone=True), server_default=sql_func.now())
-
-    try:
-        _engine       = create_engine(DATABASE_URL, pool_pre_ping=True)
-        _SessionLocal = sessionmaker(bind=_engine, autocommit=False, autoflush=False)
-        _pwd_ctx      = CryptContext(schemes=["bcrypt"], bcrypt__rounds=BCRYPT_ROUNDS, deprecated="auto")
-        _Base.metadata.create_all(bind=_engine)
-        print("[Startup] Database: ENABLED")
-    except Exception as _db_init_err:
-        print(f"[Startup] Database: ERROR — {_db_init_err}")
-        _db_enabled = False
-else:
-    print("[Startup] Database: DISABLED")
-
-
-# ── Auth helpers ──────────────────────────────────────────────────────────────
-
-def _hash_password(password: str) -> str:
-    return _pwd_ctx.hash(password)
-
-def _verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_ctx.verify(plain, hashed)
-
-def _create_jwt(user_id: str, email: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
-    return _jose_jwt.encode(
-        {"sub": user_id, "email": email, "exp": expire},
-        JWT_SECRET, algorithm="HS256",
-    )
-
-def _decode_jwt(token: str) -> dict | None:
-    try:
-        return _jose_jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-    except JWTError:
-        return None
-
-async def get_current_user_optional(request: Request) -> dict | None:
-    """Retourne {"user_id": str, "email": str} si token Bearer valide, sinon None."""
-    if not _db_enabled or not JWT_SECRET:
-        return None
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return None
-    payload = _decode_jwt(auth[7:])
-    if not payload:
-        return None
-    return {"user_id": payload.get("sub"), "email": payload.get("email")}
-
-
-# ── DB write helpers ──────────────────────────────────────────────────────────
-
-def _db_create_video_job(job_id: str, user_id: str | None):
-    if not _db_enabled:
-        return
-    db = _SessionLocal()
-    try:
-        db.add(DBVideoJob(id=job_id, user_id=user_id, status="queued"))
-        db.commit()
-    except Exception as e:
-        print(f"[DB] create_video_job error: {e}")
-        db.rollback()
-    finally:
-        db.close()
-
-def _db_record_generated_video(job_id: str, user_id: str | None, video_url: str, duration: int):
-    if not _db_enabled:
-        return
-    db = _SessionLocal()
-    try:
-        db.add(DBGeneratedVideo(
-            id=uuid.uuid4().hex, user_id=user_id, job_id=job_id,
-            video_url=video_url, duration_seconds=int(duration),
-        ))
-        db.commit()
-    except Exception as e:
-        print(f"[DB] record_generated_video error: {e}")
-        db.rollback()
-    finally:
-        db.close()
-
-def _db_record_uploaded_music(user_id: str | None, name: str, storage_url: str):
-    if not _db_enabled:
-        return
-    db = _SessionLocal()
-    try:
-        db.add(DBUploadedMusic(id=uuid.uuid4().hex, user_id=user_id, name=name, storage_url=storage_url))
-        db.commit()
-    except Exception as e:
-        print(f"[DB] record_uploaded_music error: {e}")
-        db.rollback()
-    finally:
-        db.close()
-
-
-# ── PHASE 4 helpers : quotas ──────────────────────────────────────────────────
-
-def get_plan_limit(plan: str) -> int:
-    return _PLAN_LIMITS.get(plan, GUEST_MONTHLY_VIDEO_LIMIT)
-
-def get_current_month_key() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m")
-
-def _sanitize_guest_id(gid: str | None) -> str | None:
-    """Format strict : exactement 32 caractères hexadécimaux minuscules."""
-    if not gid:
-        return None
-    gid = gid.strip()
-    return gid if re.fullmatch(r"[a-f0-9]{32}", gid) else None
-
-def _get_client_ip(request: Request) -> str:
-    """Extrait l'IP réelle — lit X-Forwarded-For (Render/proxy) en priorité."""
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    return (request.client.host if request.client else "") or "unknown"
-
-def _hash_ip(ip: str) -> str:
-    """Retourne un hash HMAC-SHA256 de 32 chars de l'IP.
-    Retourne '' si QUOTA_HMAC_SECRET n'est pas défini (couplage IP désactivé)."""
-    if not QUOTA_HMAC_SECRET or not ip or ip == "unknown":
-        return ""
-    return hmac.new(
-        QUOTA_HMAC_SECRET.encode("utf-8"),
-        ip.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()[:32]
-
-def _get_user_plan(user_id: str) -> str:
-    """Retourne le plan de l'utilisateur depuis la DB (ne fait jamais confiance au client)."""
-    if not _db_enabled or not user_id:
-        return "free"
-    db = _SessionLocal()
-    try:
-        user = db.query(DBUser).filter_by(id=user_id).first()
-        return user.plan if user else "free"
-    except Exception:
-        return "free"
-    finally:
-        db.close()
-
-def get_usage_count(user_id: str | None = None, guest_id: str | None = None,
-                    ip_hash: str | None = None, action: str = "video_generation") -> int:
-    """Pour les invités, retourne le max entre le count par guest_id et par ip_hash.
-    Empêche le contournement par rotation de l'un ou l'autre."""
-    if not _db_enabled or (not user_id and not guest_id and not ip_hash):
-        return 0
-    db = _SessionLocal()
-    try:
-        month = get_current_month_key()
-        if user_id:
-            return db.query(DBUsageLog).filter_by(
-                action=action, month_key=month, user_id=user_id
-            ).count()
-        counts = []
-        if guest_id:
-            counts.append(db.query(DBUsageLog).filter_by(
-                action=action, month_key=month, guest_id=guest_id
-            ).count())
-        if ip_hash:
-            counts.append(db.query(DBUsageLog).filter_by(
-                action=action, month_key=month, ip_hash=ip_hash
-            ).count())
-        return max(counts, default=0)
-    except Exception as e:
-        print(f"[DB] get_usage_count error: {e}")
-        return 0
-    finally:
-        db.close()
-
-def check_video_quota(user_id: str | None = None, guest_id: str | None = None,
-                      ip_hash: str | None = None, plan: str = "guest") -> dict:
-    """Retourne {"allowed": bool, "used": int, "limit": int, "plan": str}."""
-    limit = get_plan_limit(plan)
-    if not _db_enabled:
-        return {"allowed": True, "used": 0, "limit": limit, "plan": plan}
-    used = get_usage_count(user_id=user_id, guest_id=guest_id, ip_hash=ip_hash)
-    return {"allowed": used < limit, "used": used, "limit": limit, "plan": plan}
-
-def record_usage(user_id: str | None = None, guest_id: str | None = None,
-                 ip_hash: str | None = None, action: str = "video_generation"):
-    """Enregistre une ligne avec guest_id ET ip_hash pour bloquer la rotation des deux."""
-    if not _db_enabled or (not user_id and not guest_id and not ip_hash):
-        return
-    db = _SessionLocal()
-    try:
-        db.add(DBUsageLog(
-            id=uuid.uuid4().hex, user_id=user_id, guest_id=guest_id or None,
-            ip_hash=ip_hash or None, action=action, month_key=get_current_month_key(),
-        ))
-        db.commit()
-    except Exception as e:
-        print(f"[DB] record_usage error: {e}")
-        db.rollback()
-    finally:
-        db.close()
-
-def should_apply_watermark(plan: str) -> bool:
-    return plan in _WATERMARK_PLANS
-
-
-# ── Auth Pydantic schemas ─────────────────────────────────────────────────────
-
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
 # ── Gestion des jobs vidéo ────────────────────────────────────────────────────
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _make_job(job_id: str, status: str = "queued", user_id: str | None = None,
-              plan: str = "guest", guest_id: str | None = None) -> dict:
+def _make_job(job_id: str, status: str = "queued") -> dict:
     now = _now()
     return {
         "job_id":     job_id,
-        "user_id":    user_id,
-        "plan":       plan,
-        "guest_id":   guest_id,
-        "status":     status,
-        "progress":   0,
-        "step":       "",
-        "message":    "",
+        "status":     status,   # queued | processing | done | failed
+        "progress":   0,        # 0-100
+        "step":       "",       # étape machine (download, normalize, …)
+        "message":    "",       # message lisible utilisateur
         "video_url":  None,
         "error":      None,
         "created_at": now,
@@ -567,52 +242,47 @@ async def _dequeue_next_job():
     global _active_job_count, _job_queue
     if not _job_queue or _active_job_count >= MAX_CONCURRENT_VIDEO_JOBS:
         return
-    next_job_id, next_processor = _job_queue.pop(0)
+    next_job_id, next_req = _job_queue.pop(0)
     queue_remaining = len(_job_queue)
     print(f"[Queue] Démarrage job {next_job_id} — {queue_remaining} job(s) restant(s) en file")
     update_job(next_job_id, status="processing", progress=5,
                step="starting", message="Démarrage du rendu…")
     _active_job_count += 1
-    asyncio.create_task(_run_video_job(next_job_id, next_processor))
+    asyncio.create_task(_run_video_job(next_job_id, next_req))
 
 
-async def _run_video_job(job_id: str, processor):
-    """Wrapper qui gère le compteur actif et déclenche la queue après chaque job.
-    processor est un callable async(job_id) -> None, indépendant du moteur."""
+async def _run_video_job(job_id: str, req):
+    """Wrapper qui gère le compteur actif et déclenche la queue après chaque job."""
     global _active_job_count
     try:
-        await processor(job_id)
+        await _process_video(job_id, req)
     finally:
         _active_job_count -= 1
         print(f"[Queue] Job {job_id} terminé — slots libres: {MAX_CONCURRENT_VIDEO_JOBS - _active_job_count}/{MAX_CONCURRENT_VIDEO_JOBS}")
         await _dequeue_next_job()
 
 
-def _enqueue_video_job(job_id: str, processor, user_id: str | None = None,
-                       plan: str = "guest", guest_id: str | None = None) -> dict:
+def _enqueue_video_job(job_id: str, req) -> dict:
     """Tente de lancer ou de mettre en file un job vidéo.
-    processor est un callable async(job_id) -> None — indépendant du moteur.
     Retourne {"status": "processing"|"queued"|"rejected", "position": int}."""
     global _active_job_count, _job_queue
 
     if _active_job_count < MAX_CONCURRENT_VIDEO_JOBS:
-        VIDEO_JOBS[job_id] = _make_job(job_id, status="processing",
-                                       user_id=user_id, plan=plan, guest_id=guest_id)
+        # Slot libre → démarrage immédiat
+        VIDEO_JOBS[job_id] = _make_job(job_id, status="processing")
         update_job(job_id, progress=5, step="starting", message="Démarrage du rendu…")
         _active_job_count += 1
-        _db_create_video_job(job_id, user_id)
-        asyncio.create_task(_run_video_job(job_id, processor))
+        asyncio.create_task(_run_video_job(job_id, req))
         return {"status": "processing", "position": 0}
 
     if len(_job_queue) >= MAX_VIDEO_QUEUE_SIZE:
         return {"status": "rejected", "position": -1}
 
+    # File d'attente
     position = len(_job_queue) + 1
-    VIDEO_JOBS[job_id] = _make_job(job_id, status="queued",
-                                   user_id=user_id, plan=plan, guest_id=guest_id)
+    VIDEO_JOBS[job_id] = _make_job(job_id, status="queued")
     update_job(job_id, message=f"En attente (position {position})")
-    _db_create_video_job(job_id, user_id)
-    _job_queue.append((job_id, processor))
+    _job_queue.append((job_id, req))
     print(f"[Queue] Job {job_id} mis en file — position {position}/{MAX_VIDEO_QUEUE_SIZE}")
     return {"status": "queued", "position": position}
 
@@ -620,30 +290,6 @@ def _enqueue_video_job(job_id: str, processor, user_id: str | None = None,
 async def process_job_queue():
     """Alias public pour forcer un déqueue (utile en debug)."""
     await _dequeue_next_job()
-
-
-async def _fake_video_job(job_id: str, sleep_per_step: float = 2.0):
-    """Fake job — no LTX, no FFmpeg, no API calls. For queue/progress testing only."""
-    steps = [
-        (5,   "starting",  "Initialisation…"),
-        (20,  "download",  "Simulation téléchargement clips…"),
-        (40,  "normalize", "Simulation normalisation…"),
-        (60,  "assemble",  "Simulation assemblage…"),
-        (80,  "music",     "Simulation mixage musique…"),
-        (100, "done",      "Job de test terminé."),
-    ]
-    try:
-        for progress, step, message in steps:
-            if progress < 100:
-                update_job(job_id, progress=progress, step=step,
-                           message=message, status="processing")
-                await asyncio.sleep(sleep_per_step)
-            else:
-                update_job(job_id, status="done", progress=100,
-                           step="done", message="Job de test terminé.",
-                           video_url="https://example.com/test-video.mp4")
-    except Exception as e:
-        mark_job_failed(job_id, "DEBUG_ERROR", str(e))
 
 
 def _runpod_client() -> httpx.AsyncClient:
@@ -695,18 +341,12 @@ VOICE_STYLES = {
 }
 
 MUSIC_STYLES = {
-    "Épique motivation":        ["motivation", "sport", "finance", "challenge", "mindset"],
-    "Afrobeat doux":            ["lifestyle", "voyage", "culture", "danse"],
-    "Hip-hop dynamique":        ["gaming", "challenge", "urban", "mode", "influenceur"],
-    "Corporate moderne":        ["business", "finance", "IA", "technologie", "marketing"],
-    "Comédie / humour":         ["humour", "blagues", "famille", "enfants"],
-    "Suspense / mystère":       ["révélation", "cryptomonnaie", "politique"],
-    "Santé / bien-être":        ["méditation", "yoga", "santé", "mindfulness", "bien-être"],
-    "Technologie / IA":         ["IA", "technologie", "coding", "data", "startup"],
-    "Cuisine / lifestyle":      ["cuisine", "lifestyle", "famille", "voyage"],
-    "Émotion / storytelling":   ["histoire", "inspiration", "parentalité", "religion"],
-    "Latin énergique":          ["danse", "sport", "mode", "fitness"],
-    "Lo-fi calme":              ["éducation", "coding", "study", "écriture"],
+    "Épique et motivant": ["motivation", "sport", "finance"],
+    "Doux et apaisant": ["santé", "méditation", "religion"],
+    "Rythmé et énergique": ["gaming", "challenge", "influenceur"],
+    "Mystérieux et intrigant": ["révélation", "technologie"],
+    "Neutre et professionnel": ["éducation", "langues", "IA"],
+    "Joyeux et léger": ["blagues", "cuisine", "voyage"],
 }
 
 NICHES_BY_PLAN = {
@@ -917,12 +557,6 @@ class FishTTSRequest(BaseModel):
     latency: str = "normal"
 
 
-class VoicePreviewRequest(BaseModel):
-    voice_id: str
-    language: str = "fr"
-    text: str = "Bonjour, voici un aperçu de cette voix ViralVidTech."
-
-
 class FluxImageRequest(BaseModel):
     prompt: str
     image_size: str = "portrait_4_3"
@@ -942,15 +576,6 @@ class VideoRequest(BaseModel):
     text7: str = ""
     text8: str = ""
     ltx_audio_mode: str = "fish"  # "fish" = voix Fish Audio | "ltx" = conserver audio original LTX
-    video_format: str = "hd"       # "hd" = 1920x1080 par défaut | "tiktok" = 1080x1920 | "square" = 1080x1080
-    video_source: str = ""         # nom générique pour une vidéo source unique
-    video_source2: str = ""
-    video_source3: str = ""
-    video_source4: str = ""
-    video_source5: str = ""
-    video_source6: str = ""
-    video_source7: str = ""
-    video_source8: str = ""
     video_url: str = ""
     video_url2: str = ""
     video_url3: str = ""
@@ -994,20 +619,16 @@ class VideoRequest(BaseModel):
     audio_url: str = ""
     sync_url: str = ""
     music_url: str = ""
-    video_source: str = ""
-    video_source2: str = ""
-    video_source3: str = ""
-    video_source4: str = ""
-    video_source5: str = ""
-    video_source6: str = ""
-    video_source7: str = ""
-    video_source8: str = ""
+    wan_video: str = ""
+    wan_video2: str = ""
+    wan_video3: str = ""
+    wan_video4: str = ""
+    wan_video5: str = ""
+    wan_video6: str = ""
+    wan_video7: str = ""
+    wan_video8: str = ""
     duration: int = 30
     subtitles: str = ""
-    guest_id: str | None = None   # identifiant anonyme côté client pour le quota
-    # Backward compat — older payloads sent wan_video/wan_video_url; mapped to video_source in _process_video
-    wan_video: str | None = None
-    wan_video_url: str | None = None
 
 
 # ── UTILITAIRES FFMPEG ──────────────────────────────────────────────────────
@@ -1153,24 +774,6 @@ def get_audio_duration(audio_path: str) -> float:
         return 0.0
 
 
-def get_video_format_settings(video_format: str) -> dict:
-    """Retourne les dimensions de sortie. HD est le format par défaut."""
-    fmt = (video_format or "hd").strip().lower()
-    formats = {
-        "hd": {"key": "hd", "label": "HD 16:9", "width": 1920, "height": 1080},
-        "tiktok": {"key": "tiktok", "label": "TikTok 9:16", "width": 1080, "height": 1920},
-        "vertical": {"key": "tiktok", "label": "TikTok 9:16", "width": 1080, "height": 1920},
-        "square": {"key": "square", "label": "Carré 1:1", "width": 1080, "height": 1080},
-        "carre": {"key": "square", "label": "Carré 1:1", "width": 1080, "height": 1080},
-    }
-    return formats.get(fmt, formats["hd"])
-
-
-def _media_type_for_audio(filename: str) -> str:
-    ext = os.path.splitext(filename)[1].lower()
-    return {".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".aac": "audio/aac"}.get(ext, "audio/mpeg")
-
-
 # ── ROUTES ──────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -1189,7 +792,7 @@ async def serve_audio(filename: str):
         return {"error": "Audio file not found"}
     if filename.endswith(".json"):
         return FileResponse(file_path, media_type="application/json", filename=filename)
-    return FileResponse(file_path, media_type=_media_type_for_audio(filename), filename=filename)
+    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
 
 
 @app.get("/video/{filename}")
@@ -1286,34 +889,6 @@ async def generate_audio_fish(req: FishTTSRequest):
 
     except Exception as e:
         return {"error": f"Erreur Fish Audio: {str(e)}"}
-@app.post("/preview-fish-voice")
-async def preview_fish_voice(req: VoicePreviewRequest):
-    """Génère un court aperçu audio pour écouter une voix avant sélection."""
-    clean_text = " ".join((req.text or "").strip().split())
-    if not clean_text:
-        clean_text = "Bonjour, voici un aperçu de cette voix ViralVidTech."
-    clean_text = clean_text[:180]
-
-    result = await generate_audio_fish(FishTTSRequest(
-        text=clean_text,
-        voice_id=req.voice_id,
-        language=req.language or "fr",
-        format="mp3",
-        latency="balanced",
-    ))
-    if isinstance(result, dict) and result.get("audio_url"):
-        return {
-            "success": True,
-            "audio_url": result.get("audio_url"),
-            "sync_url": result.get("sync_url", ""),
-        }
-    return JSONResponse(status_code=502, content={
-        "success": False,
-        "error": "Aperçu Fish Audio indisponible",
-        "details": result,
-    })
-
-
 @app.post("/generate-image")
 async def generate_image(req: FluxImageRequest):
     if not FAL_API_KEY:
@@ -1393,23 +968,16 @@ def _catalog_as_fish_voices():
         display = v.get("display_label") or f"{v['voice_name']} — {lang_name}"
         result.append({
             "id": v["voice_id"],
-            "voice_id": v["voice_id"],
             "name": v["voice_name"],
-            "voice_name": v["voice_name"],
             "display_label": display,
-            "label": display,
             "language": lang_code,
             "language_name": lang_name,
             "gender": gender_raw,
             "gender_label": gender_fr,
             "accent": accent,
             "style_hint": ", ".join(parts) if parts else "",
-            "styles": v.get("styles", []),
             "description": "",
-            "tags": v.get("styles", []),
-            "styles": v.get("styles", []),
-            "preview_url": v.get("preview_url") or "",
-            "preview_text": f"Bonjour, je suis {v.get('voice_name', 'une voix')} de ViralVidTech.",
+            "tags": [],
         })
     return result
 
@@ -1418,9 +986,8 @@ def _catalog_as_fish_voices():
 async def list_fish_voices():
     # Fallback catalogue local si pas de clé API
     if not FISH_AUDIO_API_KEY:
-        local_voices = _catalog_as_fish_voices()
-        print(f"[fish-voices] returning {len(local_voices)} voices source=local (no API key)")
-        return {"success": True, "voices": local_voices, "source": "local"}
+        print("[fish-voices] Pas de FISH_AUDIO_API_KEY — utilisation du catalogue local")
+        return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local"}
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -1431,9 +998,8 @@ async def list_fish_voices():
             )
 
         if response.status_code != 200:
-            fallback = _catalog_as_fish_voices()
-            print(f"[fish-voices] API Fish Audio erreur {response.status_code} — returning {len(fallback)} voices source=local_fallback")
-            return {"success": True, "voices": fallback, "source": "local_fallback"}
+            print(f"[fish-voices] API Fish Audio erreur {response.status_code} — fallback local")
+            return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
 
         data = response.json()
         voices = []
@@ -1461,11 +1027,8 @@ async def list_fish_voices():
 
             voices.append({
                 "id": voice_id,
-                "voice_id": voice_id,
                 "name": title,
-                "voice_name": title,
                 "display_label": display_label,
-                "label": display_label,
                 "language": lang_code,
                 "language_name": lang_name,
                 "gender": gender_raw,
@@ -1474,102 +1037,16 @@ async def list_fish_voices():
                 "style_hint": gender_label,
                 "description": item.get("description", ""),
                 "tags": tags,
-                "styles": tags,
-                "preview_url": "",
-                "preview_text": f"Bonjour, je suis {title}, une voix {lang_name} pour ViralVidTech.",
             })
 
-        local_voices = _catalog_as_fish_voices()
-        if not voices:
-            print("[fish-voices] API Fish Audio a retourné 0 voix — fallback local")
-            return {"success": True, "voices": local_voices, "source": "local_fallback_empty"}
-
-        # Toujours garder le catalogue local disponible en secours.
-        # Ainsi les menus ne deviennent jamais vides si l'API Fish change son format.
-        seen = {v.get("id") or v.get("voice_id") for v in voices}
-        for lv in local_voices:
-            lid = lv.get("id") or lv.get("voice_id")
-            if lid and lid not in seen:
-                voices.append(lv)
-                seen.add(lid)
-
         # Priorité : Français d'abord
-        voices.sort(key=lambda v: (_LANG_PRIORITY.get(v.get("language", ""), 9), v.get("name", "")))
-        print(f"[fish-voices] {len(voices)} voix disponibles (API + catalogue local)")
-        return {"success": True, "voices": voices, "source": "live_plus_local"}
+        voices.sort(key=lambda v: (_LANG_PRIORITY.get(v["language"], 9), v["name"]))
+        print(f"[fish-voices] {len(voices)} voix récupérées depuis Fish Audio API")
+        return {"success": True, "voices": voices, "source": "live"}
 
     except Exception as e:
-        fallback = _catalog_as_fish_voices()
-        print(f"[fish-voices] Exception: {e} — returning {len(fallback)} voices source=local_fallback")
-        return {"success": True, "voices": fallback, "source": "local_fallback"}
-
-
-@app.post("/preview-fish-voice")
-async def preview_fish_voice(req: VoicePreviewRequest):
-    """Génère un court extrait audio pour écouter une voix avant de la choisir."""
-    if not FISH_AUDIO_API_KEY:
-        return JSONResponse(
-            status_code=422,
-            content={"error": "FISH_AUDIO_API_KEY manquante — aperçu voix indisponible en local"}
-        )
-
-    preview_text = (req.text.strip() or "Bonjour, je suis votre voix virtuelle.")[:200]
-    print(f"[preview-fish-voice] voice_id={req.voice_id!r} lang={req.language!r}")
-
-    try:
-        payload = {
-            "text": preview_text,
-            "format": "mp3",
-            "latency": "normal",
-            "normalize": True,
-            "reference_id": req.voice_id,
-        }
-
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                "https://api.fish.audio/v1/tts",
-                headers={
-                    "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-
-        if response.status_code != 200:
-            try:
-                details = response.json()
-            except Exception:
-                details = response.text[:300]
-            return JSONResponse(
-                status_code=502,
-                content={"error": f"Fish Audio API erreur {response.status_code}", "details": details}
-            )
-
-        filename = f"preview_{uuid.uuid4().hex[:8]}.mp3"
-        filepath = os.path.join(AUDIO_DIR, filename)
-        with open(filepath, "wb") as f:
-            f.write(response.content)
-
-        # Try R2, fallback to PUBLIC_BASE_URL, fallback to stream
-        r2_url = await upload_file_to_storage(filepath, f"audio/{filename}")
-        if r2_url:
-            os.remove(filepath)
-            audio_url = r2_url
-        elif PUBLIC_BASE_URL:
-            audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
-        else:
-            # Stream directly — no permanent storage needed for a preview
-            audio_bytes = response.content
-            return StreamingResponse(
-                iter([audio_bytes]),
-                media_type="audio/mpeg",
-                headers={"Content-Disposition": f"inline; filename={filename}"},
-            )
-
-        return {"success": True, "audio_url": audio_url, "voice_id": req.voice_id}
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Erreur preview voix: {str(e)}"})
+        print(f"[fish-voices] Exception: {e} — fallback local")
+        return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
 
 
 # ── GENERATE : Claude + Wan 2.2 ─────────────────────────────────────────────
@@ -2131,10 +1608,6 @@ async def _process_video(job_id: str, req: VideoRequest):
             return
 
         chosen_duration = req.duration if req.duration in [30, 45, 60] else 30
-        fmt_settings = get_video_format_settings(getattr(req, "video_format", "hd"))
-        out_w = int(fmt_settings["width"])
-        out_h = int(fmt_settings["height"])
-        print(f"[Format job={job_id}] video_format={fmt_settings['key']} {out_w}x{out_h}")
 
         if chosen_duration == 60:
             nb_scenes = 8
@@ -2144,14 +1617,6 @@ async def _process_video(job_id: str, req: VideoRequest):
             nb_scenes = 4
 
         all_video_urls = [
-            (getattr(req, "video_source", "") or "").strip(),
-            (getattr(req, "video_source2", "") or "").strip(),
-            (getattr(req, "video_source3", "") or "").strip(),
-            (getattr(req, "video_source4", "") or "").strip(),
-            (getattr(req, "video_source5", "") or "").strip(),
-            (getattr(req, "video_source6", "") or "").strip(),
-            (getattr(req, "video_source7", "") or "").strip(),
-            (getattr(req, "video_source8", "") or "").strip(),
             (req.video_url or "").strip(),
             (req.video_url2 or "").strip(),
             (req.video_url3 or "").strip(),
@@ -2205,29 +1670,24 @@ async def _process_video(job_id: str, req: VideoRequest):
             (req.text8 or "").strip()[:200],
         ]
 
-        source_clip_list = [u for u in [
-            req.video_source, req.video_source2, req.video_source3, req.video_source4,
-            req.video_source5, req.video_source6, req.video_source7, req.video_source8,
+        wan_clip_list = [u for u in [
+            req.wan_video, req.wan_video2, req.wan_video3, req.wan_video4,
+            req.wan_video5, req.wan_video6, req.wan_video7, req.wan_video8,
         ] if u]
-        # Backward compat: old frontends send wan_video/wan_video_url — promote to source_clip_list[0]
-        if not source_clip_list:
-            _compat = req.wan_video or req.wan_video_url or ""
-            if _compat:
-                source_clip_list = [_compat]
-        if source_clip_list:
-            valid_video_urls_raw = source_clip_list
+        if wan_clip_list:
+            valid_video_urls_raw = wan_clip_list
         else:
             valid_video_urls_raw = [u for u in all_video_urls if u]
         if not valid_video_urls_raw:
             mark_job_failed(job_id, "NO_VIDEO", "Aucune vidéo fournie")
             return
 
-        # MODE SOURCE : 1 clip per scene (each source clip = 1 scene), MODE PEXELS : 5 clips per scene
-        if source_clip_list:
+        # MODE WAN : 1 clip per scene (each wan clip = 1 scene), MODE PEXELS : 5 clips per scene
+        if wan_clip_list:
             CLIPS_PER_SCENE = 1
-            nb_scenes = len(source_clip_list)
+            nb_scenes = len(wan_clip_list)
             nb_clips_total = nb_scenes
-            clip_urls = source_clip_list
+            clip_urls = wan_clip_list
             subtitle_texts = [
                 all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
                 for i in range(nb_scenes)
@@ -2281,14 +1741,14 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         clip_duration = real_total_duration / nb_clips_total
         update_job(job_id, progress=20, step="download",
-                   message=f"Téléchargement des clips ({len(clip_urls if not source_clip_list else source_clip_list)} clips)…")
+                   message=f"Téléchargement des clips ({len(clip_urls if not wan_clip_list else wan_clip_list)} clips)…")
 
-        if source_clip_list:
+        if wan_clip_list:
             raw_paths = []
-            if len(source_clip_list) == 1:
+            if len(wan_clip_list) == 1:
                 # Single clip: download once and copy per scene
                 raw_master = os.path.join(job_dir, "raw_master.mp4")
-                await download_file(source_clip_list[0], raw_master, retries=5)
+                await download_file(wan_clip_list[0], raw_master, retries=5)
                 for i in range(nb_scenes):
                     dst = os.path.join(job_dir, f"raw_{i}.mp4")
                     shutil.copy2(raw_master, dst)
@@ -2309,7 +1769,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             ])
 
         downloaded = [p for p in raw_paths if os.path.exists(p)]
-        print(f"[Pass1 job={job_id}] clips_received={len(source_clip_list or clip_urls)} downloaded={len(downloaded)}")
+        print(f"[Pass1 job={job_id}] clips_received={len(wan_clip_list or clip_urls)} downloaded={len(downloaded)}")
 
         # ── Mode LTX audio : extraire l'audio du clip LTX avant normalisation ──
         if ltx_audio_mode == "ltx" and not voice_path and downloaded:
@@ -2343,12 +1803,12 @@ async def _process_video(job_id: str, req: VideoRequest):
             src, dst = args
             if not os.path.exists(src):
                 return
-            loop_args = ["-stream_loop", "-1"] if (nb_clips_total == 1 or bool(source_clip_list)) else []
+            loop_args = ["-stream_loop", "-1"] if (nb_clips_total == 1 or bool(wan_clip_list)) else []
             run_cmd([
                 "ffmpeg", "-y", *loop_args, "-i", src,
                 "-t", str(clip_duration),
-                "-vf", f"scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
-                       f"crop={out_w}:{out_h},fps=25,format=yuv420p",
+                "-vf", "scale=405:720:force_original_aspect_ratio=increase,"
+                       "crop=405:720,fps=25,format=yuv420p",
                 "-an", "-c:v", "libx264",
                 "-preset", "ultrafast", "-crf", "28", "-r", "25",
                 dst
@@ -2493,9 +1953,9 @@ async def _process_video(job_id: str, req: VideoRequest):
                 srt_escaped = escape_srt_path(os.path.abspath(srt_path))
                 subtitle_filter = (
                     f"subtitles='{srt_escaped}':"
-                    f"force_style='Alignment=2,MarginV={max(70, int(out_h * 0.08))},"
-                    f"PlayResX={out_w},PlayResY={out_h},"
-                    f"FontName=Arial,FontSize={max(24, int(out_h * 0.034))},Bold=1,"
+                    "force_style='Alignment=2,MarginV=70,"
+                    "PlayResX=405,PlayResY=720,"
+                    "FontName=Arial,FontSize=24,Bold=1,"
                     "PrimaryColour=&H00FFFFFF,"
                     "OutlineColour=&H00000000,"
                     "BorderStyle=3,Outline=2,Shadow=0,"
@@ -2569,29 +2029,6 @@ async def _process_video(job_id: str, req: VideoRequest):
             shutil.copy2(with_subtitles_path, output_path)
             print(f"[Pass3 job={job_id}] Sortie finale = copie de with_subtitles (pas de musique)")
 
-        # ── Watermark (PHASE 4) — avant upload et nettoyage ─────────────────────
-        _plan = VIDEO_JOBS.get(job_id, {}).get("plan", "guest")
-        if should_apply_watermark(_plan):
-            wm_path = output_path + ".wm.mp4"
-            try:
-                update_job(job_id, step="watermark", message="Application du watermark…")
-                await async_run_cmd([
-                    "ffmpeg", "-y", "-i", output_path,
-                    "-vf", (
-                        f"drawtext=text='{WATERMARK_TEXT}':fontsize=18:"
-                        "fontcolor=white@0.65:x=w-tw-16:y=h-th-20:"
-                        "shadowcolor=black@0.8:shadowx=1:shadowy=1"
-                    ),
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                    "-c:a", "copy", wm_path,
-                ])
-                os.replace(wm_path, output_path)
-                print(f"[Watermark job={job_id}] plan={_plan} applied")
-            except Exception as _wm_err:
-                print(f"[Watermark job={job_id}] WARN: failed, uploading without: {_wm_err}")
-                if os.path.exists(wm_path):
-                    os.remove(wm_path)
-
         # Nettoyage des fichiers intermédiaires (job_dir) — vidéo finale conservée
         cleanup_job_files(job_id, job_dir=job_dir)
 
@@ -2606,8 +2043,6 @@ async def _process_video(job_id: str, req: VideoRequest):
         update_job(job_id, status="done", progress=100, step="done",
                    message="Vidéo prête !", video_url=video_url)
         print(f"[Job {job_id}] done → {video_url}")
-        _user_id = VIDEO_JOBS.get(job_id, {}).get("user_id")
-        _db_record_generated_video(job_id, _user_id, video_url, req.duration)
 
     except httpx.HTTPError as e:
         cleanup_job_files(job_id, job_dir=job_dir) if job_dir else None
@@ -2620,26 +2055,13 @@ async def _process_video(job_id: str, req: VideoRequest):
         mark_job_failed(job_id, "PROCESSING_ERROR", f"Erreur create-video: {str(e)}")
 
 
-async def _create_video_job(req, user_id: str | None = None,
-                            plan: str = "guest", guest_id: str | None = None,
-                            ip_hash: str | None = None) -> JSONResponse:
+async def _create_video_job(req) -> JSONResponse:
     """Logique commune à /create-video et /video-jobs."""
     if not ffmpeg_exists():
         return JSONResponse(status_code=500, content={"error": "FFmpeg non installé"})
 
-    # ── Quota check (PHASE 4) ─────────────────────────────────────────────────
-    quota = check_video_quota(user_id=user_id, guest_id=guest_id, ip_hash=ip_hash, plan=plan)
-    if not quota["allowed"]:
-        return JSONResponse(status_code=403, content={
-            "success": False,
-            "error_code": "QUOTA_EXCEEDED",
-            "message": f"Quota mensuel dépassé ({quota['used']}/{quota['limit']} vidéos ce mois-ci).",
-            "used": quota["used"], "limit": quota["limit"], "plan": plan,
-        })
-
     job_id = uuid.uuid4().hex
-    processor = lambda jid: _process_video(jid, req)
-    result = _enqueue_video_job(job_id, processor, user_id=user_id, plan=plan, guest_id=guest_id)
+    result = _enqueue_video_job(job_id, req)
 
     if result["status"] == "rejected":
         return JSONResponse(status_code=429, content={
@@ -2647,20 +2069,11 @@ async def _create_video_job(req, user_id: str | None = None,
             "queue_size": MAX_VIDEO_QUEUE_SIZE,
         })
 
-    record_usage(user_id=user_id, guest_id=guest_id, ip_hash=ip_hash)
-
-    # effective identifier returned to client (for guest_id-less clients)
-    guest_id_assigned = guest_id if guest_id else (ip_hash if ip_hash else None)
-
     return JSONResponse(status_code=202, content={
         "success": True,
         "job_id": job_id,
         "status": result["status"],
         "queue_position": result["position"],
-        "plan": plan,
-        "quota_used": quota["used"] + 1,
-        "quota_limit": quota["limit"],
-        "guest_id_assigned": guest_id_assigned,
         "message": (
             "Rendu démarré immédiatement."
             if result["status"] == "processing"
@@ -2669,195 +2082,33 @@ async def _create_video_job(req, user_id: str | None = None,
     })
 
 
-# ── Auth endpoints ────────────────────────────────────────────────────────────
-
-@app.post("/auth/register", status_code=201)
-async def auth_register(req: RegisterRequest):
-    if not _db_enabled:
-        return JSONResponse(status_code=503, content={"error": "Base de données non configurée"})
-    email = req.email.strip().lower()
-    if not email or "@" not in email:
-        return JSONResponse(status_code=400, content={"error": "Email invalide"})
-    if len(req.password) < 8:
-        return JSONResponse(status_code=400, content={"error": "Mot de passe minimum 8 caractères"})
-    db = _SessionLocal()
-    try:
-        if db.query(DBUser).filter_by(email=email).first():
-            return JSONResponse(status_code=409, content={"error": "Email déjà utilisé"})
-        user = DBUser(id=uuid.uuid4().hex, email=email, password_hash=_hash_password(req.password))
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return JSONResponse(status_code=201, content={
-            "user_id": user.id, "email": user.email,
-            "plan": user.plan, "token": _create_jwt(user.id, user.email),
-        })
-    except Exception as e:
-        db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        db.close()
-
-
-@app.post("/auth/login")
-async def auth_login(req: LoginRequest):
-    if not _db_enabled:
-        return JSONResponse(status_code=503, content={"error": "Base de données non configurée"})
-    email = req.email.strip().lower()
-    db = _SessionLocal()
-    try:
-        user = db.query(DBUser).filter_by(email=email).first()
-        if not user or not _verify_password(req.password, user.password_hash):
-            return JSONResponse(status_code=401, content={"error": "Email ou mot de passe incorrect"})
-        return JSONResponse(status_code=200, content={
-            "user_id": user.id, "email": user.email,
-            "plan": user.plan, "token": _create_jwt(user.id, user.email),
-        })
-    finally:
-        db.close()
-
-
-@app.get("/auth/me")
-async def auth_me(request: Request):
-    cu = await get_current_user_optional(request)
-    if not cu:
-        return JSONResponse(status_code=401, content={"error": "Non authentifié"})
-    if not _db_enabled:
-        return JSONResponse(status_code=200, content=cu)
-    db = _SessionLocal()
-    try:
-        user = db.query(DBUser).filter_by(id=cu["user_id"]).first()
-        if not user:
-            return JSONResponse(status_code=404, content={"error": "Utilisateur introuvable"})
-        return JSONResponse(status_code=200, content={
-            "user_id": user.id, "email": user.email, "plan": user.plan,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-        })
-    finally:
-        db.close()
-
-
-# ── Usage / Quota endpoints ───────────────────────────────────────────────────
-
-@app.get("/usage/me")
-async def usage_me(request: Request, guest_id: str = Query(default="")):
-    """Retourne le quota du mois courant pour l'utilisateur connecté ou l'invité."""
-    cu = await get_current_user_optional(request)
-    if cu:
-        user_id = cu["user_id"]
-        plan    = _get_user_plan(user_id)
-        used    = get_usage_count(user_id=user_id)
-    else:
-        user_id = None
-        plan    = "guest"
-        gid     = _sanitize_guest_id(guest_id)
-        iph     = _hash_ip(_get_client_ip(request))
-        used    = get_usage_count(guest_id=gid, ip_hash=iph)
-    limit = get_plan_limit(plan)
-    return JSONResponse(status_code=200, content={
-        "plan":      plan,
-        "used":      used,
-        "limit":     limit,
-        "remaining": max(0, limit - used),
-        "month_key": get_current_month_key(),
-    })
-
-
-# ── Admin endpoints ───────────────────────────────────────────────────────────
-
-class AdminSetPlanRequest(BaseModel):
-    plan: str
-
-@app.post("/admin/users/{user_id}/plan")
-async def admin_set_plan(user_id: str, request: Request, body: AdminSetPlanRequest):
-    """Change le plan d'un utilisateur. Nécessite X-Admin-Secret et ADMIN_SECRET."""
-    if not ADMIN_SECRET:
-        return JSONResponse(status_code=404, content={"error": "Not found"})
-    if not secrets.compare_digest(request.headers.get("X-Admin-Secret", ""), ADMIN_SECRET):
-        return JSONResponse(status_code=403, content={"error": "Forbidden"})
-    if not _db_enabled:
-        return JSONResponse(status_code=503, content={"error": "Database not configured"})
-    if body.plan not in ("free", "pro", "business"):
-        return JSONResponse(status_code=400, content={"error": "Plan invalide. Valeurs : free, pro, business"})
-    db = _SessionLocal()
-    try:
-        user = db.query(DBUser).filter_by(id=user_id).first()
-        if not user:
-            return JSONResponse(status_code=404, content={"error": "Utilisateur introuvable"})
-        user.plan = body.plan
-        db.commit()
-        return JSONResponse(status_code=200, content={"user_id": user_id, "plan": body.plan})
-    except Exception as e:
-        db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        db.close()
-
-
-# ── Video job endpoints ────────────────────────────────────────────────────────
-
 @app.post("/create-video")
-async def create_video(request: Request, req: VideoRequest):
+async def create_video(req: VideoRequest):
     """Endpoint historique — conservé pour compatibilité."""
-    cu = await get_current_user_optional(request)
-    user_id  = cu["user_id"] if cu else None
-    plan     = _get_user_plan(user_id) if user_id else "guest"
-    guest_id = None if user_id else _sanitize_guest_id(req.guest_id)
-    ip_hash  = None if user_id else _hash_ip(_get_client_ip(request))
-    if not user_id and req.guest_id and guest_id is None:
-        return JSONResponse(status_code=400, content={
-            "error": "guest_id invalide — 32 caractères hexadécimaux requis"
-        })
-    return await _create_video_job(req, user_id=user_id, plan=plan, guest_id=guest_id, ip_hash=ip_hash)
+    return await _create_video_job(req)
 
 
 @app.post("/video-jobs")
-async def create_video_job(request: Request, req: VideoRequest):
+async def create_video_job(req: VideoRequest):
     """Nouvel endpoint RESTful pour créer un job vidéo."""
-    cu = await get_current_user_optional(request)
-    user_id  = cu["user_id"] if cu else None
-    plan     = _get_user_plan(user_id) if user_id else "guest"
-    guest_id = None if user_id else _sanitize_guest_id(req.guest_id)
-    ip_hash  = None if user_id else _hash_ip(_get_client_ip(request))
-    if not user_id and req.guest_id and guest_id is None:
-        return JSONResponse(status_code=400, content={
-            "error": "guest_id invalide — 32 caractères hexadécimaux requis"
-        })
-    return await _create_video_job(req, user_id=user_id, plan=plan, guest_id=guest_id, ip_hash=ip_hash)
-
-
-async def _check_job_access(job_id: str, request: Request):
-    """Retourne (job, error_response).
-    Règle : si job.user_id est non-null, le token est obligatoire et doit correspondre.
-    Si job.user_id est None (mode invité), accès libre."""
-    job = VIDEO_JOBS.get(job_id)
-    if not job:
-        return None, JSONResponse(status_code=404, content={"error": "Job introuvable"})
-    owner_id = job.get("user_id")
-    if owner_id is not None:
-        cu = await get_current_user_optional(request)
-        if not cu:
-            return None, JSONResponse(status_code=403, content={"error": "Authentification requise pour accéder à ce job"})
-        if cu["user_id"] != owner_id:
-            return None, JSONResponse(status_code=403, content={"error": "Accès refusé"})
-    return job, None
+    return await _create_video_job(req)
 
 
 @app.get("/video-jobs/{job_id}")
-async def get_video_job(job_id: str, request: Request):
+async def get_video_job(job_id: str):
     """Retourne le job complet (tous les champs)."""
-    job, err = await _check_job_access(job_id, request)
-    if err:
-        return err
+    job = VIDEO_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     return JSONResponse(status_code=200, content=job)
 
 
 @app.get("/video-jobs/{job_id}/status")
-async def get_video_job_status(job_id: str, request: Request):
+async def get_video_job_status(job_id: str):
     """Retourne statut + progression + message (endpoint léger pour polling)."""
-    job, err = await _check_job_access(job_id, request)
-    if err:
-        return err
+    job = VIDEO_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     return JSONResponse(status_code=200, content={
         "job_id":    job["job_id"],
         "status":    job["status"],
@@ -2867,28 +2118,6 @@ async def get_video_job_status(job_id: str, request: Request):
         "video_url": job.get("video_url"),
         "error":     job.get("error"),
         "updated_at": job.get("updated_at"),
-    })
-
-
-@app.post("/debug/test-video-job")
-async def debug_test_video_job(sleep_per_step: float = 2.0):
-    """Crée un faux job pour tester la queue/progression sans LTX/FFmpeg/API.
-    Nécessite DEBUG_MODE=true."""
-    if not DEBUG_MODE:
-        return JSONResponse(status_code=403,
-                            content={"error": "DEBUG_MODE non activé. Définir DEBUG_MODE=true."})
-    job_id = uuid.uuid4().hex
-    processor = lambda jid: _fake_video_job(jid, sleep_per_step)
-    result = _enqueue_video_job(job_id, processor)
-    if result["status"] == "rejected":
-        return JSONResponse(status_code=429,
-                            content={"error": f"File d'attente pleine ({MAX_VIDEO_QUEUE_SIZE} max)"})
-    return JSONResponse(status_code=202, content={
-        "success": True,
-        "job_id": job_id,
-        "status": result["status"],
-        "queue_position": result["position"],
-        "poll_url": f"/video-jobs/{job_id}/status",
     })
 
 
@@ -3539,18 +2768,6 @@ VOICE_CATALOG = [
         "styles": ["Doux et chaleureux", "Éducatif et clair"],
         "preview_url": None,
     },
-    # ── Enfant ────────────────────────────────────────────────────────────────
-    {
-        "voice_id": "a9b12cd3-0000-1111-2222-333344445555",
-        "voice_name": "Léa (enfant)",
-        "display_label": "Léa — Enfant, Français clair",
-        "language": "fr",
-        "language_name": "Français",
-        "gender": "child",
-        "accent": "France",
-        "styles": ["Éducatif et clair", "Humoristique et léger"],
-        "preview_url": None,
-    },
 ]
 
 
@@ -3588,60 +2805,49 @@ LANGUAGES = [
     {"code": "ht", "name": "Créole Haïtien"},
 ]
 
-# Pistes de démonstration libres de droit (SoundHelix CC0 — 13 fichiers disponibles).
-# Pour la production, uploadez vos propres MP3 dans static/music/{music_id}.mp3
-# ou fournissez des URLs publiques : ils remplacent automatiquement le fallback SoundHelix.
+# NOTE : Les URLs ci-dessous sont des pistes de démonstration libre de droit (SoundHelix CC0).
+# Pour la production, remplacez-les par vos propres fichiers musicaux licenciés.
+# Uploadez vos fichiers MP3 dans /music/ ou fournissez des URLs publiques accessibles depuis Render.
 _SH = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-{n}.mp3"
 
 MUSIC_CATALOG = [
-    # ── 1. Épique motivation — cinématique, orchestral, puissant ────────
-    {"music_id": "music-motivation-001", "music_name": "Epic Ascent",     "music_style": "Épique motivation",      "mood": "puissant",     "bpm": 140, "niches": ["motivation", "sport", "finance"],    "duration": 60, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
-    {"music_id": "music-motivation-002", "music_name": "Champion's Road", "music_style": "Épique motivation",      "mood": "inspirant",    "bpm": 135, "niches": ["motivation", "sport"],               "duration": 60, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
-    {"music_id": "music-motivation-003", "music_name": "Rise & Conquer",  "music_style": "Épique motivation",      "mood": "épique",       "bpm": 150, "niches": ["challenge", "mindset"],              "duration": 45, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
-    # ── 2. Afrobeat doux — percussions africaines, chaleureux ───────────
-    {"music_id": "music-afro-001",       "music_name": "Lagos Sunset",    "music_style": "Afrobeat doux",           "mood": "chaud",        "bpm": 95,  "niches": ["lifestyle", "voyage", "culture"],    "duration": 60, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
-    {"music_id": "music-afro-002",       "music_name": "Nairobi Vibes",   "music_style": "Afrobeat doux",           "mood": "festif",       "bpm": 100, "niches": ["danse", "culture"],                  "duration": 60, "url": _SH.format(n=5),  "preview_url": _SH.format(n=5)},
-    {"music_id": "music-afro-003",       "music_name": "Accra Groove",    "music_style": "Afrobeat doux",           "mood": "positif",      "bpm": 105, "niches": ["musique", "lifestyle"],              "duration": 45, "url": _SH.format(n=6),  "preview_url": _SH.format(n=6)},
-    # ── 3. Hip-hop dynamique — trap beats, basse, urban ─────────────────
-    {"music_id": "music-hiphop-001",     "music_name": "Street Energy",   "music_style": "Hip-hop dynamique",       "mood": "intense",      "bpm": 90,  "niches": ["gaming", "challenge", "urban"],      "duration": 45, "url": _SH.format(n=7),  "preview_url": _SH.format(n=7)},
-    {"music_id": "music-hiphop-002",     "music_name": "Trap Anthem",     "music_style": "Hip-hop dynamique",       "mood": "agressif",     "bpm": 88,  "niches": ["sport", "fitness", "gaming"],        "duration": 60, "url": _SH.format(n=8),  "preview_url": _SH.format(n=8)},
-    {"music_id": "music-hiphop-003",     "music_name": "Urban Flex",      "music_style": "Hip-hop dynamique",       "mood": "confiant",     "bpm": 95,  "niches": ["mode", "influenceur"],               "duration": 30, "url": _SH.format(n=9),  "preview_url": _SH.format(n=9)},
-    # ── 4. Corporate moderne — synthé propre, piano, électronique ───────
-    {"music_id": "music-corporate-001",  "music_name": "Synth Executive", "music_style": "Corporate moderne",       "mood": "professionnel","bpm": 110, "niches": ["business", "finance", "IA"],         "duration": 60, "url": _SH.format(n=10), "preview_url": _SH.format(n=10)},
-    {"music_id": "music-corporate-002",  "music_name": "Tech Forward",    "music_style": "Corporate moderne",       "mood": "moderne",      "bpm": 115, "niches": ["technologie", "éducation"],          "duration": 60, "url": _SH.format(n=11), "preview_url": _SH.format(n=11)},
-    {"music_id": "music-corporate-003",  "music_name": "Innovation Drive","music_style": "Corporate moderne",       "mood": "ambitieux",    "bpm": 108, "niches": ["startup", "marketing"],              "duration": 45, "url": _SH.format(n=12), "preview_url": _SH.format(n=12)},
-    # ── 5. Comédie / humour — léger, décalé, percussions comiques ───────
-    {"music_id": "music-comedy-001",     "music_name": "Silly Walk",      "music_style": "Comédie / humour",        "mood": "drôle",        "bpm": 128, "niches": ["humour", "blagues", "enfants"],      "duration": 30, "url": _SH.format(n=13), "preview_url": _SH.format(n=13)},
-    {"music_id": "music-comedy-002",     "music_name": "Circus Fun",      "music_style": "Comédie / humour",        "mood": "léger",        "bpm": 135, "niches": ["animation", "humour"],               "duration": 45, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
-    {"music_id": "music-comedy-003",     "music_name": "Clown Bop",       "music_style": "Comédie / humour",        "mood": "absurde",      "bpm": 120, "niches": ["blagues", "famille"],                "duration": 30, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
-    # ── 6. Suspense / mystère — sombre, tendu, cinématique ──────────────
-    {"music_id": "music-suspense-001",   "music_name": "Dark Pulse",      "music_style": "Suspense / mystère",      "mood": "tendu",        "bpm": 80,  "niches": ["révélation", "cryptomonnaie"],       "duration": 60, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
-    {"music_id": "music-suspense-002",   "music_name": "Shadow Protocol", "music_style": "Suspense / mystère",      "mood": "anxieux",      "bpm": 75,  "niches": ["politique", "finance"],              "duration": 55, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
-    {"music_id": "music-suspense-003",   "music_name": "The Unfolding",   "music_style": "Suspense / mystère",      "mood": "mystérieux",   "bpm": 85,  "niches": ["technologie", "découverte"],         "duration": 60, "url": _SH.format(n=5),  "preview_url": _SH.format(n=5)},
-    # ── 7. Santé / bien-être — doux, nature, guérisseur ─────────────────
-    {"music_id": "music-wellness-001",   "music_name": "Morning Calm",    "music_style": "Santé / bien-être",       "mood": "apaisant",     "bpm": 65,  "niches": ["méditation", "yoga", "santé"],       "duration": 60, "url": _SH.format(n=6),  "preview_url": _SH.format(n=6)},
-    {"music_id": "music-wellness-002",   "music_name": "Healing Light",   "music_style": "Santé / bien-être",       "mood": "serein",       "bpm": 70,  "niches": ["mindfulness", "bien-être"],          "duration": 60, "url": _SH.format(n=7),  "preview_url": _SH.format(n=7)},
-    {"music_id": "music-wellness-003",   "music_name": "Nature Breath",   "music_style": "Santé / bien-être",       "mood": "relaxant",     "bpm": 60,  "niches": ["nature", "spiritualité"],            "duration": 55, "url": _SH.format(n=8),  "preview_url": _SH.format(n=8)},
-    # ── 8. Technologie / IA — électronique, futuriste, synthé ───────────
-    {"music_id": "music-tech-001",       "music_name": "Digital Future",  "music_style": "Technologie / IA",        "mood": "futuriste",    "bpm": 120, "niches": ["IA", "technologie", "coding"],       "duration": 60, "url": _SH.format(n=9),  "preview_url": _SH.format(n=9)},
-    {"music_id": "music-tech-002",       "music_name": "Neural Network",  "music_style": "Technologie / IA",        "mood": "électronique", "bpm": 125, "niches": ["IA", "data", "startup"],             "duration": 45, "url": _SH.format(n=10), "preview_url": _SH.format(n=10)},
-    {"music_id": "music-tech-003",       "music_name": "Cyber Pulse",     "music_style": "Technologie / IA",        "mood": "robotique",    "bpm": 118, "niches": ["gaming", "technologie"],             "duration": 60, "url": _SH.format(n=11), "preview_url": _SH.format(n=11)},
-    # ── 9. Cuisine / lifestyle — joyeux, chaleureux, piano acoustique ───
-    {"music_id": "music-cuisine-001",    "music_name": "Kitchen Joy",     "music_style": "Cuisine / lifestyle",     "mood": "joyeux",       "bpm": 108, "niches": ["cuisine", "lifestyle", "famille"],   "duration": 60, "url": _SH.format(n=12), "preview_url": _SH.format(n=12)},
-    {"music_id": "music-cuisine-002",    "music_name": "Sunday Brunch",   "music_style": "Cuisine / lifestyle",     "mood": "détendu",      "bpm": 100, "niches": ["cuisine", "voyage", "mode"],         "duration": 45, "url": _SH.format(n=13), "preview_url": _SH.format(n=13)},
-    {"music_id": "music-cuisine-003",    "music_name": "Café Terrasse",   "music_style": "Cuisine / lifestyle",     "mood": "chaleureux",   "bpm": 105, "niches": ["lifestyle", "voyage"],               "duration": 60, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
-    # ── 10. Émotion / storytelling — piano, cordes, narratif ────────────
-    {"music_id": "music-emotion-001",    "music_name": "Lone Piano",      "music_style": "Émotion / storytelling",  "mood": "mélancolique", "bpm": 68,  "niches": ["histoire", "inspiration"],           "duration": 60, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
-    {"music_id": "music-emotion-002",    "music_name": "Strings of Hope", "music_style": "Émotion / storytelling",  "mood": "touchant",     "bpm": 72,  "niches": ["motivation", "parentalité"],         "duration": 60, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
-    {"music_id": "music-emotion-003",    "music_name": "The Journey",     "music_style": "Émotion / storytelling",  "mood": "nostalgique",  "bpm": 75,  "niches": ["voyage", "religion"],                "duration": 55, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
-    # ── 11. Latin énergique — salsa, reggaeton, tropical ────────────────
-    {"music_id": "music-latin-001",      "music_name": "Fuego Ritmo",     "music_style": "Latin énergique",         "mood": "festif",       "bpm": 115, "niches": ["danse", "sport", "voyage"],          "duration": 60, "url": _SH.format(n=5),  "preview_url": _SH.format(n=5)},
-    {"music_id": "music-latin-002",      "music_name": "Cumbia Nights",   "music_style": "Latin énergique",         "mood": "sensuel",      "bpm": 100, "niches": ["mode", "lifestyle", "danse"],        "duration": 45, "url": _SH.format(n=6),  "preview_url": _SH.format(n=6)},
-    {"music_id": "music-latin-003",      "music_name": "Reggaeton Flow",  "music_style": "Latin énergique",         "mood": "énergique",    "bpm": 95,  "niches": ["fitness", "urban", "challenge"],     "duration": 60, "url": _SH.format(n=7),  "preview_url": _SH.format(n=7)},
-    # ── 12. Lo-fi calme — hip-hop lo-fi, chill, study beats ─────────────
-    {"music_id": "music-lofi-001",       "music_name": "Chill Study",     "music_style": "Lo-fi calme",             "mood": "concentré",    "bpm": 80,  "niches": ["éducation", "coding", "study"],      "duration": 60, "url": _SH.format(n=8),  "preview_url": _SH.format(n=8)},
-    {"music_id": "music-lofi-002",       "music_name": "Rainy Afternoon", "music_style": "Lo-fi calme",             "mood": "mélancolique", "bpm": 75,  "niches": ["lifestyle", "écriture"],             "duration": 60, "url": _SH.format(n=9),  "preview_url": _SH.format(n=9)},
-    {"music_id": "music-lofi-003",       "music_name": "Late Night Beat", "music_style": "Lo-fi calme",             "mood": "rêveur",       "bpm": 85,  "niches": ["gaming", "méditation"],              "duration": 45, "url": _SH.format(n=10), "preview_url": _SH.format(n=10)},
+    # ── Épique et motivant ──────────────────────────────────────────────
+    {"music_id": "music-epic-001", "music_name": "Epic Rise",       "music_style": "Épique et motivant", "niches": ["motivation", "sport", "finance"],    "duration": 60, "url": _SH.format(n=1)},
+    {"music_id": "music-epic-002", "music_name": "Power Surge",     "music_style": "Épique et motivant", "niches": ["sport", "challenge", "fitness"],     "duration": 45, "url": _SH.format(n=2)},
+    {"music_id": "music-epic-003", "music_name": "Champion",        "music_style": "Épique et motivant", "niches": ["motivation", "sport"],               "duration": 60, "url": _SH.format(n=3)},
+    {"music_id": "music-epic-004", "music_name": "Victory March",   "music_style": "Épique et motivant", "niches": ["finance", "business", "success"],    "duration": 50, "url": _SH.format(n=4)},
+    {"music_id": "music-epic-005", "music_name": "Rise Up",         "music_style": "Épique et motivant", "niches": ["motivation", "mindset"],             "duration": 60, "url": _SH.format(n=5)},
+    {"music_id": "music-epic-006", "music_name": "Unstoppable",     "music_style": "Épique et motivant", "niches": ["sport", "motivation", "challenge"],  "duration": 45, "url": _SH.format(n=6)},
+    # ── Doux et apaisant ───────────────────────────────────────────────
+    {"music_id": "music-soft-001", "music_name": "Peaceful Mind",   "music_style": "Doux et apaisant",   "niches": ["méditation", "bien-être"],           "duration": 60, "url": _SH.format(n=7)},
+    {"music_id": "music-soft-002", "music_name": "Gentle Rain",     "music_style": "Doux et apaisant",   "niches": ["santé", "mindfulness"],              "duration": 60, "url": _SH.format(n=8)},
+    {"music_id": "music-soft-003", "music_name": "Serenity",        "music_style": "Doux et apaisant",   "niches": ["religion", "spiritualité"],          "duration": 55, "url": _SH.format(n=9)},
+    {"music_id": "music-soft-004", "music_name": "Calm Waters",     "music_style": "Doux et apaisant",   "niches": ["parentalité", "famille"],            "duration": 60, "url": _SH.format(n=10)},
+    {"music_id": "music-soft-005", "music_name": "Soft Breeze",     "music_style": "Doux et apaisant",   "niches": ["voyage", "nature"],                  "duration": 45, "url": _SH.format(n=11)},
+    {"music_id": "music-soft-006", "music_name": "Inner Peace",     "music_style": "Doux et apaisant",   "niches": ["mindfulness", "méditation"],         "duration": 60, "url": _SH.format(n=12)},
+    # ── Rythmé et énergique ────────────────────────────────────────────
+    {"music_id": "music-energy-001", "music_name": "Beat Drop",     "music_style": "Rythmé et énergique", "niches": ["gaming", "sport", "mode"],          "duration": 30, "url": _SH.format(n=13)},
+    {"music_id": "music-energy-002", "music_name": "Energy Rush",   "music_style": "Rythmé et énergique", "niches": ["gaming", "challenge"],              "duration": 60, "url": _SH.format(n=1)},
+    {"music_id": "music-energy-003", "music_name": "Pulse",         "music_style": "Rythmé et énergique", "niches": ["fitness", "sport"],                 "duration": 45, "url": _SH.format(n=2)},
+    {"music_id": "music-energy-004", "music_name": "Rhythm Fire",   "music_style": "Rythmé et énergique", "niches": ["influenceur", "mode"],              "duration": 60, "url": _SH.format(n=3)},
+    {"music_id": "music-energy-005", "music_name": "Dance Wave",    "music_style": "Rythmé et énergique", "niches": ["danse", "humour"],                  "duration": 30, "url": _SH.format(n=4)},
+    {"music_id": "music-energy-006", "music_name": "Electric Vibe", "music_style": "Rythmé et énergique", "niches": ["technologie", "IA"],                "duration": 45, "url": _SH.format(n=5)},
+    # ── Mystérieux et intrigant ────────────────────────────────────────
+    {"music_id": "music-mystery-001", "music_name": "Dark Secret",  "music_style": "Mystérieux et intrigant", "niches": ["révélation", "cryptomonnaie"],  "duration": 60, "url": _SH.format(n=6)},
+    {"music_id": "music-mystery-002", "music_name": "Mystery Walk", "music_style": "Mystérieux et intrigant", "niches": ["technologie", "IA"],            "duration": 50, "url": _SH.format(n=7)},
+    {"music_id": "music-mystery-003", "music_name": "Shadow",       "music_style": "Mystérieux et intrigant", "niches": ["finance", "politique"],         "duration": 60, "url": _SH.format(n=8)},
+    {"music_id": "music-mystery-004", "music_name": "Unknown Path", "music_style": "Mystérieux et intrigant", "niches": ["voyage", "découverte"],         "duration": 45, "url": _SH.format(n=9)},
+    {"music_id": "music-mystery-005", "music_name": "Twilight",     "music_style": "Mystérieux et intrigant", "niches": ["révélation", "spiritualité"],   "duration": 55, "url": _SH.format(n=10)},
+    # ── Neutre et professionnel ────────────────────────────────────────
+    {"music_id": "music-neutral-001", "music_name": "Corporate Flow",  "music_style": "Neutre et professionnel", "niches": ["business", "finance"],      "duration": 60, "url": _SH.format(n=11)},
+    {"music_id": "music-neutral-002", "music_name": "Business Beat",   "music_style": "Neutre et professionnel", "niches": ["éducation", "tutoriel"],    "duration": 45, "url": _SH.format(n=12)},
+    {"music_id": "music-neutral-003", "music_name": "Professional",    "music_style": "Neutre et professionnel", "niches": ["IA", "technologie"],        "duration": 60, "url": _SH.format(n=13)},
+    {"music_id": "music-neutral-004", "music_name": "Clean Tone",      "music_style": "Neutre et professionnel", "niches": ["langues", "éducation"],     "duration": 50, "url": _SH.format(n=1)},
+    # ── Joyeux et léger ───────────────────────────────────────────────
+    {"music_id": "music-happy-001", "music_name": "Happy Day",    "music_style": "Joyeux et léger", "niches": ["humour", "blagues", "cuisine"],          "duration": 60, "url": _SH.format(n=2)},
+    {"music_id": "music-happy-002", "music_name": "Fun Times",    "music_style": "Joyeux et léger", "niches": ["famille", "enfants"],                    "duration": 45, "url": _SH.format(n=3)},
+    {"music_id": "music-happy-003", "music_name": "Cheerful",     "music_style": "Joyeux et léger", "niches": ["voyage", "lifestyle"],                   "duration": 60, "url": _SH.format(n=4)},
+    {"music_id": "music-happy-004", "music_name": "Bright Side",  "music_style": "Joyeux et léger", "niches": ["parentalité", "motivation"],             "duration": 45, "url": _SH.format(n=5)},
 ]
 
 
@@ -3901,7 +3107,6 @@ async def select_music(req: SelectMusicRequest):
 
 @app.post("/upload-music")
 async def upload_music(
-    request: Request,
     music_file: UploadFile = File(...),
     music_name: str = Form(""),
 ):
@@ -3951,9 +3156,6 @@ async def upload_music(
     else:
         file_url = f"{PUBLIC_BASE_URL}/music/{saved_filename}" if PUBLIC_BASE_URL else f"/music/{saved_filename}"
 
-    cu = await get_current_user_optional(request)
-    _db_record_uploaded_music(cu["user_id"] if cu else None, final_name, file_url)
-
     return {
         "music_id": music_id,
         "music_name": final_name,
@@ -3970,7 +3172,7 @@ async def serve_music(filename: str):
     file_path = os.path.join(MUSIC_DIR, filename)
     if not os.path.exists(file_path):
         return JSONResponse(status_code=404, content={"error": "Fichier music introuvable"})
-    return FileResponse(file_path, media_type=_media_type_for_audio(filename), filename=filename)
+    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
 
 
 @app.get("/static-music/{filename}")
@@ -4001,12 +3203,8 @@ async def available_music(style: str = ""):
         local_filename = f"{t['music_id']}.mp3"
         local_path = os.path.join(STATIC_MUSIC_DIR, local_filename)
         if os.path.exists(local_path):
-            local_url = f"{base}/static-music/{local_filename}"
-            t["url"] = local_url
-            t["preview_url"] = local_url
-        else:
-            # SoundHelix fallback — ensure preview_url always present
-            t.setdefault("preview_url", t["url"])
+            t["url"] = f"{base}/static-music/{local_filename}"
+        # else: keep t["url"] as-is (SoundHelix fallback for testing)
         catalog.append(t)
 
     uploaded = []
@@ -4024,7 +3222,6 @@ async def available_music(style: str = ""):
     except Exception:
         pass
 
-    print(f"[available-music] returning {len(catalog)} catalog tracks and {len(uploaded)} uploaded tracks")
     return {
         "catalog": catalog,
         "uploaded": uploaded,
@@ -4034,25 +3231,11 @@ async def available_music(style: str = ""):
 
 @app.get("/languages")
 async def get_languages():
-    print(f"[languages] returning {len(LANGUAGES)} languages")
     return {"languages": LANGUAGES}
-
-
-@app.get("/video-formats")
-async def get_video_formats():
-    return {
-        "default": "hd",
-        "formats": [
-            {"id": "hd", "label": "HD — 1920×1080", "width": 1920, "height": 1080},
-            {"id": "tiktok", "label": "TikTok — 1080×1920", "width": 1080, "height": 1920},
-            {"id": "square", "label": "Carré — 1080×1080", "width": 1080, "height": 1080},
-        ],
-    }
 
 
 @app.get("/voice-styles")
 async def get_voice_styles():
-    print(f"[voice-styles] returning {len(VOICE_STYLES)} styles")
     return {"voice_styles": VOICE_STYLES}
 
 
@@ -4418,28 +3601,6 @@ async def health():
             raise HTTPException(status_code=502, detail=f"RunPod unreachable: {exc}")
 
 
-@app.get("/health/deep")
-async def health_deep():
-    """Statut détaillé de toutes les dépendances."""
-    db_ok = False
-    if _db_enabled:
-        try:
-            db = _SessionLocal()
-            db.execute(__import__("sqlalchemy").text("SELECT 1"))
-            db.close()
-            db_ok = True
-        except Exception:
-            db_ok = False
-    return {
-        "status":          "ok",
-        "database":        db_ok,
-        "auth":            _db_enabled and bool(JWT_SECRET),
-        "storage":         _storage_enabled(),
-        "fish_audio_key":  bool(FISH_AUDIO_API_KEY),
-        "anthropic_key":   bool(ANTHROPIC_API_KEY),
-    }
-
-
 @app.post("/qwen/analyze")
 async def qwen_analyze(
     file: UploadFile = File(...),
@@ -4506,10 +3667,10 @@ async def wan_image2video(
 
 
 @app.get("/video-status/{job_id}")
-async def video_status(job_id: str, request: Request):
-    job, err = await _check_job_access(job_id, request)
-    if err:
-        return err
+async def video_status(job_id: str):
+    job = VIDEO_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job introuvable"})
     return JSONResponse(status_code=200, content=job)
 
 

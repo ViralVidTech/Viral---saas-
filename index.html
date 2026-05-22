@@ -147,11 +147,6 @@
     .section-divider{border:none;border-top:1px solid var(--border);margin:4px 0;}
     .clone-panel{background:rgba(14,165,233,0.06);border:1px solid rgba(14,165,233,0.22);border-radius:14px;padding:16px;display:grid;gap:12px;margin-top:8px;}
     .premium-badge{background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;font-size:0.72rem;font-weight:800;padding:3px 10px;border-radius:20px;white-space:nowrap;}
-
-    .preview-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;}
-    .preview-row button{font-size:0.85rem;padding:9px 12px;}
-    .preview-audio{display:none;width:100%;margin-top:6px;}
-    .format-help{color:var(--muted);font-size:0.82rem;line-height:1.35;}
     @media(max-width:900px){.pipeline-tabs{grid-template-columns:repeat(2,1fr);}}
     @media(max-width:600px){.two-col,.three-col{grid-template-columns:1fr;}}
     @media (max-width:1180px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } .workspace { grid-template-columns:1fr; } .pricing-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr 1fr; } .pipeline-steps { grid-template-columns:repeat(2,1fr); } }
@@ -191,7 +186,6 @@
       <div class="top-actions">
         <div class="badge-pill"><span class="dot"></span><span>API status</span></div>
         <div class="user-badge" id="userBadge"><span>👤</span><span id="userBadgeText">Guest</span></div>
-        <div class="badge-pill" id="quotaChip" style="display:none;cursor:default;" title="Quota vidéos ce mois-ci"><span id="quotaDisplay">—</span></div>
         <button class="auth-btn" id="openLoginBtn">Login</button>
         <button class="auth-btn" id="logoutBtn" style="display:none;">Logout</button>
         <div class="lang-switcher">
@@ -260,12 +254,7 @@
         <hr class="section-divider">
         <div class="two-col">
           <div class="field"><label>Style de voix</label><select id="p1VoiceStyle"><option value="">Tous les styles</option></select></div>
-          <div class="field"><label>Voix Fish Audio</label>
-            <div style="display:flex;gap:6px;align-items:center;">
-              <select id="p1Voice" style="flex:1;"><option value="">Chargement…</option></select>
-              <button class="secondary-btn" id="p1VoicePreviewBtn" style="white-space:nowrap;padding:10px 12px;" onclick="previewVoice('p1Voice','p1VoicePreviewBtn','p1Status')">▶ Voix</button>
-            </div>
-          </div>
+          <div class="field"><label>Voix Fish Audio</label><select id="p1Voice"><option value="">Chargement…</option></select></div>
         </div>
         <div>
           <div style="display:flex;align-items:center;gap:10px;">
@@ -288,14 +277,13 @@
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p1Music" style="flex:1;"><option value="">Pas de musique</option></select>
-            <button class="secondary-btn" id="p1MusicPreviewBtn" style="white-space:nowrap;padding:10px 14px;" onclick="toggleMusicPreview('p1Music','p1MusicPreviewBtn')">▶ Écouter</button>
             <input type="file" id="p1MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p1MusicFile').click()">📁 Upload</button>
           </div>
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p1Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
         <div class="three-col">
-          <div class="field"><label>Format vidéo</label><select id="p1Format"><option value="hd" selected>HD — 1920×1080 (par défaut)</option><option value="tiktok">TikTok — 1080×1920</option><option value="square">Carré — 1080×1080</option></select><small class="format-help">HD est le format par défaut.</small></div>
+          <div class="field"><label>Résolution</label><select id="p1Res"><option value="480p" selected>1280×704 (16:9)</option><option value="portrait">704×1280 (9:16)</option></select></div>
           <div class="field"><label>Steps</label><select id="p1Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
         </div>
         <div class="actions"><button class="wan-btn" id="p1Btn">🎬 Générer Pipeline 1</button></div>
@@ -338,12 +326,7 @@
         <hr class="section-divider">
         <div class="two-col">
           <div class="field"><label>Style de voix</label><select id="p2VoiceStyle"><option value="">Tous les styles</option></select></div>
-          <div class="field"><label>Voix Fish Audio</label>
-            <div style="display:flex;gap:6px;align-items:center;">
-              <select id="p2Voice" style="flex:1;"><option value="">Chargement…</option></select>
-              <button class="secondary-btn" id="p2VoicePreviewBtn" style="white-space:nowrap;padding:10px 12px;" onclick="previewVoice('p2Voice','p2VoicePreviewBtn','p2Status')">▶ Voix</button>
-            </div>
-          </div>
+          <div class="field"><label>Voix Fish Audio</label><select id="p2Voice"><option value="">Chargement…</option></select></div>
         </div>
         <div>
           <div style="display:flex;align-items:center;gap:10px;">
@@ -366,14 +349,13 @@
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p2Music" style="flex:1;"><option value="">Pas de musique</option></select>
-            <button class="secondary-btn" id="p2MusicPreviewBtn" style="white-space:nowrap;padding:10px 14px;" onclick="toggleMusicPreview('p2Music','p2MusicPreviewBtn')">▶ Écouter</button>
             <input type="file" id="p2MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p2MusicFile').click()">📁 Upload</button>
           </div>
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p2Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
         <div class="three-col">
-          <div class="field"><label>Format vidéo</label><select id="p2Format"><option value="hd" selected>HD — 1920×1080 (par défaut)</option><option value="tiktok">TikTok — 1080×1920</option><option value="square">Carré — 1080×1080</option></select><small class="format-help">HD est le format par défaut.</small></div>
+          <div class="field"><label>Résolution</label><select id="p2Res"><option value="480p" selected>832×480 (16:9)</option><option value="portrait">480×832 (9:16)</option><option value="720p">1280×720 (HD)</option></select></div>
           <div class="field"><label>Steps</label><select id="p2Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
         </div>
         <div class="actions"><button class="wan-btn" id="p2Btn">🎬 Générer Pipeline 2</button></div>
@@ -403,12 +385,7 @@
         <hr class="section-divider">
         <div class="two-col">
           <div class="field"><label>Style de voix</label><select id="p3VoiceStyle"><option value="">Tous les styles</option></select></div>
-          <div class="field"><label>Voix Fish Audio</label>
-            <div style="display:flex;gap:6px;align-items:center;">
-              <select id="p3Voice" style="flex:1;"><option value="">Chargement…</option></select>
-              <button class="secondary-btn" id="p3VoicePreviewBtn" style="white-space:nowrap;padding:10px 12px;" onclick="previewVoice('p3Voice','p3VoicePreviewBtn','p3Status')">▶ Voix</button>
-            </div>
-          </div>
+          <div class="field"><label>Voix Fish Audio</label><select id="p3Voice"><option value="">Chargement…</option></select></div>
         </div>
         <div>
           <div style="display:flex;align-items:center;gap:10px;">
@@ -425,13 +402,11 @@
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p3Music" style="flex:1;"><option value="">Pas de musique</option></select>
-            <button class="secondary-btn" id="p3MusicPreviewBtn" style="white-space:nowrap;padding:10px 14px;" onclick="toggleMusicPreview('p3Music','p3MusicPreviewBtn')">▶ Écouter</button>
             <input type="file" id="p3MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p3MusicFile').click()">📁 Upload</button>
           </div>
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p3Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
-        <div class="field"><label>Format vidéo</label><select id="p3Format"><option value="hd" selected>HD — 1920×1080 (par défaut)</option><option value="tiktok">TikTok — 1080×1920</option><option value="square">Carré — 1080×1080</option></select><small class="format-help">HD est le format par défaut.</small></div>
         <div class="actions"><button class="wan-btn" id="p3Btn">🎬 Générer Pipeline 3</button></div>
         <div class="status" id="p3Status"></div>
         <div class="wan-video-block" id="p3VideoBlock">
@@ -478,12 +453,7 @@
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p4UseVoice"><span class="toggle-slider"></span></label><span>Voix Fish Audio (optionnel)</span></div>
         <div id="p4VoiceArea" style="display:none;" class="two-col">
           <div class="field"><label>Style de voix</label><select id="p4VoiceStyle"><option value="">Tous les styles</option></select></div>
-          <div class="field"><label>Voix Fish Audio</label>
-            <div style="display:flex;gap:6px;align-items:center;">
-              <select id="p4Voice" style="flex:1;"><option value="">Chargement…</option></select>
-              <button class="secondary-btn" id="p4VoicePreviewBtn" style="white-space:nowrap;padding:10px 12px;" onclick="previewVoice('p4Voice','p4VoicePreviewBtn','p4Status')">▶ Voix</button>
-            </div>
-          </div>
+          <div class="field"><label>Voix Fish Audio</label><select id="p4Voice"><option value="">Chargement…</option></select></div>
         </div>
         <div class="field" id="p4VoiceTextArea" style="display:none;">
           <label>Texte à lire</label>
@@ -505,7 +475,6 @@
         <div id="p4MusicArea" style="display:none;" class="field">
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p4Music" style="flex:1;"><option value="">Pas de musique</option></select>
-            <button class="secondary-btn" id="p4MusicPreviewBtn" style="white-space:nowrap;padding:10px 14px;" onclick="toggleMusicPreview('p4Music','p4MusicPreviewBtn')">▶ Écouter</button>
             <input type="file" id="p4MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p4MusicFile').click()">📁 Upload</button>
           </div>
@@ -584,16 +553,14 @@
 
 <div class="modal-overlay" id="authModal">
   <div class="modal" id="login">
-    <div class="modal-header" style="justify-content:space-between;align-items:center;">
+    <div class="modal-header">
       <div><h2 style="margin:0;">User Login</h2><p style="margin:6px 0 0;color:var(--muted);">Create a local demo account to unlock the dashboard experience.</p></div>
       <button class="close-btn" id="closeModalBtn">✕</button>
     </div>
-    <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email"/></div>
-    <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="Min. 8 characters" autocomplete="current-password"/></div>
-    <div class="actions" style="gap:8px;display:flex;">
-      <button class="primary-btn" id="loginBtn" style="flex:1;">Login</button>
-      <button class="gold-btn" id="registerBtn" style="flex:1;">Create account</button>
-    </div>
+    <div class="field"><label>Name</label><input id="authName" type="text" placeholder="John Creator"/></div>
+    <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="john@example.com"/></div>
+    <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="••••••••"/></div>
+    <div class="actions"><button class="primary-btn" id="loginBtn">Login / Register</button></div>
     <div class="status" id="authStatus"></div>
   </div>
 </div>
@@ -721,63 +688,19 @@ async function scanTrends(){
   finally{scanBtn.disabled=false;scanBtn.textContent='Scan trends';}
 }
 
-// GUEST ID — quota tracking for anonymous users
-function getGuestId(){
-  let id=localStorage.getItem('viral_guest_id');
-  if(!id){
-    id=Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,'0')).join('');
-    localStorage.setItem('viral_guest_id',id);
-  }
-  return id;
-}
-
-// AUTH — JWT
-function getAuthHeaders(){
-  const token=localStorage.getItem('viral_jwt');
-  return token ? {'Authorization':'Bearer '+token,'Content-Type':'application/json'} : {'Content-Type':'application/json'};
-}
-function _getAuthUser(){try{return JSON.parse(localStorage.getItem('viral_user')||'null');}catch(e){return null;}}
+// AUTH
 function updateAuthUI(){
-  const user=_getAuthUser();
-  if(user){userBadge.classList.add('show');userBadgeText.textContent=user.email;document.getElementById('openLoginBtn').style.display='none';document.getElementById('logoutBtn').style.display='inline-flex';}
+  let user=null;try{user=JSON.parse(localStorage.getItem('viral_user')||'null');}catch(e){user=null;}
+  if(user){userBadge.classList.add('show');userBadgeText.textContent=user.name;document.getElementById('openLoginBtn').style.display='none';document.getElementById('logoutBtn').style.display='inline-flex';}
   else{userBadge.classList.remove('show');document.getElementById('openLoginBtn').style.display='inline-flex';document.getElementById('logoutBtn').style.display='none';}
 }
-async function _authCall(endpoint){
-  const e=document.getElementById('authEmail'),p=document.getElementById('authPassword'),s=document.getElementById('authStatus');
-  const apiUrl=getApiUrl();
-  if(!e.value.trim()||!p.value.trim()){s.textContent='Email and password required.';s.className='status error';return;}
-  s.textContent='…';s.className='status';
-  try{
-    const r=await fetch(`${apiUrl}${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e.value.trim(),password:p.value})});
-    const d=await r.json();
-    if(!r.ok){s.textContent=d.error||'Error';s.className='status error';return;}
-    localStorage.setItem('viral_jwt',d.token);
-    localStorage.setItem('viral_user',JSON.stringify({email:d.email,user_id:d.user_id,plan:d.plan}));
-    s.textContent='Logged in as '+d.email;s.className='status success';
-    updateAuthUI();loadUsage();setTimeout(()=>authModal.classList.remove('open'),700);
-  }catch(err){s.textContent='Network error: '+err.message;s.className='status error';}
+function loginUser(){
+  const n=document.getElementById('authName'),e=document.getElementById('authEmail'),p=document.getElementById('authPassword'),s=document.getElementById('authStatus');
+  if(!n.value.trim()||!e.value.trim()||!p.value.trim()){s.textContent='Please fill in all fields.';s.className='status error';return;}
+  localStorage.setItem('viral_user',JSON.stringify({name:n.value.trim(),email:e.value.trim()}));
+  s.textContent='You are now logged in.';s.className='status success';updateAuthUI();setTimeout(()=>authModal.classList.remove('open'),500);
 }
-function loginUser(){_authCall('/auth/login');}
-function registerUser(){_authCall('/auth/register');}
-function logoutUser(){localStorage.removeItem('viral_jwt');localStorage.removeItem('viral_user');updateAuthUI();loadUsage();setStatus('status','Logged out.','success');}
-
-async function loadUsage(){
-  const apiUrl=getApiUrl();if(!apiUrl)return;
-  try{
-    const user=_getAuthUser();
-    const url=user?`${apiUrl}/usage/me`:`${apiUrl}/usage/me?guest_id=${getGuestId()}`;
-    const r=await fetch(url,{headers:getAuthHeaders()});
-    if(!r.ok)return;
-    const d=await r.json();
-    const chip=document.getElementById('quotaChip');
-    const disp=document.getElementById('quotaDisplay');
-    if(chip&&disp){
-      const warn=d.remaining<=1?'color:#ff7b7b':'';
-      disp.innerHTML=`<span style="${warn}">${d.plan} · ${d.used}/${d.limit}</span>`;
-      chip.style.display='inline-flex';
-    }
-  }catch(e){}
-}
+function logoutUser(){localStorage.removeItem('viral_user');updateAuthUI();setStatus('status','You have been logged out.','success');}
 
 // INIT
 const savedApiUrl=localStorage.getItem('viral_api_url');if(savedApiUrl&&apiUrlInput)apiUrlInput.value=savedApiUrl;
@@ -786,13 +709,12 @@ document.getElementById('scanBtn').addEventListener('click',scanTrends);
 document.getElementById('openLoginBtn').addEventListener('click',()=>authModal.classList.add('open'));
 document.getElementById('closeModalBtn').addEventListener('click',()=>authModal.classList.remove('open'));
 document.getElementById('loginBtn').addEventListener('click',loginUser);
-document.getElementById('registerBtn').addEventListener('click',registerUser);
 document.getElementById('logoutBtn').addEventListener('click',logoutUser);
 authModal.addEventListener('click',e=>{if(e.target===authModal)authModal.classList.remove('open');});
 document.getElementById('plan1Btn').addEventListener('click',()=>addActivity('Plan selected','Starter plan clicked.'));
 document.getElementById('plan2Btn').addEventListener('click',()=>addActivity('Plan selected','Pro plan clicked.'));
 document.getElementById('plan3Btn').addEventListener('click',()=>addActivity('Plan selected','Business plan clicked.'));
-updateDashboard();updateAuthUI();renderDetector([]);loadUsage();
+updateDashboard();updateAuthUI();renderDetector([]);
 
 // ══════════════════════════════════════════════════════════════════════
 // PIPELINES DE PRODUCTION
@@ -800,119 +722,8 @@ updateDashboard();updateAuthUI();renderDetector([]);loadUsage();
 
 function getPipelineApiUrl() {
   const raw = apiUrlInput?.value || '';
-  const saved = normalizeApiUrl(raw);
-  if (saved) return saved;
-  // Si l'interface est servie par le backend Render, utiliser automatiquement le domaine courant.
-  if (window.location && window.location.origin && !window.location.origin.includes('null')) return window.location.origin;
-  return 'https://viral-saas.onrender.com';
+  return normalizeApiUrl(raw) || 'https://viral-saas.onrender.com';
 }
-
-function getApiCandidates() {
-  const candidates = [];
-  const primary = getPipelineApiUrl();
-  if (primary) candidates.push(primary);
-  if (window.location && window.location.origin && !candidates.includes(window.location.origin)) candidates.push(window.location.origin);
-  if (!candidates.includes(‘https://viral-saas.onrender.com’)) candidates.push(‘https://viral-saas.onrender.com’);
-  return candidates.filter(Boolean);
-}
-
-// Essaie plusieurs serveurs dans l’ordre, retourne le premier JSON valide ou null
-async function fetchJsonWithFallback(path, options) {
-  for (const base of getApiCandidates()) {
-    try {
-      const r = await fetch(`${base}${path}`, options || {});
-      if (!r.ok) { console.warn(`[API] ${base}${path} → HTTP ${r.status}`); continue; }
-      const ct = r.headers.get(‘content-type’) || ‘’;
-      if (!ct.includes(‘json’)) { console.warn(`[API] ${base}${path} → non-JSON (${ct})`); continue; }
-      return await r.json();
-    } catch(e) {
-      console.warn(`[API] ${base}${path} → ${e.message}`);
-    }
-  }
-  console.error(`[API] Tous les serveurs ont échoué pour ${path}`);
-  return null;
-}
-
-function getAuthHeaders(){
-  const token = localStorage.getItem(‘viral_token’) || localStorage.getItem(‘auth_token’) || ‘’;
-  return token ? { ‘Authorization’: `Bearer ${token}` } : {};
-}
-
-function getPipelineFormat(prefix){
-  return document.getElementById(`${prefix}Format`)?.value || ‘hd’;
-}
-
-function videoFormatToLtxResolution(format){
-  const f = (format || ‘hd’).toLowerCase();
-  if (f === ‘tiktok’) return ‘portrait’;
-  if (f === ‘square’) return ‘square’;
-  return ‘720p’;
-}
-
-function installMediaPreviewControls(){
-  [‘p1’,’p2’,’p3’,’p4’].forEach(prefix => {
-    const voiceSel = document.getElementById(`${prefix}Voice`);
-    if (voiceSel && !document.getElementById(`${prefix}VoicePreviewBtn`)) {
-      const row = document.createElement(‘div’);
-      row.className = ‘preview-row’;
-      row.innerHTML = `<button class="secondary-btn" type="button" id="${prefix}VoicePreviewBtn">▶️ Écouter la voix</button><audio id="${prefix}VoicePreviewAudio" class="preview-audio" controls></audio>`;
-      voiceSel.insertAdjacentElement(‘afterend’, row);
-      document.getElementById(`${prefix}VoicePreviewBtn`).addEventListener(‘click’, () => previewFishVoice(prefix));
-    }
-    const musicSel = document.getElementById(`${prefix}Music`);
-    if (musicSel && !document.getElementById(`${prefix}MusicPreviewBtn`)) {
-      const row = document.createElement(‘div’);
-      row.className = ‘preview-row’;
-      row.innerHTML = `<button class="secondary-btn" type="button" id="${prefix}MusicPreviewBtn">▶️ Écouter la musique</button><audio id="${prefix}MusicPreviewAudio" class="preview-audio" controls></audio>`;
-      musicSel.parentElement?.insertAdjacentElement(‘afterend’, row);
-      document.getElementById(`${prefix}MusicPreviewBtn`).addEventListener(‘click’, () => previewMusic(prefix));
-    }
-  });
-}
-
-async function previewFishVoice(prefix){
-  const apiUrl = getPipelineApiUrl();
-  const sel = document.getElementById(`${prefix}Voice`);
-  const audio = document.getElementById(`${prefix}VoicePreviewAudio`);
-  if (!sel || !sel.value) return setStatus(`${prefix}Status`, "Choisissez d’abord une voix Fish Audio.", ‘error’);
-  const opt = sel.options[sel.selectedIndex];
-  const language = opt?.dataset?.language || document.getElementById(`${prefix}Lang`)?.value || ‘fr’;
-  const text = language === ‘fr’
-    ? "Bonjour, voici un aperçu de cette voix pour vos vidéos ViralVidTech."
-    : "Hello, this is a preview of this voice for your ViralVidTech videos.";
-  setStatus(`${prefix}Status`, "⏳ Préparation de l’aperçu voix…", ‘ready’);
-  try {
-    const r = await fetch(`${apiUrl}/preview-fish-voice`, {
-      method: ‘POST’,
-      headers: { ‘Content-Type’: ‘application/json’, ...getAuthHeaders() },
-      body: JSON.stringify({ voice_id: sel.value, language, text })
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
-    const url = d.audio_url || d.preview_url || ‘’;
-    if (!url) throw new Error(‘Aucune URL audio retournée.’);
-    audio.src = url;
-    audio.style.display = ‘block’;
-    await audio.play().catch(() => {});
-    setStatus(`${prefix}Status`, ‘✅ Aperçu voix prêt.’, ‘success’);
-  } catch(e) {
-    setStatus(`${prefix}Status`, `❌ Aperçu voix impossible: ${e.message}`, ‘error’);
-  }
-}
-
-function previewMusic(prefix){
-  const sel = document.getElementById(`${prefix}Music`);
-  const audio = document.getElementById(`${prefix}MusicPreviewAudio`);
-  if (!sel || !sel.value) return setStatus(`${prefix}Status`, "Choisissez d’abord une musique.", ‘error’);
-  const opt = sel.options[sel.selectedIndex];
-  const url = opt?.dataset?.preview || opt?.dataset?.url || sel.value;
-  if (!url) return setStatus(`${prefix}Status`, "Cette musique n’a pas d’URL lisible.", ‘error’);
-  audio.src = url;
-  audio.style.display = ‘block’;
-  audio.play().catch(() => {});
-  setStatus(`${prefix}Status`, ‘✅ Aperçu musique prêt.’, ‘success’);
-}
-
 
 // ── Shared helpers ────────────────────────────────────────────────────
 function populateSelect(sel, items, valFn, labelFn, emptyLabel) {
@@ -956,8 +767,6 @@ function filterVoicesByStyle(voices, styleVal, voiceSel) {
     items.forEach(v => {
       const opt = document.createElement('option');
       opt.value = v.id || v.voice_id || '';
-      opt.dataset.language = code || v.language || 'fr';
-      opt.dataset.voiceId = opt.value;
       // Construire un label lisible
       const baseLabel = v.display_label || v.name || v.voice_name || opt.value;
       const genderFr = v.gender_label || (v.gender === 'female' ? 'Femme' : v.gender === 'male' ? 'Homme' : '');
@@ -1052,11 +861,11 @@ async function runGenerateScript(prefix) {
     }
 }
 
-async function generateFishVoice(apiUrl, text, voiceId, statusId, language) {
+async function generateFishVoice(apiUrl, text, voiceId, statusId) {
   setStatus(statusId, '⏳ Fish Audio génère la voix…', 'ready');
   const res = await fetch(`${apiUrl}/generate-audio-fish`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-    body: JSON.stringify({ text, voice_id: voiceId, language: language || 'fr', format: 'mp3', latency: 'balanced' })
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice_id: voiceId, format: 'mp3', latency: 'balanced' })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Erreur voice ${res.status}`); }
   const data = await res.json();
@@ -1098,7 +907,7 @@ function splitScenes(text, numScenes) {
   return scenes;
 }
 
-async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId, ltxAudioMode, videoFormat) {
+async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId, ltxAudioMode) {
   // ── Désactiver le bouton Generate pendant le rendu ───────────────────────
   const btnId  = statusId.replace('Status', 'Btn');
   const btnEl  = document.getElementById(btnId);
@@ -1132,35 +941,27 @@ async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitl
 
   const clips = Array.isArray(videoUrls) ? videoUrls : [videoUrls];
   const payload = {
-    video_source:  clips[0] || '',
-    video_source2: clips[1] || '',
-    video_source3: clips[2] || '',
-    video_source4: clips[3] || '',
-    video_source5: clips[4] || '',
-    video_source6: clips[5] || '',
-    video_source7: clips[6] || '',
-    video_source8: clips[7] || '',
+    wan_video:  clips[0] || '',
+    wan_video2: clips[1] || '',
+    wan_video3: clips[2] || '',
+    wan_video4: clips[3] || '',
+    wan_video5: clips[4] || '',
+    wan_video6: clips[5] || '',
+    wan_video7: clips[6] || '',
+    wan_video8: clips[7] || '',
     audio_url: audioUrl,
     music_url: musicUrl,
     ltx_audio_mode: ltxAudioMode || 'fish',
-    video_format: videoFormat || 'hd',
     subtitles,
-    duration: 30,
-    guest_id: _getAuthUser() ? null : getGuestId(),
+    duration: 30
   };
 
   let ffData;
   try {
     const ffRes = await fetch(`${apiUrl}/create-video`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    // 403 = quota dépassé
-    if (ffRes.status === 403) {
-      const errData = await ffRes.json().catch(() => ({}));
-      cleanup(); loadUsage();
-      throw new Error(errData.message || `Quota mensuel dépassé (plan: ${errData.plan || '?'}). Passez à un plan supérieur.`);
-    }
     // 429 = queue pleine
     if (ffRes.status === 429) {
       const errData = await ffRes.json().catch(() => ({}));
@@ -1273,46 +1074,31 @@ async function loadPipelineData() {
     }
   } catch(e) {}
 
-  // Fish voices — chargement robuste avec fallback frontend
-  {
-    const d = await fetchJsonWithFallback('/fish-voices');
-    if (d && Array.isArray(d.voices) && d.voices.length > 0) {
-      _pipelineVoices = d.voices;
-      console.log(`[Fish voices] ${_pipelineVoices.length} voix chargées (source: ${d.source || '?'})`);
+  // Fish voices — {"success":true,"voices":[{"id":...,"name":...}]}
+  try {
+    const r = await fetch(`${apiUrl}/fish-voices`);
+    if (r.ok) {
+      const d = await r.json();
+      _pipelineVoices = d.voices || [];
       ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
         const sel = document.getElementById(id);
         if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
       });
-    } else {
-      console.error('[Fish voices] /fish-voices : aucune voix reçue — fallback frontend', d);
-      _pipelineVoices = [
-        {id:'a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1', voice_id:'a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1', display_label:'Lucas — Homme, Français naturel', name:'Lucas', language:'fr', language_name:'Français', gender:'male', gender_label:'Homme', accent:'France', style_hint:'Homme, France'},
-        {id:'b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90', voice_id:'b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90', display_label:'Camille — Femme, Française douce', name:'Camille', language:'fr', language_name:'Français', gender:'female', gender_label:'Femme', accent:'France', style_hint:'Femme, France'},
-        {id:'c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83', voice_id:'c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83', display_label:'Théo — Homme, Français dynamique', name:'Théo', language:'fr', language_name:'Français', gender:'male', gender_label:'Homme', accent:'France', style_hint:'Homme, France'},
-        {id:'d2f56ab3-8c91-4f0a-b145-6d0e8f3c2a94', voice_id:'d2f56ab3-8c91-4f0a-b145-6d0e8f3c2a94', display_label:'Emma — Femme, Française énergique', name:'Emma', language:'fr', language_name:'Français', gender:'female', gender_label:'Femme', accent:'France', style_hint:'Femme, France'}
-      ];
-      ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
-        const sel = document.getElementById(id);
-        if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
-      });
-      ['p1Status','p2Status','p3Status','p4Status'].forEach(id => setStatus(id, '⚠️ Voix chargées en mode secours. Vérifiez /fish-voices.', 'error'));
     }
-  }
+  } catch(e) {}
 
-  // Voice styles — {"voice_styles":{"Dynamique et rapide":[],...}}
-  {
-    const d = await fetchJsonWithFallback('/voice-styles');
-    if (d && d.voice_styles && Object.keys(d.voice_styles).length > 0) {
-      _pipelineVoiceStyles = Object.keys(d.voice_styles);
-      console.log(`[voice-styles] ${_pipelineVoiceStyles.length} styles chargés`);
+  // Voice styles — {"voice_styles":{"energique":...,"doux":...}}
+  try {
+    const r = await fetch(`${apiUrl}/voice-styles`);
+    if (r.ok) {
+      const d = await r.json();
+      _pipelineVoiceStyles = Object.keys(d.voice_styles || {});
       ['p1VoiceStyle','p2VoiceStyle','p3VoiceStyle','p4VoiceStyle'].forEach(id => {
         const sel = document.getElementById(id);
         if (sel) populateSelect(sel, _pipelineVoiceStyles, s => s, s => s, 'Tous les styles');
       });
-    } else {
-      console.error('[voice-styles] /voice-styles : réponse invalide', d);
     }
-  }
+  } catch(e) {}
 
   // Reference videos — {"danses":[...],"chants":[...],"discours":[...],"gestes":[...]}
   try {
@@ -1341,46 +1127,36 @@ async function loadPipelineData() {
   } catch(e) {}
 
   // Languages — {"languages":[{"code":"fr","name":"Français"},…]}
-  // Fallback local utilisé si tous les serveurs échouent
-  const _LANG_FALLBACK = [
-    {code:'fr', name:'Français'}, {code:'en', name:'English'},
-    {code:'es', name:'Español'},  {code:'pt', name:'Português'},
-    {code:'de', name:'Deutsch'},  {code:'it', name:'Italiano'},
-    {code:'ar', name:'العربية'},  {code:'zh', name:'中文'},
-    {code:'ja', name:'日本語'},   {code:'ko', name:'한국어'},
-    {code:'ru', name:'Русский'},  {code:'nl', name:'Nederlands'},
-  ];
-  {
-    const d = await fetchJsonWithFallback('/languages');
-    const langs = (d && Array.isArray(d.languages) && d.languages.length > 0)
-      ? d.languages
-      : (() => { console.warn('[languages] fallback local activé'); return _LANG_FALLBACK; })();
-    console.log(`[languages] ${langs.length} langues chargées`);
-    ['p1Lang','p2Lang','p3Lang'].forEach(id => {
-      const sel = document.getElementById(id);
-      if (!sel) return;
-      const cur = sel.value;
-      populateSelect(sel, langs, l => l.code, l => l.name, '— Langue —');
-      if (cur) sel.value = cur; else sel.value = 'fr';
-    });
-    const detLang = document.getElementById('detectorLanguage');
-    if (detLang) {
-      const cur = detLang.value;
-      populateSelect(detLang, langs, l => l.code, l => l.name, '— Langue —');
-      if (cur) detLang.value = cur; else detLang.value = 'en';
+  try {
+    const r = await fetch(`${apiUrl}/languages`);
+    if (r.ok) {
+      const d = await r.json();
+      const langs = d.languages || [];
+      ['p1Lang','p2Lang','p3Lang'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const cur = sel.value;
+        populateSelect(sel, langs, l => l.code, l => l.name, '— Langue —');
+        if (cur) sel.value = cur;
+      });
+      const detLang = document.getElementById('detectorLanguage');
+      if (detLang) {
+        const cur = detLang.value;
+        populateSelect(detLang, langs, l => l.code, l => l.name, '— Langue —');
+        if (cur) detLang.value = cur; else detLang.value = 'en';
+      }
     }
-  }
+  } catch(e) {}
 
-  // Music — {"catalog":[{"music_id","music_name","music_style","mood","bpm","duration","url","preview_url"},…],"uploaded":[…]}
-  {
-    const d = await fetchJsonWithFallback('/available-music');
-    if (d) {
+  // Music — {"catalog":[{"music_id","music_name","music_style","duration","url"},…],"uploaded":[…]}
+  try {
+    const r = await fetch(`${apiUrl}/available-music`);
+    if (r.ok) {
+      const d = await r.json();
       const tracks = [...(d.catalog || []), ...(d.uploaded || [])];
-      console.log(`[music] ${d.catalog?.length || 0} catalog + ${d.uploaded?.length || 0} uploaded`);
       ['p1Music','p2Music','p3Music','p4Music'].forEach(id => {
         const sel = document.getElementById(id);
         if (!sel) return;
-        const prevVal = sel.value;
         sel.innerHTML = '<option value="">Pas de musique</option>';
         const byStyle = {};
         tracks.forEach(t => {
@@ -1390,26 +1166,18 @@ async function loadPipelineData() {
         });
         Object.entries(byStyle).forEach(([style, items]) => {
           const og = document.createElement('optgroup');
-          og.label = `🎵 ${style}`;
+          og.label = style;
           items.forEach(t => {
             const opt = document.createElement('option');
             opt.value = t.url || '';
-            opt.dataset.url = t.url || '';
-            opt.dataset.preview = t.preview_url || t.url || '';
-            opt.dataset.musicName = t.music_name || '';
-            const moodStr = t.mood ? ` · ${t.mood}` : '';
-            const bpmStr  = t.bpm  ? ` · ${t.bpm}bpm` : '';
-            opt.textContent = `${t.music_name}${moodStr}${bpmStr} (${t.duration}s)`;
+            opt.textContent = `${t.music_name} (${t.duration}s)`;
             og.appendChild(opt);
           });
           sel.appendChild(og);
         });
-        if (prevVal) sel.value = prevVal;
       });
-    } else {
-      console.error('[music] /available-music : aucune donnée reçue');
     }
-  }
+  } catch(e) {}
 }
 
 // Filter voices when style changes
@@ -1438,8 +1206,7 @@ async function loadPipelineData() {
     fd.append('music_name', file.name.replace(/\.[^.]+$/, ''));
 
     try {
-      const token=localStorage.getItem('viral_jwt');
-      const r = await fetch(`${apiUrl}/upload-music`, { method: 'POST', body: fd, headers: token ? {'Authorization':'Bearer '+token} : {} });
+      const r = await fetch(`${apiUrl}/upload-music`, { method: 'POST', body: fd });
       const d = await r.json();
       if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
 
@@ -1453,7 +1220,6 @@ async function loadPipelineData() {
 
       const opt = document.createElement('option');
       opt.value = url;
-      opt.dataset.url = url;
       opt.textContent = `${d.music_name || file.name} (${d.duration || '?'}s) — Upload`;
       opt.dataset.upload = prefix;
       opt.selected = true;
@@ -1465,121 +1231,6 @@ async function loadPipelineData() {
       setStatus(statusId, `❌ Upload musique échoué: ${e.message}`, 'error');
     }
     fileInput.value = '';
-  });
-});
-
-// ── Aperçu voix ─────────────────────────────────────────────────────────────
-let _voicePreviewAudio = null;
-
-async function previewVoice(selectId, btnId, statusId) {
-  const sel = document.getElementById(selectId);
-  const btn = document.getElementById(btnId);
-  if (!sel || !btn) return;
-
-  const voiceId = sel.value;
-  if (!voiceId) {
-    if (statusId) setStatus(statusId, '⚠️ Choisissez une voix avant d\'écouter', 'ready');
-    return;
-  }
-
-  // Stop any playing voice preview
-  if (_voicePreviewAudio && !_voicePreviewAudio.paused) {
-    _voicePreviewAudio.pause();
-    _voicePreviewAudio = null;
-    btn.textContent = '▶ Voix';
-    btn.disabled = false;
-    return;
-  }
-
-  const apiUrl = getPipelineApiUrl();
-  const origText = btn.textContent;
-  btn.textContent = '⏳';
-  btn.disabled = true;
-
-  try {
-    const r = await fetch(`${apiUrl}/preview-fish-voice`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        voice_id: voiceId,
-        text: 'Bonjour, je suis votre voix virtuelle pour vos vidéos ViralVidTech.',
-        language: 'fr',
-      }),
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    if (!d.audio_url) throw new Error('URL audio manquante dans la réponse');
-
-    _voicePreviewAudio = new Audio(d.audio_url);
-    btn.textContent = '⏹ Stop';
-    btn.disabled = false;
-    _voicePreviewAudio.play().catch(e => {
-      btn.textContent = origText; btn.disabled = false;
-      if (statusId) setStatus(statusId, `❌ Lecture impossible: ${e.message}`, 'error');
-    });
-    _voicePreviewAudio.addEventListener('ended', () => {
-      btn.textContent = origText;
-      btn.disabled = false;
-      _voicePreviewAudio = null;
-    });
-  } catch(e) {
-    btn.textContent = origText;
-    btn.disabled = false;
-    const msg = e.message || String(e);
-    console.error('[previewVoice]', msg);
-    if (statusId) setStatus(statusId, `❌ Aperçu voix: ${msg}`, 'error');
-  }
-}
-
-// ── Aperçu musique ──────────────────────────────────────────────────────────
-let _musicPreviewAudio = null;
-let _musicPreviewBtnId = null;
-
-function toggleMusicPreview(selectId, btnId) {
-  const sel = document.getElementById(selectId);
-  const btn = document.getElementById(btnId);
-  if (!sel || !btn) return;
-  const previewUrl = sel.selectedOptions[0]?.dataset?.preview || sel.value;
-  if (!previewUrl) { btn.textContent = '▶ Écouter'; return; }
-
-  // If something is already playing, stop it first
-  if (_musicPreviewAudio && !_musicPreviewAudio.paused) {
-    _musicPreviewAudio.pause();
-    const prevBtn = _musicPreviewBtnId ? document.getElementById(_musicPreviewBtnId) : null;
-    if (prevBtn) prevBtn.textContent = '▶ Écouter';
-    // Toggle off if same button
-    if (_musicPreviewBtnId === btnId) {
-      _musicPreviewAudio = null;
-      _musicPreviewBtnId = null;
-      return;
-    }
-  }
-
-  // Start new preview
-  _musicPreviewAudio = new Audio(previewUrl);
-  _musicPreviewBtnId = btnId;
-  btn.textContent = '⏹ Stop';
-  _musicPreviewAudio.volume = 0.6;
-  _musicPreviewAudio.play().catch(() => { btn.textContent = '▶ Écouter'; });
-  _musicPreviewAudio.addEventListener('ended', () => {
-    btn.textContent = '▶ Écouter';
-    _musicPreviewAudio = null;
-    _musicPreviewBtnId = null;
-  });
-}
-
-// Stop preview when user changes track selection
-['p1Music','p2Music','p3Music','p4Music'].forEach(id => {
-  const sel = document.getElementById(id);
-  if (!sel) return;
-  sel.addEventListener('change', () => {
-    if (_musicPreviewAudio && !_musicPreviewAudio.paused) {
-      _musicPreviewAudio.pause();
-      const prevBtn = _musicPreviewBtnId ? document.getElementById(_musicPreviewBtnId) : null;
-      if (prevBtn) prevBtn.textContent = '▶ Écouter';
-      _musicPreviewAudio = null;
-      _musicPreviewBtnId = null;
-    }
   });
 });
 
@@ -1629,7 +1280,6 @@ async function cloneVoice(prefix) {
       if (!sel) return;
       const opt = document.createElement('option');
       opt.value = voiceId;
-      opt.dataset.language = 'fr';
       opt.textContent = `🎤 ${voiceName} (clone)`;
       sel.appendChild(opt);
     });
@@ -1677,8 +1327,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     const niche      = document.getElementById('p1Niche')?.value || '';
     const narStyle   = document.getElementById('p1NarStyle')?.value || '';
     const lang       = document.getElementById('p1Lang')?.value || 'fr';
-    const videoFormat1 = getPipelineFormat('p1');
-    const res        = videoFormatToLtxResolution(videoFormat1);
+    const res        = document.getElementById('p1Res')?.value || '832*480';
     const voiceId    = document.getElementById('p1Voice')?.value || '';
     const musicUrl   = document.getElementById('p1Music')?.value || '';
     const wantSubs   = document.getElementById('p1Subs')?.checked || false;
@@ -1699,7 +1348,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     setStatus('p1Status', '🎬 LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, video_format: videoFormat1, video_type: videoType1, duration_seconds: duration1 })
+      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, video_type: videoType1, duration_seconds: duration1 })
     });
     if (!ltxR.ok) throw new Error(`LTX erreur ${ltxR.status}`);
     const ltxD = await ltxR.json();
@@ -1713,7 +1362,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     if (audioMode === 'ltx') {
       setStatus('p1Status', '🎬 Mode audio LTX : conservation de l\'audio original…', 'ready');
     } else if (voiceId) {
-      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p1Status', lang);
+      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p1Status');
     }
 
     // 4 — Sous-titres Voxtral (seulement si Fish Audio actif)
@@ -1726,7 +1375,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     // 5 — FFmpeg : assemblage final (obligatoire si LTX mode pour supprimer audio LTX brut)
     const needAssembly = audioUrl || musicUrl || subtitles || clipUrls.length > 1 || audioMode === 'ltx';
     if (needAssembly) {
-      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p1Status', audioMode, videoFormat1);
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p1Status', audioMode);
     }
 
     showPipelineVideo('p1VideoPlayer', 'p1DownloadLink', 'p1VideoBlock', videoUrl);
@@ -1747,8 +1396,7 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     const niche      = document.getElementById('p2Niche')?.value || '';
     const narStyle   = document.getElementById('p2NarStyle')?.value || '';
     const lang       = document.getElementById('p2Lang')?.value || 'fr';
-    const videoFormat2 = getPipelineFormat('p2');
-    const res        = videoFormatToLtxResolution(videoFormat2);
+    const res        = document.getElementById('p2Res')?.value || '832*480';
     const voiceId    = document.getElementById('p2Voice')?.value || '';
     const musicUrl   = document.getElementById('p2Music')?.value || '';
     const wantSubs   = document.getElementById('p2Subs')?.checked || false;
@@ -1769,7 +1417,7 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     setStatus('p2Status', '⏳ LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0, 200), resolution: res, video_format: videoFormat2, video_type: videoType2, duration_seconds: duration2 })
+      body: JSON.stringify({ prompt: script.slice(0, 200), resolution: res, video_type: videoType2, duration_seconds: duration2 })
     });
     if (!ltxR.ok) throw new Error(`LTX erreur ${ltxR.status}`);
     const ltxD = await ltxR.json();
@@ -1783,7 +1431,7 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     if (audioMode === 'ltx') {
       setStatus('p2Status', '🎬 Mode audio LTX : conservation de l\'audio original…', 'ready');
     } else if (voiceId) {
-      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p2Status', lang);
+      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p2Status');
     }
 
     // 4 — Sous-titres Voxtral
@@ -1796,7 +1444,7 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     // 5 — FFmpeg : assemblage final
     const needAssembly = audioUrl || musicUrl || subtitles || audioMode === 'ltx';
     if (needAssembly) {
-      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrl, audioUrl, musicUrl, subtitles, 'p2Status', audioMode, videoFormat2);
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrl, audioUrl, musicUrl, subtitles, 'p2Status', audioMode);
     }
 
     showPipelineVideo('p2VideoPlayer', 'p2DownloadLink', 'p2VideoBlock', videoUrl);
@@ -1839,7 +1487,7 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
 
     // 2 — Fish Audio
     let audioUrl = '';
-    if (voiceId && script) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p3Status', lang);
+    if (voiceId && script) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p3Status');
 
     // 3 — Voxtral
     let subtitles = '';
@@ -1850,12 +1498,10 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
 
     // 4 — FFmpeg (stock mode)
     setStatus('p3Status', '⏳ FFmpeg assemble la vidéo stock…', 'ready');
-    const videoFormat3 = getPipelineFormat('p3');
-    const body = { audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, video_format: videoFormat3, pipeline_mode: 'stock', video_source: '',
-      guest_id: _getAuthUser() ? null : getGuestId(),
+    const body = { audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, pipeline_mode: 'stock', wan_video: '',
       text1: window._p3sc1||'', text2: window._p3sc2||'', text3: window._p3sc3||'', text4: window._p3sc4||'' };
     for (let i = 1; i <= 32; i++) body[`video_url${i === 1 ? '' : i}`] = window[`_p3sv${i}`] || '';
-    const ffR = await fetch(`${apiUrl}/create-video`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) });
+    const ffR = await fetch(`${apiUrl}/create-video`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!ffR.ok) throw new Error(`FFmpeg erreur ${ffR.status}`);
     const ffD = await ffR.json();
     if (!ffD.job_id) throw new Error('Pas de job_id FFmpeg');
@@ -1973,7 +1619,7 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
     if (useVoice) {
       const voiceId   = document.getElementById('p4Voice').value;
       const voiceText = document.getElementById('p4VoiceText').value.trim() || document.getElementById('p4ImgDesc').value.trim() || 'Vidéo générée par IA';
-      if (voiceId) audioUrl = await generateFishVoice(apiUrl, voiceText, voiceId, 'p4Status', 'fr');
+      if (voiceId) audioUrl = await generateFishVoice(apiUrl, voiceText, voiceId, 'p4Status');
     }
 
     // 4 — Optional Voxtral
@@ -1986,7 +1632,7 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
     // 5 — FFmpeg: assemble all scene clips + voice + music
     const musicUrl = useMusic ? document.getElementById('p4Music').value : '';
     if (audioUrl || musicUrl || subtitles || clipUrls.length > 1)
-      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p4Status', 'fish', 'hd');
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p4Status');
 
     showPipelineVideo('p4VideoPlayer', 'p4DownloadLink', 'p4VideoBlock', videoUrl);
     setStatus('p4Status', '✅ Pipeline 4 terminé !', 'success');
@@ -1996,7 +1642,6 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
 });
 
 // ── Auto-load on page ready (defaults to viral-saas.onrender.com if no URL entered) ──
-installMediaPreviewControls();
 loadPipelineData();
 </script>
 </body>
