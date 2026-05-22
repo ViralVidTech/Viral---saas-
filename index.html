@@ -1042,6 +1042,82 @@ function showPipelineVideo(playerId, linkId, blockId, url) {
   document.getElementById(blockId).classList.add('show');
 }
 
+// ── Aperçu audio (voix + musique) ────────────────────────────────────
+let _previewAudio = null;
+function _getPreviewAudio() {
+  if (!_previewAudio) {
+    _previewAudio = document.createElement('audio');
+    _previewAudio.style.display = 'none';
+    document.body.appendChild(_previewAudio);
+  }
+  return _previewAudio;
+}
+
+async function previewFishVoice(prefix) {
+  const sel = document.getElementById(prefix + 'Voice');
+  if (!sel || !sel.value) return;
+  const btn = document.getElementById(prefix + 'VoicePreviewBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
+  try {
+    const r = await fetch(apiUrl + '/preview-fish-voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice_id: sel.value, language: 'fr' })
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || 'Erreur preview');
+    const audio = _getPreviewAudio();
+    audio.src = d.audio_url;
+    audio.load();
+    audio.play();
+  } catch(e) {
+    console.error('[preview-voice]', e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '▶'; }
+  }
+}
+
+function previewMusic(prefix) {
+  const sel = document.getElementById(prefix + 'Music');
+  if (!sel) return;
+  const opt = sel.options[sel.selectedIndex];
+  const url = (opt && (opt.dataset.preview || opt.value)) || '';
+  if (!url) return;
+  const audio = _getPreviewAudio();
+  audio.src = url;
+  audio.load();
+  audio.play();
+}
+
+function installMediaPreviewControls() {
+  const btnStyle = 'margin-left:6px;padding:4px 10px;font-size:0.85rem;cursor:pointer;border-radius:6px;border:1px solid #555;background:#222;color:#eee;vertical-align:middle;';
+  ['p1','p2','p3','p4'].forEach(function(prefix) {
+    const voiceSel = document.getElementById(prefix + 'Voice');
+    if (voiceSel && !document.getElementById(prefix + 'VoicePreviewBtn')) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = prefix + 'VoicePreviewBtn';
+      btn.textContent = '▶';
+      btn.title = "Ecouter cette voix";
+      btn.style.cssText = btnStyle;
+      btn.onclick = function() { previewFishVoice(prefix); };
+      voiceSel.insertAdjacentElement('afterend', btn);
+    }
+    const musicSel = document.getElementById(prefix + 'Music');
+    if (musicSel && !document.getElementById(prefix + 'MusicPreviewBtn')) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = prefix + 'MusicPreviewBtn';
+      btn.textContent = '▶';
+      btn.title = "Ecouter cette musique";
+      btn.style.cssText = btnStyle;
+      btn.onclick = function() { previewMusic(prefix); };
+      musicSel.insertAdjacentElement('afterend', btn);
+    }
+  });
+}
+
 // ── Pipeline data: voices, niches, styles ────────────────────────────
 let _pipelineVoices = [], _pipelineVoiceStyles = [];
 
@@ -1170,7 +1246,9 @@ async function loadPipelineData() {
           items.forEach(t => {
             const opt = document.createElement('option');
             opt.value = t.url || '';
-            opt.textContent = `${t.music_name} (${t.duration}s)`;
+            opt.dataset.preview = t.preview_url || t.url || '';
+            const moodStr = t.mood ? " · " + t.mood : '';
+            opt.textContent = t.music_name + moodStr + " (" + t.duration + "s)";
             og.appendChild(opt);
           });
           sel.appendChild(og);
@@ -1178,6 +1256,8 @@ async function loadPipelineData() {
       });
     }
   } catch(e) {}
+
+  installMediaPreviewControls();
 }
 
 // Filter voices when style changes

@@ -341,12 +341,18 @@ VOICE_STYLES = {
 }
 
 MUSIC_STYLES = {
-    "Épique et motivant": ["motivation", "sport", "finance"],
-    "Doux et apaisant": ["santé", "méditation", "religion"],
-    "Rythmé et énergique": ["gaming", "challenge", "influenceur"],
-    "Mystérieux et intrigant": ["révélation", "technologie"],
-    "Neutre et professionnel": ["éducation", "langues", "IA"],
-    "Joyeux et léger": ["blagues", "cuisine", "voyage"],
+    "Épique et motivant":           ["motivation", "sport", "finance"],
+    "Hip-hop dynamique":            ["gaming", "challenge", "mode"],
+    "Afrobeat et world":            ["danse", "culture", "lifestyle"],
+    "Doux et apaisant":             ["santé", "méditation", "religion"],
+    "Lo-fi calme":                  ["étude", "productivité", "travail"],
+    "Rythmé et énergique":          ["fitness", "influenceur", "challenge"],
+    "Corporate moderne":            ["éducation", "technologie", "IA"],
+    "Comédie et humour":            ["humour", "blagues", "divertissement"],
+    "Mystérieux et intrigant":      ["révélation", "cryptomonnaie", "finance"],
+    "Latin et tropical":            ["voyage", "fête", "cuisine"],
+    "Cinématique storytelling":     ["émotion", "histoire", "storytelling"],
+    "Joyeux et léger":              ["famille", "enfants", "parentalité"],
 }
 
 NICHES_BY_PLAN = {
@@ -555,6 +561,12 @@ class FishTTSRequest(BaseModel):
     language: str = "en"
     format: str = "mp3"
     latency: str = "normal"
+
+
+class VoicePreviewRequest(BaseModel):
+    voice_id: str
+    language: str = "fr"
+    text: str = "Bonjour, voici un aperçu de cette voix ViralVidTech."
 
 
 class FluxImageRequest(BaseModel):
@@ -889,6 +901,44 @@ async def generate_audio_fish(req: FishTTSRequest):
 
     except Exception as e:
         return {"error": f"Erreur Fish Audio: {str(e)}"}
+
+
+@app.post("/preview-fish-voice")
+async def preview_fish_voice(req: VoicePreviewRequest):
+    if not FISH_AUDIO_API_KEY:
+        return JSONResponse(status_code=422, content={"error": "FISH_AUDIO_API_KEY manquante"})
+    try:
+        payload = {
+            "text": req.text or "Bonjour, voici un apercu de cette voix.",
+            "format": "mp3",
+            "latency": "balanced",
+            "normalize": True,
+            "reference_id": req.voice_id,
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api.fish.audio/v1/tts",
+                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        if response.status_code != 200:
+            return JSONResponse(status_code=502, content={"error": f"Fish Audio {response.status_code}"})
+        filename = f"preview_{uuid.uuid4().hex[:8]}.mp3"
+        filepath = os.path.join(AUDIO_DIR, filename)
+        with open(filepath, "wb") as f:
+            f.write(response.content)
+        r2_url = await upload_file_to_storage(filepath, f"audio/{filename}")
+        if r2_url:
+            os.remove(filepath)
+            audio_url = r2_url
+        else:
+            base = PUBLIC_BASE_URL or ""
+            audio_url = f"{base}/audio/{filename}"
+        return {"success": True, "audio_url": audio_url}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 @app.post("/generate-image")
 async def generate_image(req: FluxImageRequest):
     if not FAL_API_KEY:
@@ -2812,42 +2862,53 @@ _SH = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-{n}.mp3"
 
 MUSIC_CATALOG = [
     # ── Épique et motivant ──────────────────────────────────────────────
-    {"music_id": "music-epic-001", "music_name": "Epic Rise",       "music_style": "Épique et motivant", "niches": ["motivation", "sport", "finance"],    "duration": 60, "url": _SH.format(n=1)},
-    {"music_id": "music-epic-002", "music_name": "Power Surge",     "music_style": "Épique et motivant", "niches": ["sport", "challenge", "fitness"],     "duration": 45, "url": _SH.format(n=2)},
-    {"music_id": "music-epic-003", "music_name": "Champion",        "music_style": "Épique et motivant", "niches": ["motivation", "sport"],               "duration": 60, "url": _SH.format(n=3)},
-    {"music_id": "music-epic-004", "music_name": "Victory March",   "music_style": "Épique et motivant", "niches": ["finance", "business", "success"],    "duration": 50, "url": _SH.format(n=4)},
-    {"music_id": "music-epic-005", "music_name": "Rise Up",         "music_style": "Épique et motivant", "niches": ["motivation", "mindset"],             "duration": 60, "url": _SH.format(n=5)},
-    {"music_id": "music-epic-006", "music_name": "Unstoppable",     "music_style": "Épique et motivant", "niches": ["sport", "motivation", "challenge"],  "duration": 45, "url": _SH.format(n=6)},
+    {"music_id": "music-epic-001", "music_name": "Epic Rise",        "music_style": "Épique et motivant",       "mood": "Puissant",    "bpm": 128, "duration": 60, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
+    {"music_id": "music-epic-002", "music_name": "Victory March",    "music_style": "Épique et motivant",       "mood": "Triomphant",  "bpm": 120, "duration": 50, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
+    {"music_id": "music-epic-003", "music_name": "Unstoppable",      "music_style": "Épique et motivant",       "mood": "Intense",     "bpm": 135, "duration": 45, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
+    # ── Hip-hop dynamique ──────────────────────────────────────────────
+    {"music_id": "music-hiphop-001", "music_name": "Street Flow",    "music_style": "Hip-hop dynamique",        "mood": "Confiant",    "bpm": 90,  "duration": 60, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
+    {"music_id": "music-hiphop-002", "music_name": "Bass Drop",      "music_style": "Hip-hop dynamique",        "mood": "Agressif",    "bpm": 95,  "duration": 45, "url": _SH.format(n=5),  "preview_url": _SH.format(n=5)},
+    {"music_id": "music-hiphop-003", "music_name": "Urban Grind",    "music_style": "Hip-hop dynamique",        "mood": "Ambitieux",   "bpm": 88,  "duration": 60, "url": _SH.format(n=6),  "preview_url": _SH.format(n=6)},
+    # ── Afrobeat et world ──────────────────────────────────────────────
+    {"music_id": "music-afro-001", "music_name": "African Sun",      "music_style": "Afrobeat et world",        "mood": "Festif",      "bpm": 102, "duration": 55, "url": _SH.format(n=7),  "preview_url": _SH.format(n=7)},
+    {"music_id": "music-afro-002", "music_name": "Tropical Groove",  "music_style": "Afrobeat et world",        "mood": "Ensoleille",  "bpm": 98,  "duration": 60, "url": _SH.format(n=8),  "preview_url": _SH.format(n=8)},
+    {"music_id": "music-afro-003", "music_name": "World Beat",       "music_style": "Afrobeat et world",        "mood": "Culturel",    "bpm": 105, "duration": 50, "url": _SH.format(n=9),  "preview_url": _SH.format(n=9)},
     # ── Doux et apaisant ───────────────────────────────────────────────
-    {"music_id": "music-soft-001", "music_name": "Peaceful Mind",   "music_style": "Doux et apaisant",   "niches": ["méditation", "bien-être"],           "duration": 60, "url": _SH.format(n=7)},
-    {"music_id": "music-soft-002", "music_name": "Gentle Rain",     "music_style": "Doux et apaisant",   "niches": ["santé", "mindfulness"],              "duration": 60, "url": _SH.format(n=8)},
-    {"music_id": "music-soft-003", "music_name": "Serenity",        "music_style": "Doux et apaisant",   "niches": ["religion", "spiritualité"],          "duration": 55, "url": _SH.format(n=9)},
-    {"music_id": "music-soft-004", "music_name": "Calm Waters",     "music_style": "Doux et apaisant",   "niches": ["parentalité", "famille"],            "duration": 60, "url": _SH.format(n=10)},
-    {"music_id": "music-soft-005", "music_name": "Soft Breeze",     "music_style": "Doux et apaisant",   "niches": ["voyage", "nature"],                  "duration": 45, "url": _SH.format(n=11)},
-    {"music_id": "music-soft-006", "music_name": "Inner Peace",     "music_style": "Doux et apaisant",   "niches": ["mindfulness", "méditation"],         "duration": 60, "url": _SH.format(n=12)},
+    {"music_id": "music-soft-001", "music_name": "Peaceful Mind",    "music_style": "Doux et apaisant",         "mood": "Serein",      "bpm": 70,  "duration": 60, "url": _SH.format(n=10), "preview_url": _SH.format(n=10)},
+    {"music_id": "music-soft-002", "music_name": "Gentle Rain",      "music_style": "Doux et apaisant",         "mood": "Relaxant",    "bpm": 65,  "duration": 60, "url": _SH.format(n=11), "preview_url": _SH.format(n=11)},
+    {"music_id": "music-soft-003", "music_name": "Serenity",         "music_style": "Doux et apaisant",         "mood": "Contemplatif","bpm": 68,  "duration": 55, "url": _SH.format(n=12), "preview_url": _SH.format(n=12)},
+    # ── Lo-fi calme ────────────────────────────────────────────────────
+    {"music_id": "music-lofi-001", "music_name": "Study Session",    "music_style": "Lo-fi calme",              "mood": "Concentre",   "bpm": 75,  "duration": 60, "url": _SH.format(n=13), "preview_url": _SH.format(n=13)},
+    {"music_id": "music-lofi-002", "music_name": "Night Focus",      "music_style": "Lo-fi calme",              "mood": "Introspectif","bpm": 72,  "duration": 45, "url": _SH.format(n=14), "preview_url": _SH.format(n=14)},
+    {"music_id": "music-lofi-003", "music_name": "Chill Work",       "music_style": "Lo-fi calme",              "mood": "Detendu",     "bpm": 78,  "duration": 60, "url": _SH.format(n=15), "preview_url": _SH.format(n=15)},
     # ── Rythmé et énergique ────────────────────────────────────────────
-    {"music_id": "music-energy-001", "music_name": "Beat Drop",     "music_style": "Rythmé et énergique", "niches": ["gaming", "sport", "mode"],          "duration": 30, "url": _SH.format(n=13)},
-    {"music_id": "music-energy-002", "music_name": "Energy Rush",   "music_style": "Rythmé et énergique", "niches": ["gaming", "challenge"],              "duration": 60, "url": _SH.format(n=1)},
-    {"music_id": "music-energy-003", "music_name": "Pulse",         "music_style": "Rythmé et énergique", "niches": ["fitness", "sport"],                 "duration": 45, "url": _SH.format(n=2)},
-    {"music_id": "music-energy-004", "music_name": "Rhythm Fire",   "music_style": "Rythmé et énergique", "niches": ["influenceur", "mode"],              "duration": 60, "url": _SH.format(n=3)},
-    {"music_id": "music-energy-005", "music_name": "Dance Wave",    "music_style": "Rythmé et énergique", "niches": ["danse", "humour"],                  "duration": 30, "url": _SH.format(n=4)},
-    {"music_id": "music-energy-006", "music_name": "Electric Vibe", "music_style": "Rythmé et énergique", "niches": ["technologie", "IA"],                "duration": 45, "url": _SH.format(n=5)},
+    {"music_id": "music-energy-001", "music_name": "Beat Drop",      "music_style": "Rythmé et énergique",      "mood": "Explosif",    "bpm": 140, "duration": 30, "url": _SH.format(n=16), "preview_url": _SH.format(n=16)},
+    {"music_id": "music-energy-002", "music_name": "Energy Rush",    "music_style": "Rythmé et énergique",      "mood": "Dynamique",   "bpm": 138, "duration": 60, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
+    {"music_id": "music-energy-003", "music_name": "Electric Vibe",  "music_style": "Rythmé et énergique",      "mood": "Electrisant", "bpm": 132, "duration": 45, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
+    # ── Corporate moderne ──────────────────────────────────────────────
+    {"music_id": "music-corp-001", "music_name": "Corporate Flow",   "music_style": "Corporate moderne",        "mood": "Professionnel","bpm": 110, "duration": 60, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
+    {"music_id": "music-corp-002", "music_name": "Business Beat",    "music_style": "Corporate moderne",        "mood": "Ambitieux",   "bpm": 108, "duration": 45, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
+    {"music_id": "music-corp-003", "music_name": "Tech Pulse",       "music_style": "Corporate moderne",        "mood": "Futuriste",   "bpm": 115, "duration": 50, "url": _SH.format(n=5),  "preview_url": _SH.format(n=5)},
+    # ── Comédie et humour ──────────────────────────────────────────────
+    {"music_id": "music-comedy-001", "music_name": "Happy Bounce",   "music_style": "Comédie et humour",        "mood": "Comique",     "bpm": 125, "duration": 30, "url": _SH.format(n=6),  "preview_url": _SH.format(n=6)},
+    {"music_id": "music-comedy-002", "music_name": "Fun Ride",       "music_style": "Comédie et humour",        "mood": "Leger",       "bpm": 118, "duration": 45, "url": _SH.format(n=7),  "preview_url": _SH.format(n=7)},
+    {"music_id": "music-comedy-003", "music_name": "Silly Walk",     "music_style": "Comédie et humour",        "mood": "Absurde",     "bpm": 112, "duration": 60, "url": _SH.format(n=8),  "preview_url": _SH.format(n=8)},
     # ── Mystérieux et intrigant ────────────────────────────────────────
-    {"music_id": "music-mystery-001", "music_name": "Dark Secret",  "music_style": "Mystérieux et intrigant", "niches": ["révélation", "cryptomonnaie"],  "duration": 60, "url": _SH.format(n=6)},
-    {"music_id": "music-mystery-002", "music_name": "Mystery Walk", "music_style": "Mystérieux et intrigant", "niches": ["technologie", "IA"],            "duration": 50, "url": _SH.format(n=7)},
-    {"music_id": "music-mystery-003", "music_name": "Shadow",       "music_style": "Mystérieux et intrigant", "niches": ["finance", "politique"],         "duration": 60, "url": _SH.format(n=8)},
-    {"music_id": "music-mystery-004", "music_name": "Unknown Path", "music_style": "Mystérieux et intrigant", "niches": ["voyage", "découverte"],         "duration": 45, "url": _SH.format(n=9)},
-    {"music_id": "music-mystery-005", "music_name": "Twilight",     "music_style": "Mystérieux et intrigant", "niches": ["révélation", "spiritualité"],   "duration": 55, "url": _SH.format(n=10)},
-    # ── Neutre et professionnel ────────────────────────────────────────
-    {"music_id": "music-neutral-001", "music_name": "Corporate Flow",  "music_style": "Neutre et professionnel", "niches": ["business", "finance"],      "duration": 60, "url": _SH.format(n=11)},
-    {"music_id": "music-neutral-002", "music_name": "Business Beat",   "music_style": "Neutre et professionnel", "niches": ["éducation", "tutoriel"],    "duration": 45, "url": _SH.format(n=12)},
-    {"music_id": "music-neutral-003", "music_name": "Professional",    "music_style": "Neutre et professionnel", "niches": ["IA", "technologie"],        "duration": 60, "url": _SH.format(n=13)},
-    {"music_id": "music-neutral-004", "music_name": "Clean Tone",      "music_style": "Neutre et professionnel", "niches": ["langues", "éducation"],     "duration": 50, "url": _SH.format(n=1)},
+    {"music_id": "music-mystery-001", "music_name": "Dark Secret",   "music_style": "Mystérieux et intrigant",  "mood": "Sombre",      "bpm": 85,  "duration": 60, "url": _SH.format(n=9),  "preview_url": _SH.format(n=9)},
+    {"music_id": "music-mystery-002", "music_name": "Shadow",        "music_style": "Mystérieux et intrigant",  "mood": "Tendu",       "bpm": 82,  "duration": 55, "url": _SH.format(n=10), "preview_url": _SH.format(n=10)},
+    {"music_id": "music-mystery-003", "music_name": "Twilight",      "music_style": "Mystérieux et intrigant",  "mood": "Envoûtant",   "bpm": 80,  "duration": 50, "url": _SH.format(n=11), "preview_url": _SH.format(n=11)},
+    # ── Latin et tropical ──────────────────────────────────────────────
+    {"music_id": "music-latin-001", "music_name": "Salsa Vibes",     "music_style": "Latin et tropical",        "mood": "Festif",      "bpm": 168, "duration": 60, "url": _SH.format(n=12), "preview_url": _SH.format(n=12)},
+    {"music_id": "music-latin-002", "music_name": "Bossa Nova",      "music_style": "Latin et tropical",        "mood": "Romantique",  "bpm": 130, "duration": 55, "url": _SH.format(n=13), "preview_url": _SH.format(n=13)},
+    {"music_id": "music-latin-003", "music_name": "Cumbia Beat",     "music_style": "Latin et tropical",        "mood": "Dansant",     "bpm": 145, "duration": 45, "url": _SH.format(n=14), "preview_url": _SH.format(n=14)},
+    # ── Cinématique storytelling ───────────────────────────────────────
+    {"music_id": "music-cine-001", "music_name": "Epic Journey",     "music_style": "Cinématique storytelling", "mood": "Grandiose",   "bpm": 100, "duration": 60, "url": _SH.format(n=15), "preview_url": _SH.format(n=15)},
+    {"music_id": "music-cine-002", "music_name": "Emotional Rise",   "music_style": "Cinématique storytelling", "mood": "Emouvant",    "bpm": 96,  "duration": 55, "url": _SH.format(n=16), "preview_url": _SH.format(n=16)},
+    {"music_id": "music-cine-003", "music_name": "Story Arc",        "music_style": "Cinématique storytelling", "mood": "Narratif",    "bpm": 92,  "duration": 50, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
     # ── Joyeux et léger ───────────────────────────────────────────────
-    {"music_id": "music-happy-001", "music_name": "Happy Day",    "music_style": "Joyeux et léger", "niches": ["humour", "blagues", "cuisine"],          "duration": 60, "url": _SH.format(n=2)},
-    {"music_id": "music-happy-002", "music_name": "Fun Times",    "music_style": "Joyeux et léger", "niches": ["famille", "enfants"],                    "duration": 45, "url": _SH.format(n=3)},
-    {"music_id": "music-happy-003", "music_name": "Cheerful",     "music_style": "Joyeux et léger", "niches": ["voyage", "lifestyle"],                   "duration": 60, "url": _SH.format(n=4)},
-    {"music_id": "music-happy-004", "music_name": "Bright Side",  "music_style": "Joyeux et léger", "niches": ["parentalité", "motivation"],             "duration": 45, "url": _SH.format(n=5)},
+    {"music_id": "music-happy-001", "music_name": "Happy Day",       "music_style": "Joyeux et léger",          "mood": "Enjoue",      "bpm": 122, "duration": 60, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
+    {"music_id": "music-happy-002", "music_name": "Cheerful",        "music_style": "Joyeux et léger",          "mood": "Positif",     "bpm": 118, "duration": 45, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
+    {"music_id": "music-happy-003", "music_name": "Bright Side",     "music_style": "Joyeux et léger",          "mood": "Lumineux",    "bpm": 115, "duration": 60, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
 ]
 
 
