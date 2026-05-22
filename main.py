@@ -10,6 +10,7 @@ import httpx
 import subprocess
 import shutil
 import asyncio
+import re
 
 app = FastAPI()
 
@@ -49,11 +50,15 @@ AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
 WORK_DIR = "work"
 MUSIC_DIR = "music"
+STATIC_MUSIC_DIR = "static/music"
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(WORK_DIR, exist_ok=True)
 os.makedirs(MUSIC_DIR, exist_ok=True)
+os.makedirs(STATIC_MUSIC_DIR, exist_ok=True)
+
+print(f"[Startup] Fish Audio API key detected: {'YES' if FISH_AUDIO_API_KEY else 'NO'}")
 
 def _runpod_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=RUNPOD_BASE_URL, timeout=RUNPOD_TIMEOUT)
@@ -338,6 +343,7 @@ class VideoRequest(BaseModel):
     text6: str = ""
     text7: str = ""
     text8: str = ""
+    ltx_audio_mode: str = "fish"  # "fish" = voix Fish Audio | "ltx" = conserver audio original LTX
     video_url: str = ""
     video_url2: str = ""
     video_url3: str = ""
@@ -586,6 +592,8 @@ async def generate_audio_fish(req: FishTTSRequest):
         if req.voice_id:
             payload["reference_id"] = req.voice_id
 
+        print(f"[Fish TTS] Generating Fish TTS with voice_id={req.voice_id!r} language={req.language!r}")
+
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(
                 "https://api.fish.audio/v1/tts",
@@ -689,36 +697,109 @@ async def generate_image(req: FluxImageRequest):
 
 
 # ── LISTE DES VOIX FISH AUDIO ───────────────────────────────────────────────
+
+_LANG_LABELS = {
+    "fr": "Français", "en": "Anglais", "es": "Espagnol", "pt": "Portugais",
+    "de": "Allemand", "it": "Italien", "zh": "Chinois", "ja": "Japonais",
+    "ko": "Coréen", "ar": "Arabe", "ru": "Russe", "nl": "Néerlandais",
+    "pl": "Polonais", "tr": "Turc", "hi": "Hindi", "vi": "Vietnamien",
+}
+
+_LANG_PRIORITY = {"fr": 0, "en": 1, "es": 2, "pt": 3, "de": 4, "it": 5}
+
+
+def _catalog_as_fish_voices():
+    """Convertit VOICE_CATALOG au format retourné par /fish-voices."""
+    result = []
+    for v in VOICE_CATALOG:
+        lang_code = v.get("language", "")
+        gender_raw = v.get("gender", "")
+        gender_fr = "Femme" if gender_raw == "female" else ("Homme" if gender_raw == "male" else "")
+        accent = v.get("accent", "")
+        lang_name = v.get("language_name") or _LANG_LABELS.get(lang_code, lang_code.upper())
+        parts = [p for p in [gender_fr, accent] if p]
+        display = v.get("display_label") or f"{v['voice_name']} — {lang_name}"
+        result.append({
+            "id": v["voice_id"],
+            "name": v["voice_name"],
+            "display_label": display,
+            "language": lang_code,
+            "language_name": lang_name,
+            "gender": gender_raw,
+            "gender_label": gender_fr,
+            "accent": accent,
+            "style_hint": ", ".join(parts) if parts else "",
+            "description": "",
+            "tags": [],
+        })
+    return result
+
+
 @app.get("/fish-voices")
 async def list_fish_voices():
+    # Fallback catalogue local si pas de clé API
     if not FISH_AUDIO_API_KEY:
-        return {"error": "FISH_AUDIO_API_KEY manquante"}
+        print("[fish-voices] Pas de FISH_AUDIO_API_KEY — utilisation du catalogue local")
+        return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local"}
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(
-                "https://api.fish.audio/model",
+                "https://api.fish.audio/v1/model",
                 headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
-                params={"page_size": 20, "sort_by": "task_count"},
+                params={"page_size": 50, "sort_by": "task_count", "type": "voice"},
             )
 
         if response.status_code != 200:
-            return {"error": f"Fish Audio API erreur {response.status_code}"}
+            print(f"[fish-voices] API Fish Audio erreur {response.status_code} — fallback local")
+            return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
 
         data = response.json()
         voices = []
         for item in data.get("items", []):
+            voice_id = item.get("_id", "")
+            langs = item.get("languages") or []
+            lang_code = langs[0].split("-")[0].lower() if langs else "unknown"
+            lang_name = _LANG_LABELS.get(lang_code, lang_code.upper())
+            title = item.get("title", voice_id)
+            tags = item.get("tags", [])
+
+            # Détection genre depuis tags/titre
+            title_lower = title.lower()
+            tags_lower = [t.lower() for t in tags]
+            gender_raw = ""
+            if any(w in title_lower or w in " ".join(tags_lower) for w in ["female", "woman", "femme", "girl"]):
+                gender_raw = "female"
+            elif any(w in title_lower or w in " ".join(tags_lower) for w in ["male", "man", "homme", "boy"]):
+                gender_raw = "male"
+
+            gender_label = "Femme" if gender_raw == "female" else ("Homme" if gender_raw == "male" else "")
+            display_label = f"{title} — {lang_name}"
+            if gender_label:
+                display_label = f"{title} — {lang_name}, {gender_label}"
+
             voices.append({
-                "id": item.get("_id", ""),
-                "name": item.get("title", ""),
-                "language": item.get("languages", []),
+                "id": voice_id,
+                "name": title,
+                "display_label": display_label,
+                "language": lang_code,
+                "language_name": lang_name,
+                "gender": gender_raw,
+                "gender_label": gender_label,
+                "accent": "",
+                "style_hint": gender_label,
                 "description": item.get("description", ""),
+                "tags": tags,
             })
 
-        return {"success": True, "voices": voices}
+        # Priorité : Français d'abord
+        voices.sort(key=lambda v: (_LANG_PRIORITY.get(v["language"], 9), v["name"]))
+        print(f"[fish-voices] {len(voices)} voix récupérées depuis Fish Audio API")
+        return {"success": True, "voices": voices, "source": "live"}
 
     except Exception as e:
-        return {"error": f"Erreur Fish Audio voices: {str(e)}"}
+        print(f"[fish-voices] Exception: {e} — fallback local")
+        return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
 
 
 # ── GENERATE : Claude + Wan 2.2 ─────────────────────────────────────────────
@@ -1380,8 +1461,11 @@ async def _process_video(job_id: str, req: VideoRequest):
         job_dir = os.path.join(WORK_DIR, job_id)
         os.makedirs(job_dir, exist_ok=True)
 
-        voice_url = (req.audio_url or "").strip()
-        music_url = (req.music_url or "").strip()
+        voice_url  = (req.audio_url or "").strip()
+        music_url  = (req.music_url or "").strip()
+        ltx_audio_mode = getattr(req, "ltx_audio_mode", "fish")  # "fish" | "ltx"
+
+        print(f"[Config job={job_id}] ltx_audio_mode={ltx_audio_mode!r} voice_url={bool(voice_url)} music_url={bool(music_url)} music_src={music_url!r}")
 
         voice_path = None
         real_total_duration = float(total_duration)
@@ -1390,7 +1474,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             voice_path = os.path.join(job_dir, "voice.mp3")
             await download_audio_file(voice_url, voice_path)
             _voice_size = os.path.getsize(voice_path) if os.path.exists(voice_path) else 0
-            print(f"[Pass2 job={job_id}] voice.mp3 downloaded: exists={os.path.exists(voice_path)} size={_voice_size} bytes url={voice_url!r}")
+            print(f"[Audio job={job_id}] voice.mp3: exists={os.path.exists(voice_path)} size={_voice_size}B url={voice_url!r}")
             measured = get_audio_duration(voice_path)
             if measured > 1.0:
                 real_total_duration = measured
@@ -1423,7 +1507,30 @@ async def _process_video(job_id: str, req: VideoRequest):
             ])
 
         downloaded = [p for p in raw_paths if os.path.exists(p)]
-        print(f"[Pass1 job={job_id}] clips_received={len(wan_clip_list or clip_urls)} downloaded={len(downloaded)} raw_paths={[os.path.basename(p) for p in raw_paths]}")
+        print(f"[Pass1 job={job_id}] clips_received={len(wan_clip_list or clip_urls)} downloaded={len(downloaded)}")
+
+        # ── Mode LTX audio : extraire l'audio du clip LTX avant normalisation ──
+        if ltx_audio_mode == "ltx" and not voice_path and downloaded:
+            first_clip = downloaded[0]
+            ltx_audio_path = os.path.join(job_dir, "ltx_audio.aac")
+            try:
+                run_cmd(["ffmpeg", "-y", "-i", first_clip, "-vn", "-c:a", "aac", "-b:a", "128k", ltx_audio_path])
+                ltx_audio_size = os.path.getsize(ltx_audio_path) if os.path.exists(ltx_audio_path) else 0
+                print(f"[LTX Audio job={job_id}] extraction: exists={os.path.exists(ltx_audio_path)} size={ltx_audio_size}B")
+                if ltx_audio_size > 100:
+                    measured = get_audio_duration(ltx_audio_path)
+                    if measured >= 0.5:
+                        voice_path = ltx_audio_path
+                        real_total_duration = measured
+                        clip_duration = real_total_duration / nb_clips_total
+                        print(f"[LTX Audio job={job_id}] audio LTX extrait avec succès: duration={measured:.1f}s")
+                    else:
+                        print(f"[LTX Audio job={job_id}] piste LTX trop courte ({measured:.2f}s < 0.5s) — ignorée")
+                else:
+                    print(f"[LTX Audio job={job_id}] aucun audio dans le clip LTX — mode silencieux")
+            except Exception as ltx_exc:
+                print(f"[LTX Audio job={job_id}] extraction échouée: {ltx_exc}")
+        # ── Fin extraction LTX audio ──────────────────────────────────────────
 
         from concurrent.futures import ThreadPoolExecutor
 
@@ -1529,9 +1636,38 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         with_voice_path = os.path.join(job_dir, "with_voice.mp4")
         if has_voice:
+            video_dur  = get_audio_duration(stitched_path)
+            voice_dur  = get_audio_duration(voice_path)
+            print(f"[Pass2 Sync job={job_id}] video_dur={video_dur:.2f}s voice_dur={voice_dur:.2f}s")
+
+            if voice_dur > video_dur + 0.2:
+                # Voice longer than video → trim voice to video length
+                trimmed_voice = os.path.join(job_dir, "voice_trimmed.aac")
+                run_cmd([
+                    "ffmpeg", "-y", "-i", voice_path,
+                    "-af", f"atrim=0:{video_dur},asetpts=PTS-STARTPTS",
+                    "-c:a", "aac", "-b:a", "128k", trimmed_voice,
+                ])
+                actual_voice = trimmed_voice
+                print(f"[Pass2 Sync job={job_id}] voix trimmée → {video_dur:.2f}s")
+            elif video_dur > voice_dur + 0.2:
+                # Video longer than voice → pad voice with silence
+                silence_dur = video_dur - voice_dur
+                padded_voice = os.path.join(job_dir, "voice_padded.aac")
+                run_cmd([
+                    "ffmpeg", "-y", "-i", voice_path,
+                    "-af", f"apad=pad_dur={silence_dur}",
+                    "-c:a", "aac", "-b:a", "128k", padded_voice,
+                ])
+                actual_voice = padded_voice
+                print(f"[Pass2 Sync job={job_id}] voix paddée +{silence_dur:.2f}s de silence")
+            else:
+                actual_voice = voice_path
+                print(f"[Pass2 Sync job={job_id}] durées synchrones — aucun ajustement")
+
             _p2_cmd = [
                 "ffmpeg", "-y",
-                "-i", stitched_path, "-i", voice_path,
+                "-i", stitched_path, "-i", actual_voice,
                 "-map", "0:v:0", "-map", "1:a:0",
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
@@ -1578,30 +1714,52 @@ async def _process_video(job_id: str, req: VideoRequest):
         music_path = None
         if music_url:
             music_path = os.path.join(job_dir, "music.mp3")
+            print(f"[Pass3 job={job_id}] Téléchargement musique: url={music_url!r}")
             await download_audio_file(music_url, music_path)
             _music_size = os.path.getsize(music_path) if os.path.exists(music_path) else 0
-            print(f"[Pass3 job={job_id}] music.mp3 downloaded: exists={os.path.exists(music_path)} size={_music_size} bytes url={music_url!r}")
+            print(f"[Pass3 job={job_id}] music.mp3: exists={os.path.exists(music_path)} size={_music_size}B")
+        else:
+            print(f"[Pass3 job={job_id}] Aucune musique demandée (music_url vide)")
+
         has_music = bool(music_path and os.path.exists(music_path))
-        print(f"[FFmpeg P3 job={job_id}] input={os.path.exists(with_subtitles_path)} music_url={repr(music_url)} music_exists={has_music}")
+        has_voice_audio = bool(voice_path and os.path.exists(voice_path))
+        print(f"[FFmpeg P3 job={job_id}] has_music={has_music} has_voice={has_voice_audio} ltx_mode={ltx_audio_mode} duration={real_total_duration:.1f}s")
 
         if has_music:
+            if has_voice_audio:
+                # Voix + Musique : mixer la musique en fond sonore (volume réduit)
+                # La musique boucle si plus courte, est coupée si plus longue
+                filter_complex = (
+                    f"[1:a]volume=0.15,atrim=0:{real_total_duration},"
+                    f"asetpts=PTS-STARTPTS[bg];"
+                    f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+                )
+                mode_label = "voix+musique"
+            else:
+                # Musique seule (pas de voix) : volume plus élevé, musique = unique piste audio
+                # amix ne peut pas fonctionner sans [0:a] → on ajoute seulement la musique
+                filter_complex = (
+                    f"[1:a]volume=0.30,atrim=0:{real_total_duration},"
+                    f"asetpts=PTS-STARTPTS[aout]"
+                )
+                mode_label = "musique-seule"
+
             _p3_cmd = [
                 "ffmpeg", "-y",
                 "-fflags", "+genpts",
                 "-i", with_subtitles_path,
                 "-stream_loop", "-1", "-i", music_path,
-                "-filter_complex",
-                f"[1:a]volume=0.15,atrim=0:{real_total_duration}[bg];"
-                f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+                "-filter_complex", filter_complex,
                 "-map", "0:v:0", "-map", "[aout]",
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                 "-movflags", "+faststart",
                 output_path,
             ]
-            print(f"[Pass3 FFmpeg job={job_id}] {' '.join(_p3_cmd)}")
+            print(f"[Pass3 FFmpeg job={job_id}] mode={mode_label} cmd: {' '.join(_p3_cmd)}")
             await async_run_cmd(_p3_cmd)
         else:
             shutil.copy2(with_subtitles_path, output_path)
+            print(f"[Pass3 job={job_id}] Sortie finale = copie de with_subtitles (pas de musique)")
 
         shutil.rmtree(job_dir, ignore_errors=True)
 
@@ -2143,69 +2301,146 @@ Retourne uniquement le script, sans introduction ni commentaire."""
         return JSONResponse(status_code=500, content={"error": f"Erreur generate-script: {str(e)}"})
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# IMPORTANT : Remplacez les voice_id ci-dessous par de vrais IDs Fish Audio.
+# Obtenez vos IDs depuis : https://fish.audio  (section "Models" de votre compte)
+# Les IDs actuels sont des exemples à remplacer avant mise en production.
+# ──────────────────────────────────────────────────────────────────────────────
 VOICE_CATALOG = [
+    # ── Français — France ─────────────────────────────────────────────────────
     {
         "voice_id": "a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1",
         "voice_name": "Lucas",
+        "display_label": "Lucas — Homme, Français naturel",
         "language": "fr",
+        "language_name": "Français",
         "gender": "male",
+        "accent": "France",
         "styles": ["Dynamique et rapide", "Autoritaire et confiant"],
         "preview_url": None,
     },
     {
         "voice_id": "b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90",
         "voice_name": "Camille",
+        "display_label": "Camille — Femme, Française douce",
         "language": "fr",
+        "language_name": "Français",
         "gender": "female",
+        "accent": "France",
         "styles": ["Doux et chaleureux", "Lent et posé"],
         "preview_url": None,
     },
     {
         "voice_id": "c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83",
         "voice_name": "Théo",
+        "display_label": "Théo — Homme, Français dynamique",
         "language": "fr",
+        "language_name": "Français",
         "gender": "male",
+        "accent": "France",
         "styles": ["Humoristique et léger", "Dynamique et rapide"],
         "preview_url": None,
     },
     {
         "voice_id": "d2e56gb3-4c78-5f90-b145-6d0f8e3c2a94",
         "voice_name": "Sophie",
+        "display_label": "Sophie — Femme, Française claire",
         "language": "fr",
+        "language_name": "Français",
         "gender": "female",
+        "accent": "France",
         "styles": ["Éducatif et clair", "Autoritaire et confiant"],
         "preview_url": None,
     },
     {
         "voice_id": "e3f67hc4-5d89-6a01-c256-7e1a9f4d3b05",
         "voice_name": "Nathan",
+        "display_label": "Nathan — Homme, Français posé",
         "language": "fr",
+        "language_name": "Français",
         "gender": "male",
+        "accent": "France",
         "styles": ["Lent et posé", "Éducatif et clair"],
         "preview_url": None,
     },
     {
         "voice_id": "f4a78id5-6e90-7b12-d367-8f2b0a5e4c16",
         "voice_name": "Emma",
+        "display_label": "Emma — Femme, Française légère",
         "language": "fr",
+        "language_name": "Français",
         "gender": "female",
+        "accent": "France",
         "styles": ["Humoristique et léger", "Doux et chaleureux"],
         "preview_url": None,
     },
+    # ── Anglais ───────────────────────────────────────────────────────────────
     {
         "voice_id": "a1b23cd4-1234-5678-9abc-def012345678",
         "voice_name": "James",
+        "display_label": "James — Homme, Accent américain",
         "language": "en",
+        "language_name": "Anglais",
         "gender": "male",
+        "accent": "Américain",
         "styles": ["Autoritaire et confiant", "Éducatif et clair"],
         "preview_url": None,
     },
     {
         "voice_id": "b2c34de5-2345-6789-abcd-ef0123456789",
         "voice_name": "Aria",
+        "display_label": "Aria — Femme, Accent américain",
         "language": "en",
+        "language_name": "Anglais",
         "gender": "female",
+        "accent": "Américain",
         "styles": ["Doux et chaleureux", "Dynamique et rapide"],
+        "preview_url": None,
+    },
+    # ── Espagnol ──────────────────────────────────────────────────────────────
+    {
+        "voice_id": "c3d45ef6-3456-7890-bcde-f01234567890",
+        "voice_name": "Carlos",
+        "display_label": "Carlos — Homme, Espagnol latino",
+        "language": "es",
+        "language_name": "Espagnol",
+        "gender": "male",
+        "accent": "Latino",
+        "styles": ["Dynamique et rapide", "Humoristique et léger"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "d4e56fg7-4567-8901-cdef-012345678901",
+        "voice_name": "Isabella",
+        "display_label": "Isabella — Femme, Espagnol Espagne",
+        "language": "es",
+        "language_name": "Espagnol",
+        "gender": "female",
+        "accent": "Espagne",
+        "styles": ["Doux et chaleureux", "Éducatif et clair"],
+        "preview_url": None,
+    },
+    # ── Portugais ─────────────────────────────────────────────────────────────
+    {
+        "voice_id": "e5f67gh8-5678-9012-def0-123456789012",
+        "voice_name": "Pedro",
+        "display_label": "Pedro — Homme, Portugais brésilien",
+        "language": "pt",
+        "language_name": "Portugais",
+        "gender": "male",
+        "accent": "Brésil",
+        "styles": ["Dynamique et rapide", "Autoritaire et confiant"],
+        "preview_url": None,
+    },
+    {
+        "voice_id": "f6a78hi9-6789-0123-ef01-234567890123",
+        "voice_name": "Sofia",
+        "display_label": "Sofia — Femme, Portugaise brésilienne",
+        "language": "pt",
+        "language_name": "Portugais",
+        "gender": "female",
+        "accent": "Brésil",
+        "styles": ["Doux et chaleureux", "Éducatif et clair"],
         "preview_url": None,
     },
 ]
@@ -2245,44 +2480,49 @@ LANGUAGES = [
     {"code": "ht", "name": "Créole Haïtien"},
 ]
 
+# NOTE : Les URLs ci-dessous sont des pistes de démonstration libre de droit (SoundHelix CC0).
+# Pour la production, remplacez-les par vos propres fichiers musicaux licenciés.
+# Uploadez vos fichiers MP3 dans /music/ ou fournissez des URLs publiques accessibles depuis Render.
+_SH = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-{n}.mp3"
+
 MUSIC_CATALOG = [
     # ── Épique et motivant ──────────────────────────────────────────────
-    {"music_id": "music-epic-001", "music_name": "Epic Rise",       "music_style": "Épique et motivant", "niches": ["motivation", "sport", "finance"],    "duration": 60, "url": ""},
-    {"music_id": "music-epic-002", "music_name": "Power Surge",     "music_style": "Épique et motivant", "niches": ["sport", "challenge", "fitness"],     "duration": 45, "url": ""},
-    {"music_id": "music-epic-003", "music_name": "Champion",        "music_style": "Épique et motivant", "niches": ["motivation", "sport"],               "duration": 60, "url": ""},
-    {"music_id": "music-epic-004", "music_name": "Victory March",   "music_style": "Épique et motivant", "niches": ["finance", "business", "success"],    "duration": 50, "url": ""},
-    {"music_id": "music-epic-005", "music_name": "Rise Up",         "music_style": "Épique et motivant", "niches": ["motivation", "mindset"],             "duration": 60, "url": ""},
-    {"music_id": "music-epic-006", "music_name": "Unstoppable",     "music_style": "Épique et motivant", "niches": ["sport", "motivation", "challenge"],  "duration": 45, "url": ""},
+    {"music_id": "music-epic-001", "music_name": "Epic Rise",       "music_style": "Épique et motivant", "niches": ["motivation", "sport", "finance"],    "duration": 60, "url": _SH.format(n=1)},
+    {"music_id": "music-epic-002", "music_name": "Power Surge",     "music_style": "Épique et motivant", "niches": ["sport", "challenge", "fitness"],     "duration": 45, "url": _SH.format(n=2)},
+    {"music_id": "music-epic-003", "music_name": "Champion",        "music_style": "Épique et motivant", "niches": ["motivation", "sport"],               "duration": 60, "url": _SH.format(n=3)},
+    {"music_id": "music-epic-004", "music_name": "Victory March",   "music_style": "Épique et motivant", "niches": ["finance", "business", "success"],    "duration": 50, "url": _SH.format(n=4)},
+    {"music_id": "music-epic-005", "music_name": "Rise Up",         "music_style": "Épique et motivant", "niches": ["motivation", "mindset"],             "duration": 60, "url": _SH.format(n=5)},
+    {"music_id": "music-epic-006", "music_name": "Unstoppable",     "music_style": "Épique et motivant", "niches": ["sport", "motivation", "challenge"],  "duration": 45, "url": _SH.format(n=6)},
     # ── Doux et apaisant ───────────────────────────────────────────────
-    {"music_id": "music-soft-001", "music_name": "Peaceful Mind",   "music_style": "Doux et apaisant",   "niches": ["méditation", "bien-être"],           "duration": 60, "url": ""},
-    {"music_id": "music-soft-002", "music_name": "Gentle Rain",     "music_style": "Doux et apaisant",   "niches": ["santé", "mindfulness"],              "duration": 60, "url": ""},
-    {"music_id": "music-soft-003", "music_name": "Serenity",        "music_style": "Doux et apaisant",   "niches": ["religion", "spiritualité"],          "duration": 55, "url": ""},
-    {"music_id": "music-soft-004", "music_name": "Calm Waters",     "music_style": "Doux et apaisant",   "niches": ["parentalité", "famille"],            "duration": 60, "url": ""},
-    {"music_id": "music-soft-005", "music_name": "Soft Breeze",     "music_style": "Doux et apaisant",   "niches": ["voyage", "nature"],                  "duration": 45, "url": ""},
-    {"music_id": "music-soft-006", "music_name": "Inner Peace",     "music_style": "Doux et apaisant",   "niches": ["mindfulness", "méditation"],         "duration": 60, "url": ""},
+    {"music_id": "music-soft-001", "music_name": "Peaceful Mind",   "music_style": "Doux et apaisant",   "niches": ["méditation", "bien-être"],           "duration": 60, "url": _SH.format(n=7)},
+    {"music_id": "music-soft-002", "music_name": "Gentle Rain",     "music_style": "Doux et apaisant",   "niches": ["santé", "mindfulness"],              "duration": 60, "url": _SH.format(n=8)},
+    {"music_id": "music-soft-003", "music_name": "Serenity",        "music_style": "Doux et apaisant",   "niches": ["religion", "spiritualité"],          "duration": 55, "url": _SH.format(n=9)},
+    {"music_id": "music-soft-004", "music_name": "Calm Waters",     "music_style": "Doux et apaisant",   "niches": ["parentalité", "famille"],            "duration": 60, "url": _SH.format(n=10)},
+    {"music_id": "music-soft-005", "music_name": "Soft Breeze",     "music_style": "Doux et apaisant",   "niches": ["voyage", "nature"],                  "duration": 45, "url": _SH.format(n=11)},
+    {"music_id": "music-soft-006", "music_name": "Inner Peace",     "music_style": "Doux et apaisant",   "niches": ["mindfulness", "méditation"],         "duration": 60, "url": _SH.format(n=12)},
     # ── Rythmé et énergique ────────────────────────────────────────────
-    {"music_id": "music-energy-001", "music_name": "Beat Drop",     "music_style": "Rythmé et énergique", "niches": ["gaming", "sport", "mode"],          "duration": 30, "url": ""},
-    {"music_id": "music-energy-002", "music_name": "Energy Rush",   "music_style": "Rythmé et énergique", "niches": ["gaming", "challenge"],              "duration": 60, "url": ""},
-    {"music_id": "music-energy-003", "music_name": "Pulse",         "music_style": "Rythmé et énergique", "niches": ["fitness", "sport"],                 "duration": 45, "url": ""},
-    {"music_id": "music-energy-004", "music_name": "Rhythm Fire",   "music_style": "Rythmé et énergique", "niches": ["influenceur", "mode"],              "duration": 60, "url": ""},
-    {"music_id": "music-energy-005", "music_name": "Dance Wave",    "music_style": "Rythmé et énergique", "niches": ["danse", "humour"],                  "duration": 30, "url": ""},
-    {"music_id": "music-energy-006", "music_name": "Electric Vibe", "music_style": "Rythmé et énergique", "niches": ["technologie", "IA"],                "duration": 45, "url": ""},
+    {"music_id": "music-energy-001", "music_name": "Beat Drop",     "music_style": "Rythmé et énergique", "niches": ["gaming", "sport", "mode"],          "duration": 30, "url": _SH.format(n=13)},
+    {"music_id": "music-energy-002", "music_name": "Energy Rush",   "music_style": "Rythmé et énergique", "niches": ["gaming", "challenge"],              "duration": 60, "url": _SH.format(n=1)},
+    {"music_id": "music-energy-003", "music_name": "Pulse",         "music_style": "Rythmé et énergique", "niches": ["fitness", "sport"],                 "duration": 45, "url": _SH.format(n=2)},
+    {"music_id": "music-energy-004", "music_name": "Rhythm Fire",   "music_style": "Rythmé et énergique", "niches": ["influenceur", "mode"],              "duration": 60, "url": _SH.format(n=3)},
+    {"music_id": "music-energy-005", "music_name": "Dance Wave",    "music_style": "Rythmé et énergique", "niches": ["danse", "humour"],                  "duration": 30, "url": _SH.format(n=4)},
+    {"music_id": "music-energy-006", "music_name": "Electric Vibe", "music_style": "Rythmé et énergique", "niches": ["technologie", "IA"],                "duration": 45, "url": _SH.format(n=5)},
     # ── Mystérieux et intrigant ────────────────────────────────────────
-    {"music_id": "music-mystery-001", "music_name": "Dark Secret",  "music_style": "Mystérieux et intrigant", "niches": ["révélation", "cryptomonnaie"],  "duration": 60, "url": ""},
-    {"music_id": "music-mystery-002", "music_name": "Mystery Walk", "music_style": "Mystérieux et intrigant", "niches": ["technologie", "IA"],            "duration": 50, "url": ""},
-    {"music_id": "music-mystery-003", "music_name": "Shadow",       "music_style": "Mystérieux et intrigant", "niches": ["finance", "politique"],         "duration": 60, "url": ""},
-    {"music_id": "music-mystery-004", "music_name": "Unknown Path", "music_style": "Mystérieux et intrigant", "niches": ["voyage", "découverte"],         "duration": 45, "url": ""},
-    {"music_id": "music-mystery-005", "music_name": "Twilight",     "music_style": "Mystérieux et intrigant", "niches": ["révélation", "spiritualité"],   "duration": 55, "url": ""},
+    {"music_id": "music-mystery-001", "music_name": "Dark Secret",  "music_style": "Mystérieux et intrigant", "niches": ["révélation", "cryptomonnaie"],  "duration": 60, "url": _SH.format(n=6)},
+    {"music_id": "music-mystery-002", "music_name": "Mystery Walk", "music_style": "Mystérieux et intrigant", "niches": ["technologie", "IA"],            "duration": 50, "url": _SH.format(n=7)},
+    {"music_id": "music-mystery-003", "music_name": "Shadow",       "music_style": "Mystérieux et intrigant", "niches": ["finance", "politique"],         "duration": 60, "url": _SH.format(n=8)},
+    {"music_id": "music-mystery-004", "music_name": "Unknown Path", "music_style": "Mystérieux et intrigant", "niches": ["voyage", "découverte"],         "duration": 45, "url": _SH.format(n=9)},
+    {"music_id": "music-mystery-005", "music_name": "Twilight",     "music_style": "Mystérieux et intrigant", "niches": ["révélation", "spiritualité"],   "duration": 55, "url": _SH.format(n=10)},
     # ── Neutre et professionnel ────────────────────────────────────────
-    {"music_id": "music-neutral-001", "music_name": "Corporate Flow",  "music_style": "Neutre et professionnel", "niches": ["business", "finance"],      "duration": 60, "url": ""},
-    {"music_id": "music-neutral-002", "music_name": "Business Beat",   "music_style": "Neutre et professionnel", "niches": ["éducation", "tutoriel"],    "duration": 45, "url": ""},
-    {"music_id": "music-neutral-003", "music_name": "Professional",    "music_style": "Neutre et professionnel", "niches": ["IA", "technologie"],        "duration": 60, "url": ""},
-    {"music_id": "music-neutral-004", "music_name": "Clean Tone",      "music_style": "Neutre et professionnel", "niches": ["langues", "éducation"],     "duration": 50, "url": ""},
+    {"music_id": "music-neutral-001", "music_name": "Corporate Flow",  "music_style": "Neutre et professionnel", "niches": ["business", "finance"],      "duration": 60, "url": _SH.format(n=11)},
+    {"music_id": "music-neutral-002", "music_name": "Business Beat",   "music_style": "Neutre et professionnel", "niches": ["éducation", "tutoriel"],    "duration": 45, "url": _SH.format(n=12)},
+    {"music_id": "music-neutral-003", "music_name": "Professional",    "music_style": "Neutre et professionnel", "niches": ["IA", "technologie"],        "duration": 60, "url": _SH.format(n=13)},
+    {"music_id": "music-neutral-004", "music_name": "Clean Tone",      "music_style": "Neutre et professionnel", "niches": ["langues", "éducation"],     "duration": 50, "url": _SH.format(n=1)},
     # ── Joyeux et léger ───────────────────────────────────────────────
-    {"music_id": "music-happy-001", "music_name": "Happy Day",    "music_style": "Joyeux et léger", "niches": ["humour", "blagues", "cuisine"],          "duration": 60, "url": ""},
-    {"music_id": "music-happy-002", "music_name": "Fun Times",    "music_style": "Joyeux et léger", "niches": ["famille", "enfants"],                    "duration": 45, "url": ""},
-    {"music_id": "music-happy-003", "music_name": "Cheerful",     "music_style": "Joyeux et léger", "niches": ["voyage", "lifestyle"],                   "duration": 60, "url": ""},
-    {"music_id": "music-happy-004", "music_name": "Bright Side",  "music_style": "Joyeux et léger", "niches": ["parentalité", "motivation"],             "duration": 45, "url": ""},
+    {"music_id": "music-happy-001", "music_name": "Happy Day",    "music_style": "Joyeux et léger", "niches": ["humour", "blagues", "cuisine"],          "duration": 60, "url": _SH.format(n=2)},
+    {"music_id": "music-happy-002", "music_name": "Fun Times",    "music_style": "Joyeux et léger", "niches": ["famille", "enfants"],                    "duration": 45, "url": _SH.format(n=3)},
+    {"music_id": "music-happy-003", "music_name": "Cheerful",     "music_style": "Joyeux et léger", "niches": ["voyage", "lifestyle"],                   "duration": 60, "url": _SH.format(n=4)},
+    {"music_id": "music-happy-004", "music_name": "Bright Side",  "music_style": "Joyeux et léger", "niches": ["parentalité", "motivation"],             "duration": 45, "url": _SH.format(n=5)},
 ]
 
 
@@ -2555,16 +2795,19 @@ async def upload_music(
     if ext not in allowed_extensions and content_type not in allowed_types:
         return JSONResponse(
             status_code=400,
-            content={"error": "Format non supporté. Utilisez mp3, wav ou m4a."},
+            content={"error": "Format non supporté. Utilisez .mp3, .wav ou .m4a."},
         )
 
     audio_bytes = await music_file.read()
 
-    max_bytes = 10 * 1024 * 1024
+    if not audio_bytes:
+        return JSONResponse(status_code=400, content={"error": "Fichier vide."})
+
+    max_bytes = 15 * 1024 * 1024  # 15 MB
     if len(audio_bytes) > max_bytes:
         return JSONResponse(
             status_code=400,
-            content={"error": "Le fichier dépasse la limite de 10 MB"},
+            content={"error": "Le fichier dépasse la limite de 15 MB."},
         )
 
     music_id = uuid.uuid4().hex
@@ -2576,7 +2819,11 @@ async def upload_music(
         f.write(audio_bytes)
 
     duration = get_audio_duration(saved_path)
-    final_name = music_name.strip() or os.path.splitext(filename)[0] or saved_filename
+
+    raw_name = music_name.strip() or os.path.splitext(filename)[0] or music_id
+    # Keep only safe characters: letters (including accented), digits, spaces, hyphens, underscores
+    final_name = re.sub(r"[^a-zA-Z0-9À-ÿ _\-]", "", raw_name)[:80].strip() or music_id
+
     file_url = f"{PUBLIC_BASE_URL}/music/{saved_filename}" if PUBLIC_BASE_URL else saved_path
 
     return {
@@ -2589,37 +2836,61 @@ async def upload_music(
 
 @app.get("/music/{filename}")
 async def serve_music(filename: str):
+    # Reject path traversal attempts
+    if not re.match(r'^[\w\-]+\.(mp3|wav|m4a)$', filename):
+        return JSONResponse(status_code=400, content={"error": "Nom de fichier invalide."})
     file_path = os.path.join(MUSIC_DIR, filename)
     if not os.path.exists(file_path):
         return JSONResponse(status_code=404, content={"error": "Fichier music introuvable"})
     return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
 
 
+@app.get("/static-music/{filename}")
+async def serve_static_music(filename: str):
+    """Serve pre-loaded catalog music files from static/music/."""
+    if not re.match(r'^[\w\-]+\.(mp3|wav|m4a)$', filename):
+        return JSONResponse(status_code=400, content={"error": "Nom de fichier invalide."})
+    file_path = os.path.join(STATIC_MUSIC_DIR, filename)
+    if not os.path.exists(file_path):
+        return JSONResponse(status_code=404, content={"error": "Fichier musique introuvable"})
+    ext = os.path.splitext(filename)[1].lower()
+    media_types = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4"}
+    return FileResponse(file_path, media_type=media_types.get(ext, "audio/mpeg"), filename=filename)
+
+
 @app.get("/available-music")
 async def available_music(style: str = ""):
-    catalog = MUSIC_CATALOG
+    catalog_raw = MUSIC_CATALOG
     if style.strip():
         style_lower = style.lower().strip()
-        catalog = [
-            t for t in MUSIC_CATALOG
-            if style_lower in t["music_style"].lower()
-        ]
+        catalog_raw = [t for t in MUSIC_CATALOG if style_lower in t["music_style"].lower()]
+
+    # Resolve URLs: prefer local static/music/{music_id}.mp3 over SoundHelix fallback
+    base = PUBLIC_BASE_URL or ""
+    catalog = []
+    for track in catalog_raw:
+        t = dict(track)
+        local_filename = f"{t['music_id']}.mp3"
+        local_path = os.path.join(STATIC_MUSIC_DIR, local_filename)
+        if os.path.exists(local_path):
+            t["url"] = f"{base}/static-music/{local_filename}"
+        # else: keep t["url"] as-is (SoundHelix fallback for testing)
+        catalog.append(t)
 
     uploaded = []
-    if PUBLIC_BASE_URL:
-        try:
-            for fname in os.listdir(MUSIC_DIR):
-                if fname.startswith("music_") and os.path.splitext(fname)[1].lower() in {".mp3", ".wav", ".m4a"}:
-                    fpath = os.path.join(MUSIC_DIR, fname)
-                    uploaded.append({
-                        "music_id": os.path.splitext(fname)[0].replace("music_", ""),
-                        "music_name": fname,
-                        "music_style": "Upload utilisateur",
-                        "duration": int(get_audio_duration(fpath)),
-                        "url": f"{PUBLIC_BASE_URL}/music/{fname}",
-                    })
-        except Exception:
-            pass
+    try:
+        for fname in os.listdir(MUSIC_DIR):
+            if fname.startswith("music_") and os.path.splitext(fname)[1].lower() in {".mp3", ".wav", ".m4a"}:
+                fpath = os.path.join(MUSIC_DIR, fname)
+                uploaded.append({
+                    "music_id": os.path.splitext(fname)[0].replace("music_", ""),
+                    "music_name": fname,
+                    "music_style": "Upload utilisateur",
+                    "duration": int(get_audio_duration(fpath)),
+                    "url": f"{base}/music/{fname}",
+                })
+    except Exception:
+        pass
 
     return {
         "catalog": catalog,

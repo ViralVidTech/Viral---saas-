@@ -268,9 +268,15 @@
             <div class="status" id="p1CloneStatus"></div>
           </div>
         </div>
+        <div class="field"><label>Mode audio</label>
+          <select id="p1AudioMode">
+            <option value="fish" selected>🎤 Remplacer par voix Fish Audio (recommandé)</option>
+            <option value="ltx">🎬 Conserver l'audio original LTX</option>
+          </select>
+        </div>
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
-            <select id="p1Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
+            <select id="p1Music" style="flex:1;"><option value="">Pas de musique</option></select>
             <input type="file" id="p1MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p1MusicFile').click()">📁 Upload</button>
           </div>
@@ -334,9 +340,15 @@
             <div class="status" id="p2CloneStatus"></div>
           </div>
         </div>
+        <div class="field"><label>Mode audio</label>
+          <select id="p2AudioMode">
+            <option value="fish" selected>🎤 Remplacer par voix Fish Audio (recommandé)</option>
+            <option value="ltx">🎬 Conserver l'audio original LTX</option>
+          </select>
+        </div>
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
-            <select id="p2Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
+            <select id="p2Music" style="flex:1;"><option value="">Pas de musique</option></select>
             <input type="file" id="p2MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p2MusicFile').click()">📁 Upload</button>
           </div>
@@ -389,7 +401,7 @@
         </div>
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
-            <select id="p3Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
+            <select id="p3Music" style="flex:1;"><option value="">Pas de musique</option></select>
             <input type="file" id="p3MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p3MusicFile').click()">📁 Upload</button>
           </div>
@@ -462,7 +474,7 @@
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p4UseMusic"><span class="toggle-slider"></span></label><span>Musique de fond (optionnel)</span></div>
         <div id="p4MusicArea" style="display:none;" class="field">
           <div style="display:flex;gap:10px;align-items:center;">
-            <select id="p4Music" style="flex:1;"><option value="">Pas de musique</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Music 1</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Music 2</option><option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3">Music 3</option></select>
+            <select id="p4Music" style="flex:1;"><option value="">Pas de musique</option></select>
             <input type="file" id="p4MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p4MusicFile').click()">📁 Upload</button>
           </div>
@@ -723,14 +735,47 @@ function populateSelect(sel, items, valFn, labelFn, emptyLabel) {
   });
 }
 
+const _LANG_FR = {
+  'fr':'Français','en':'Anglais','es':'Espagnol','pt':'Portugais',
+  'de':'Allemand','it':'Italien','zh':'Chinois','ja':'Japonais',
+  'ko':'Coréen','ar':'Arabe','ru':'Russe','nl':'Néerlandais',
+};
+const _LANG_ORDER = ['Français','Anglais','Espagnol','Portugais','Allemand','Italien'];
+
 function filterVoicesByStyle(voices, styleVal, voiceSel) {
   voiceSel.innerHTML = '<option value="">— Choisir une voix —</option>';
+
+  // Regrouper par langue
+  const byLang = {};
   (voices || []).forEach(v => {
-    if (!styleVal || !v.style || v.style === styleVal) {
+    const raw = Array.isArray(v.language) ? (v.language[0] || '') : (v.language || '');
+    const code = raw.split('-')[0].toLowerCase();
+    const langName = v.language_name || _LANG_FR[code] || raw.toUpperCase() || 'Autre';
+    if (!byLang[langName]) byLang[langName] = [];
+    const matchStyle = !styleVal || (v.style && v.style === styleVal)
+      || (Array.isArray(v.styles) && v.styles.includes(styleVal));
+    if (matchStyle) byLang[langName].push(v);
+  });
+
+  const sorted = [..._LANG_ORDER.filter(l => byLang[l]),
+                  ...Object.keys(byLang).filter(l => !_LANG_ORDER.includes(l)).sort()];
+  sorted.forEach(langName => {
+    const items = byLang[langName];
+    if (!items || !items.length) return;
+    const og = document.createElement('optgroup');
+    og.label = langName;
+    items.forEach(v => {
       const opt = document.createElement('option');
-      opt.value = v.id; opt.textContent = v.name || v.id;
-      voiceSel.appendChild(opt);
-    }
+      opt.value = v.id || v.voice_id || '';
+      // Construire un label lisible
+      const baseLabel = v.display_label || v.name || v.voice_name || opt.value;
+      const genderFr = v.gender_label || (v.gender === 'female' ? 'Femme' : v.gender === 'male' ? 'Homme' : '');
+      const accent   = v.accent || '';
+      const hint     = v.style_hint || [genderFr, accent].filter(Boolean).join(', ');
+      opt.textContent = hint ? `${baseLabel} (${hint})` : baseLabel;
+      og.appendChild(opt);
+    });
+    voiceSel.appendChild(og);
   });
 }
 
@@ -862,7 +907,7 @@ function splitScenes(text, numScenes) {
   return scenes;
 }
 
-async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId) {
+async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId, ltxAudioMode) {
   setStatus(statusId, '⏳ FFmpeg assemble la vidéo finale…', 'ready');
   const clips = Array.isArray(videoUrls) ? videoUrls : [videoUrls];
   const payload = {
@@ -876,6 +921,7 @@ async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitl
     wan_video8: clips[7] || '',
     audio_url: audioUrl,
     music_url: musicUrl,
+    ltx_audio_mode: ltxAudioMode || 'fish',
     subtitles,
     duration: 30
   };
@@ -1062,6 +1108,53 @@ async function loadPipelineData() {
   if (styleEl && voiceEl) styleEl.addEventListener('change', () => filterVoicesByStyle(_pipelineVoices, styleEl.value, voiceEl));
 });
 
+// ── Upload musique : envoyer le fichier au backend et sélectionner l'URL ──────
+['p1','p2','p3','p4'].forEach(prefix => {
+  const fileInput = document.getElementById(`${prefix}MusicFile`);
+  const musicSel  = document.getElementById(`${prefix}Music`);
+  if (!fileInput || !musicSel) return;
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
+    const statusId = `${prefix}Status`;
+    setStatus(statusId, '⏳ Upload de la musique…', 'ready');
+
+    const fd = new FormData();
+    fd.append('music_file', file);
+    fd.append('music_name', file.name.replace(/\.[^.]+$/, ''));
+
+    try {
+      const r = await fetch(`${apiUrl}/upload-music`, { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+
+      const url = d.file_path || '';
+      if (!url) throw new Error('URL musique manquante dans la réponse');
+
+      // Supprimer les anciens uploads pour ce pipeline
+      Array.from(musicSel.options).forEach(o => {
+        if (o.dataset.upload === prefix) musicSel.removeChild(o);
+      });
+
+      const opt = document.createElement('option');
+      opt.value = url;
+      opt.textContent = `${d.music_name || file.name} (${d.duration || '?'}s) — Upload`;
+      opt.dataset.upload = prefix;
+      opt.selected = true;
+      musicSel.appendChild(opt);
+      musicSel.value = url;
+
+      setStatus(statusId, `✅ Musique "${d.music_name || file.name}" chargée`, 'success');
+    } catch(e) {
+      setStatus(statusId, `❌ Upload musique échoué: ${e.message}`, 'error');
+    }
+    fileInput.value = '';
+  });
+});
+
 // Reload data when API URL changes
 let _pipelineLoadTimer = null;
 if (apiUrlInput) apiUrlInput.addEventListener('input', () => {
@@ -1144,7 +1237,7 @@ document.getElementById('p4UseMusic').addEventListener('change', e => {
   document.getElementById('p4MusicArea').style.display = e.target.checked ? '' : 'none';
 });
 
-// ── PIPELINE 1: Script → Flux → Wan T2V → Fish Audio → Voxtral → FFmpeg
+// ── PIPELINE 1: Script → LTX-Video 2.3 → Fish Audio / LTX audio → Voxtral → FFmpeg
 document.getElementById('p1Btn').addEventListener('click', async () => {
   const apiUrl = getPipelineApiUrl();
   if (!apiUrl) return setStatus('p1Status', "Entrez d'abord l'URL de l'API.", 'error');
@@ -1152,26 +1245,27 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
   btn.disabled = true;
   document.getElementById('p1VideoBlock').classList.remove('show');
   try {
-    const niche    = document.getElementById('p1Niche')?.value || '';
-    const narStyle = document.getElementById('p1NarStyle')?.value || '';
-    const lang     = document.getElementById('p1Lang')?.value || 'fr';
-    const res      = document.getElementById('p1Res')?.value || '832*480';
-    const steps    = parseInt(document.getElementById('p1Steps')?.value || '20');
-    const voiceId  = document.getElementById('p1Voice')?.value || '';
-    const musicUrl = document.getElementById('p1Music')?.value || '';
-    const wantSubs = document.getElementById('p1Subs')?.checked || false;
-
+    const niche      = document.getElementById('p1Niche')?.value || '';
+    const narStyle   = document.getElementById('p1NarStyle')?.value || '';
+    const lang       = document.getElementById('p1Lang')?.value || 'fr';
+    const res        = document.getElementById('p1Res')?.value || '832*480';
+    const voiceId    = document.getElementById('p1Voice')?.value || '';
+    const musicUrl   = document.getElementById('p1Music')?.value || '';
+    const wantSubs   = document.getElementById('p1Subs')?.checked || false;
+    const audioMode  = document.getElementById('p1AudioMode')?.value || 'fish';
     const videoType1 = document.getElementById('p1VideoType')?.value || 'cinematic';
     const duration1  = parseInt(document.getElementById('p1Duration')?.value || '10');
 
-    // 1 — Script (pass video_type so Claude generates appropriate content)
+    console.log(`[P1] audioMode=${audioMode} voiceId=${voiceId} musicUrl=${musicUrl}`);
+
+    // 1 — Script
     let script = document.getElementById('p1Script').value.trim();
     if (document.getElementById('p1AutoScript').checked || !script) {
       if (!niche) { btn.disabled = false; return setStatus('p1Status', 'Choisissez une niche.', 'error'); }
       script = await generateScript(apiUrl, niche, narStyle, lang, document.getElementById('p1Script'), 'p1Status', videoType1, duration1);
     }
 
-    // 2 — Generate video via LTX-Video 2.3
+    // 2 — Génération vidéo LTX-Video 2.3
     setStatus('p1Status', '🎬 LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1184,19 +1278,26 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     const clipUrls = [`${apiUrl}${done.video_url}`];
     let videoUrl = clipUrls[0];
 
-    // 4 — Fish Audio
+    // 3 — Audio : Fish Audio OU conservation audio LTX
     let audioUrl = '';
-    if (voiceId) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p1Status');
+    if (audioMode === 'ltx') {
+      setStatus('p1Status', '🎬 Mode audio LTX : conservation de l\'audio original…', 'ready');
+    } else if (voiceId) {
+      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p1Status');
+    }
 
-    // 5 — Voxtral
+    // 4 — Sous-titres Voxtral (seulement si Fish Audio actif)
     let subtitles = '';
     if (wantSubs && audioUrl) {
       subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p1Status');
       if (!subtitles) setStatus('p1Status', '⚠️ Sous-titres non disponibles, on continue sans eux.', 'ready');
     }
 
-    // 6 — FFmpeg: concatenate all scene clips + voice + music
-    if (audioUrl || musicUrl || subtitles || clipUrls.length > 1) videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p1Status');
+    // 5 — FFmpeg : assemblage final (obligatoire si LTX mode pour supprimer audio LTX brut)
+    const needAssembly = audioUrl || musicUrl || subtitles || clipUrls.length > 1 || audioMode === 'ltx';
+    if (needAssembly) {
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p1Status', audioMode);
+    }
 
     showPipelineVideo('p1VideoPlayer', 'p1DownloadLink', 'p1VideoBlock', videoUrl);
     setStatus('p1Status', '✅ Pipeline 1 terminé !', 'success');
@@ -1205,7 +1306,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 
-// ── PIPELINE 2: Script → Wan T2V (sans image) → Fish Audio → Voxtral → FFmpeg
+// ── PIPELINE 2: Script → LTX-Video 2.3 → Fish Audio / LTX audio → Voxtral → FFmpeg
 document.getElementById('p2Btn').addEventListener('click', async () => {
   const apiUrl = getPipelineApiUrl();
   if (!apiUrl) return setStatus('p2Status', "Entrez d'abord l'URL de l'API.", 'error');
@@ -1213,19 +1314,20 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
   btn.disabled = true;
   document.getElementById('p2VideoBlock').classList.remove('show');
   try {
-    const niche    = document.getElementById('p2Niche')?.value || '';
-    const narStyle = document.getElementById('p2NarStyle')?.value || '';
-    const lang     = document.getElementById('p2Lang')?.value || 'fr';
-    const res      = document.getElementById('p2Res')?.value || '832*480';
-    const steps    = parseInt(document.getElementById('p2Steps')?.value || '20');
-    const voiceId  = document.getElementById('p2Voice')?.value || '';
-    const musicUrl = document.getElementById('p2Music')?.value || '';
-    const wantSubs = document.getElementById('p2Subs')?.checked || false;
-
+    const niche      = document.getElementById('p2Niche')?.value || '';
+    const narStyle   = document.getElementById('p2NarStyle')?.value || '';
+    const lang       = document.getElementById('p2Lang')?.value || 'fr';
+    const res        = document.getElementById('p2Res')?.value || '832*480';
+    const voiceId    = document.getElementById('p2Voice')?.value || '';
+    const musicUrl   = document.getElementById('p2Music')?.value || '';
+    const wantSubs   = document.getElementById('p2Subs')?.checked || false;
+    const audioMode  = document.getElementById('p2AudioMode')?.value || 'fish';
     const videoType2 = document.getElementById('p2VideoType')?.value || 'cinematic';
     const duration2  = parseInt(document.getElementById('p2Duration')?.value || '10');
 
-    // 1 — Script (pass video_type so Claude generates appropriate content)
+    console.log(`[P2] audioMode=${audioMode} voiceId=${voiceId} musicUrl=${musicUrl}`);
+
+    // 1 — Script
     let script = document.getElementById('p2Script').value.trim();
     if (document.getElementById('p2AutoScript').checked || !script) {
       if (!niche) { btn.disabled = false; return setStatus('p2Status', 'Choisissez une niche.', 'error'); }
@@ -1242,21 +1344,29 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     const ltxD = await ltxR.json();
     if (!ltxD.job_id) throw new Error("LTX n'a pas retourné de job_id");
     const ltxDone = await pollWithStatus(apiUrl, `/ltx/status/${ltxD.job_id}`, 'p2Status', 'LTX génère la vidéo');
-    let videoUrl = `${apiUrl}${ltxDone.video_url}`;
+    const clipUrl = `${apiUrl}${ltxDone.video_url}`;
+    let videoUrl = clipUrl;
 
-    // 3 — Fish Audio
+    // 3 — Audio : Fish Audio OU conservation audio LTX
     let audioUrl = '';
-    if (voiceId) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p2Status');
+    if (audioMode === 'ltx') {
+      setStatus('p2Status', '🎬 Mode audio LTX : conservation de l\'audio original…', 'ready');
+    } else if (voiceId) {
+      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p2Status');
+    }
 
-    // 4 — Voxtral
+    // 4 — Sous-titres Voxtral
     let subtitles = '';
     if (wantSubs && audioUrl) {
       subtitles = await generateSubtitles(apiUrl, audioUrl, lang, 'p2Status');
       if (!subtitles) setStatus('p2Status', '⚠️ Sous-titres non disponibles, on continue sans eux.', 'ready');
     }
 
-    // 5 — FFmpeg
-    if (audioUrl || musicUrl || subtitles) videoUrl = await assembleWithFFmpeg(apiUrl, videoUrl, audioUrl, musicUrl, subtitles, 'p2Status');
+    // 5 — FFmpeg : assemblage final
+    const needAssembly = audioUrl || musicUrl || subtitles || audioMode === 'ltx';
+    if (needAssembly) {
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrl, audioUrl, musicUrl, subtitles, 'p2Status', audioMode);
+    }
 
     showPipelineVideo('p2VideoPlayer', 'p2DownloadLink', 'p2VideoBlock', videoUrl);
     setStatus('p2Status', '✅ Pipeline 2 terminé !', 'success');
