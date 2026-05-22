@@ -37,7 +37,7 @@ PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 FAL_API_KEY = os.getenv("FAL_API_KEY", "")
-FISH_AUDIO_API_KEY = os.getenv("FISH_AUDIO_API_KEY", "")
+VOXTRAL_API_KEY = os.getenv("VOXTRAL_API_KEY", "")
 WAN_API_URL = os.getenv("WAN_API_URL", "")
 RUNPOD_API_URL = os.getenv("RUNPOD_API_URL", "")
 RUNPOD_BASE_URL = os.getenv("RUNPOD_API_URL", "")
@@ -73,7 +73,7 @@ os.makedirs(WORK_DIR, exist_ok=True)
 os.makedirs(MUSIC_DIR, exist_ok=True)
 os.makedirs(STATIC_MUSIC_DIR, exist_ok=True)
 
-print(f"[Startup] Fish Audio API key detected: {'YES' if FISH_AUDIO_API_KEY else 'NO'}")
+print(f"[Startup] Voxtral API key detected: {'YES' if VOXTRAL_API_KEY else 'NO'}")
 print(f"[Startup] Video job concurrency: max_concurrent={MAX_CONCURRENT_VIDEO_JOBS} queue_size={MAX_VIDEO_QUEUE_SIZE}")
 print(f"[Startup] R2 Storage: {'ENABLED (bucket=' + R2_BUCKET_NAME + ')' if R2_ENDPOINT_URL and R2_BUCKET_NAME else 'DISABLED (local only)'}")
 
@@ -555,18 +555,17 @@ class TTSRequest(BaseModel):
     speakingRate: float = 1.0
 
 
-class FishTTSRequest(BaseModel):
+class TTSGenerateRequest(BaseModel):
     text: str
-    voice_id: str = ""          # vide = voix par défaut Fish Audio
-    tts_provider: str = "fish"  # "fish" | "openai" | "google" | "playht" | "cartesia"
-    language: str = "en"
+    voice_id: str = ""            # vide = voix par défaut du provider
+    tts_provider: str = "voxtral" # "voxtral" | "openai" | "google" | "playht" | "cartesia"
+    language: str = "fr"
     format: str = "mp3"
-    latency: str = "normal"
 
 
 class VoicePreviewRequest(BaseModel):
     voice_id: str = ""
-    tts_provider: str = "fish"
+    tts_provider: str = "voxtral"
     language: str = "fr"
     text: str = "Bonjour, voici un aperçu de cette voix ViralVidTech."
 
@@ -589,7 +588,7 @@ class VideoRequest(BaseModel):
     text6: str = ""
     text7: str = ""
     text8: str = ""
-    ltx_audio_mode: str = "fish"  # "fish" = voix Fish Audio | "ltx" = conserver audio original LTX
+    ltx_audio_mode: str = "voxtral"  # "voxtral" = voix TTS | "ltx" = conserver audio original LTX
     video_url: str = ""
     video_url2: str = ""
     video_url3: str = ""
@@ -818,154 +817,60 @@ async def serve_video(filename: str):
 
 
 # ── TTS PROVIDER ROUTING ────────────────────────────────────────────────────
-# Seul Fish Audio est implémenté. Pour ajouter un provider :
-#   1. Créer la fonction async _<provider>_tts_request(text, voice_id, **kw)
+# Pour ajouter un provider :
+#   1. Créer la fonction async _<provider>_tts_bytes(text, voice_id, language, **kw) -> bytes
 #   2. L'ajouter à _TTS_PROVIDERS_AVAILABLE
-#   3. Brancher dans /generate-audio-fish et /preview-fish-voice si besoin
-#
-# async def _openai_tts_request(text, voice_id, **kw): ...   # TODO
-# async def _google_tts_request(text, voice_id, **kw): ...   # TODO
-# async def _playht_tts_request(text, voice_id, **kw): ...   # TODO
-# async def _cartesia_tts_request(text, voice_id, **kw): ... # TODO
+#   3. Brancher dans /generate-audio et /preview-voice
 
-_TTS_PROVIDERS_AVAILABLE = {"fish"}
+_TTS_PROVIDERS_AVAILABLE: set[str] = set()  # sera {"voxtral"} une fois l'API configurée
 
-
-async def _fish_tts_request(
-    text: str,
-    voice_id: str = "",
-    fmt: str = "mp3",
-    latency: str = "balanced",
-    timeout: int = 120,
-) -> httpx.Response:
-    """Appelle Fish Audio TTS. Retente sans reference_id si la voix est refusée."""
-    headers = {
-        "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload: dict = {"text": text, "format": fmt, "latency": latency, "normalize": True}
-    if voice_id:
-        payload["reference_id"] = voice_id
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post("https://api.fish.audio/v1/tts", headers=headers, json=payload)
-
-    if resp.status_code != 200 and voice_id:
-        print(f"[fish-tts] voice_id={voice_id!r} refusé ({resp.status_code}) — fallback voix par défaut")
-        payload.pop("reference_id", None)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post("https://api.fish.audio/v1/tts", headers=headers, json=payload)
-
-    return resp
+# ── Stubs futurs ─────────────────────────────────────────────────────────────
+# async def _voxtral_tts_bytes(text, voice_id, language, **kw) -> bytes: ...  # TODO: Voxtral (Mistral)
+# async def _openai_tts_bytes(text, voice_id, language, **kw) -> bytes: ...   # TODO: OpenAI TTS
+# async def _google_tts_bytes(text, voice_id, language, **kw) -> bytes: ...   # TODO: Google TTS
+# async def _playht_tts_bytes(text, voice_id, language, **kw) -> bytes: ...   # TODO: PlayHT
+# async def _cartesia_tts_bytes(text, voice_id, language, **kw) -> bytes: ... # TODO: Cartesia
 
 
-# ── FISH AUDIO TTS ──────────────────────────────────────────────────────────
-@app.post("/generate-audio-fish")
-async def generate_audio_fish(req: FishTTSRequest):
-    if not FISH_AUDIO_API_KEY:
-        return {"error": "FISH_AUDIO_API_KEY manquante dans Render"}
+# ── GÉNÉRATION AUDIO TTS ─────────────────────────────────────────────────────
+@app.post("/generate-audio")
+async def generate_audio(req: TTSGenerateRequest):
     if not PUBLIC_BASE_URL:
         return {"error": "PUBLIC_BASE_URL manquante"}
     if not req.text.strip():
         return {"error": "Le texte est vide"}
+    if not VOXTRAL_API_KEY:
+        return {"error": "VOXTRAL_API_KEY manquante — ajoutez-la dans les variables Render"}
 
-    print(f"[Fish TTS] provider={req.tts_provider!r} voice_id={req.voice_id!r} lang={req.language!r}")
-    try:
-        response = await _fish_tts_request(req.text, req.voice_id, fmt="mp3", latency="balanced", timeout=120)
+    print(f"[TTS] provider={req.tts_provider!r} voice_id={req.voice_id!r} lang={req.language!r}")
+    # TODO: implémenter l'appel Voxtral ici
+    return {"error": "Voxtral TTS : intégration en cours. Ajoutez VOXTRAL_API_KEY dans Render."}
 
-        if response.status_code != 200:
-            try:
-                details = response.json()
-            except Exception:
-                details = response.text
-            return {
-                "error": f"Fish Audio API erreur {response.status_code}",
-                "details": details
-            }
 
-        filename = f"fish_{uuid.uuid4().hex}.mp3"
-        filepath = os.path.join(AUDIO_DIR, filename)
+@app.post("/generate-audio-fish")
+async def generate_audio_fish_compat(req: TTSGenerateRequest):
+    """Alias de compatibilité → redirige vers /generate-audio."""
+    return await generate_audio(req)
 
-        with open(filepath, "wb") as f:
-            f.write(response.content)
 
-        if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
-            return {"error": "Fish Audio a retourné un fichier vide"}
-
-        sync_filename = filename.replace(".mp3", "_sync.json")
-        sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
-        words = req.text.strip().split()
-        with open(sync_filepath, "w", encoding="utf-8") as f:
-            json.dump({"words": words, "timepoints": []}, f)
-
-        r2_audio = await upload_file_to_storage(filepath, f"audio/{filename}")
-        r2_sync  = await upload_file_to_storage(sync_filepath, f"audio/{sync_filename}")
-        if r2_audio and r2_sync:
-            # Les deux uploads ont réussi : on peut supprimer les fichiers locaux
-            audio_url = r2_audio
-            sync_url  = r2_sync
-            os.remove(filepath)
-            os.remove(sync_filepath)
-        elif r2_audio:
-            # MP3 uploadé mais sync échoué : on garde le JSON local, URL mixte
-            audio_url = r2_audio
-            sync_url  = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
-            os.remove(filepath)
-        else:
-            # R2 non configuré ou échec total : fallback local complet
-            audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
-            sync_url  = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
-
-        return {
-            "success": True,
-            "audio_url": audio_url,
-            "sync_url": sync_url,
-            "filename": filename,
-            "provider": "fish_audio"
-        }
-
-    except Exception as e:
-        return {"error": f"Erreur Fish Audio: {str(e)}"}
+# ── APERÇU VOIX ──────────────────────────────────────────────────────────────
+@app.post("/preview-voice")
+async def preview_voice(req: VoicePreviewRequest):
+    if not VOXTRAL_API_KEY:
+        return JSONResponse(status_code=422, content={
+            "error": "VOXTRAL_API_KEY manquante dans Render. Intégration Voxtral en cours."
+        })
+    print(f"[preview-voice] provider={req.tts_provider!r} voice_id={req.voice_id!r}")
+    # TODO: implémenter l'appel Voxtral ici
+    return JSONResponse(status_code=501, content={
+        "error": "Aperçu Voxtral : intégration en cours."
+    })
 
 
 @app.post("/preview-fish-voice")
-async def preview_fish_voice(req: VoicePreviewRequest):
-    if not FISH_AUDIO_API_KEY:
-        return JSONResponse(status_code=422, content={"error": "FISH_AUDIO_API_KEY manquante dans Render"})
-
-    text = (req.text or "Bonjour, voici un aperçu de cette voix ViralVidTech.").strip()
-    print(f"[preview-fish-voice] provider={req.tts_provider!r} voice_id={req.voice_id!r}")
-
-    try:
-        resp = await _fish_tts_request(text, req.voice_id, fmt="mp3", latency="balanced", timeout=30)
-
-        if resp.status_code != 200:
-            try:
-                detail = resp.json()
-            except Exception:
-                detail = resp.text[:300]
-            print(f"[preview-fish-voice] ERREUR Fish Audio {resp.status_code}: {detail}")
-            return JSONResponse(status_code=502, content={
-                "error": f"Aperçu audio indisponible (Fish Audio {resp.status_code}). Vérifiez votre clé API Fish Audio.",
-                "detail": str(detail),
-            })
-
-        filename = f"preview_{uuid.uuid4().hex[:8]}.mp3"
-        filepath = os.path.join(AUDIO_DIR, filename)
-        with open(filepath, "wb") as f:
-            f.write(resp.content)
-
-        if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
-            return JSONResponse(status_code=502, content={"error": "Fichier audio vide reçu de Fish Audio"})
-
-        base = (PUBLIC_BASE_URL or "").rstrip("/")
-        audio_url = f"{base}/audio/{filename}"
-        print(f"[preview-fish-voice] OK {len(resp.content)} bytes → {audio_url}")
-        return {"success": True, "audio_url": audio_url}
-
-    except Exception as e:
-        print(f"[preview-fish-voice] EXCEPTION: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+async def preview_fish_voice_compat(req: VoicePreviewRequest):
+    """Alias de compatibilité → redirige vers /preview-voice."""
+    return await preview_voice(req)
 
 
 @app.post("/generate-image")
@@ -1031,89 +936,23 @@ _LANG_LABELS = {
     "pl": "Polonais", "tr": "Turc", "hi": "Hindi", "vi": "Vietnamien",
 }
 
-_LANG_PRIORITY = {"fr": 0, "en": 1, "es": 2, "pt": 3, "de": 4, "it": 5}
-
-
-def _catalog_as_fish_voices():
-    """Convertit VOICE_CATALOG au format retourné par /fish-voices."""
-    result = []
-    for v in VOICE_CATALOG:
-        lang_code = v.get("language", "")
-        gender_raw = v.get("gender", "")
-        gender_fr = "Femme" if gender_raw == "female" else ("Homme" if gender_raw == "male" else "")
-        accent = v.get("accent", "")
-        lang_name = v.get("language_name") or _LANG_LABELS.get(lang_code, lang_code.upper())
-        parts = [p for p in [gender_fr, accent] if p]
-        display = v.get("display_label") or f"{v['voice_name']} — {lang_name}"
-        result.append({
-            "id": v["voice_id"],
-            "name": v["voice_name"],
-            "display_label": display,
-            "language": lang_code,
-            "language_name": lang_name,
-            "gender": gender_raw,
-            "gender_label": gender_fr,
-            "accent": accent,
-            "style_hint": ", ".join(parts) if parts else "",
-            "description": "",
-            "tags": [],
-        })
-    return result
-
-
-_DEFAULT_VOICE_ENTRY = {
-    "id": "", "name": "Fish Audio — voix par défaut",
-    "display_label": "Fish Audio — voix par défaut",
-    "language": "fr", "language_name": "Français",
-    "gender": "", "gender_label": "", "accent": "", "style_hint": "",
-    "provider": "fish", "voice_type": "default",
-    "description": "Voix standard Fish Audio — toujours disponible", "tags": [],
-}
+# ── LISTE DES VOIX TTS ───────────────────────────────────────────────────────
+@app.get("/voices")
+async def list_voices():
+    """Retourne les voix disponibles. Voxtral en cours d'intégration."""
+    voices = []
+    if VOXTRAL_API_KEY:
+        # TODO: appeler l'API Voxtral pour lister les voix disponibles
+        # ex: GET https://api.mistral.ai/v1/audio/voices
+        pass
+    print(f"[voices] Voxtral={'oui' if VOXTRAL_API_KEY else 'clé manquante'} — {len(voices)} voix")
+    return {"success": True, "voices": voices, "source": "voxtral", "note": "Intégration Voxtral en cours"}
 
 
 @app.get("/fish-voices")
-async def list_fish_voices():
-    if not FISH_AUDIO_API_KEY:
-        print("[fish-voices] Pas de FISH_AUDIO_API_KEY — voix par défaut uniquement")
-        return {"success": True, "voices": [_DEFAULT_VOICE_ENTRY], "source": "local"}
-
-    def _parse_cloned(items) -> list:
-        result = []
-        for item in items:
-            voice_id = item.get("_id", "")
-            if not voice_id:
-                continue
-            langs = item.get("languages") or []
-            lang_code = langs[0].split("-")[0].lower() if langs else "fr"
-            lang_name = _LANG_LABELS.get(lang_code, lang_code.upper())
-            title = item.get("title", voice_id)
-            result.append({
-                "id": voice_id,
-                "name": title,
-                "display_label": f"Fish Audio — {title} (clonée)",
-                "language": lang_code, "language_name": lang_name,
-                "gender": "", "gender_label": "", "accent": "", "style_hint": "",
-                "provider": "fish", "voice_type": "cloned",
-                "description": item.get("description", ""), "tags": item.get("tags", []),
-            })
-        return result
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r_self = await client.get(
-                "https://api.fish.audio/v1/model",
-                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
-                params={"page_size": 50, "self": "true", "type": "tts"},
-            )
-        own_voices = _parse_cloned(r_self.json().get("items", [])) if r_self.status_code == 200 else []
-        own_voices.sort(key=lambda v: v["name"].lower())
-        voices = [_DEFAULT_VOICE_ENTRY] + own_voices
-        print(f"[fish-voices] {len(own_voices)} voix clonées + voix par défaut")
-        return {"success": True, "voices": voices, "source": "live"}
-
-    except Exception as e:
-        print(f"[fish-voices] Exception: {e} — voix par défaut uniquement")
-        return {"success": True, "voices": [_DEFAULT_VOICE_ENTRY], "source": "local_fallback"}
+async def list_fish_voices_compat():
+    """Alias de compatibilité → redirige vers /voices."""
+    return await list_voices()
 
 
 # ── GENERATE : Claude + Wan 2.2 ─────────────────────────────────────────────
@@ -2693,12 +2532,8 @@ Retourne uniquement le script, sans introduction ni commentaire."""
         return JSONResponse(status_code=500, content={"error": f"Erreur generate-script: {str(e)}"})
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# IMPORTANT : Remplacez les voice_id ci-dessous par de vrais IDs Fish Audio.
-# Obtenez vos IDs depuis : https://fish.audio  (section "Models" de votre compte)
-# Les IDs actuels sont des exemples à remplacer avant mise en production.
-# ──────────────────────────────────────────────────────────────────────────────
-VOICE_CATALOG = [
+# ── Fish Audio supprimé — Voxtral en cours d'intégration ────────────────────
+_REMOVED_VOICE_CATALOG = [  # suppression en cours — ne plus utiliser
     # ── Français — France ─────────────────────────────────────────────────────
     {
         "voice_id": "a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1",
@@ -2958,185 +2793,6 @@ _REF_VIDEO_FLAT = {
     for videos in REFERENCE_VIDEOS.values()
     for v in videos
 }
-
-
-class SelectVoiceRequest(BaseModel):
-    voice_style: str
-    language: str = "fr"
-    gender: str = ""
-    preview: bool = False
-
-
-@app.post("/select-voice")
-async def select_voice(req: SelectVoiceRequest):
-    lang = req.language.lower().strip()
-    gender = req.gender.lower().strip()
-    style = req.voice_style.strip()
-
-    candidates = [v for v in VOICE_CATALOG if v["language"] == lang]
-    if not candidates:
-        candidates = VOICE_CATALOG[:]
-
-    style_matches = [v for v in candidates if style in v["styles"]]
-    if style_matches:
-        candidates = style_matches
-
-    if gender in ("male", "female"):
-        gender_matches = [v for v in candidates if v["gender"] == gender]
-        if gender_matches:
-            candidates = gender_matches
-
-    chosen = candidates[0]
-
-    preview_url = None
-    if req.preview and FISH_AUDIO_API_KEY:
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(
-                    f"https://api.fish.audio/v1/model/{chosen['voice_id']}",
-                    headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
-                )
-            if resp.status_code == 200:
-                data = resp.json()
-                samples = data.get("samples", [])
-                if samples:
-                    preview_url = samples[0].get("audio", None)
-        except Exception:
-            pass
-
-    return {
-        "voice_id": chosen["voice_id"],
-        "voice_name": chosen["voice_name"],
-        "voice_style": style,
-        "preview_url": preview_url,
-    }
-
-
-@app.post("/clone-voice")
-async def clone_voice(
-    audio_file: UploadFile = File(...),
-    voice_name: str = Form(...),
-):
-    if not FISH_AUDIO_API_KEY:
-        return {
-            "cloned_voice_id": "mock-cloned-voice-id-12345",
-            "voice_name": voice_name,
-            "status": "ready",
-        }
-
-    content_type = audio_file.content_type or "audio/mpeg"
-    audio_bytes = await audio_file.read()
-
-    if len(audio_bytes) < 10 * 1024:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Le fichier audio doit faire au moins 10 secondes (fichier trop petit)"},
-        )
-
-    max_bytes = 5 * 60 * 128 * 1024 // 8
-    if len(audio_bytes) > max_bytes:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Le fichier audio ne doit pas dépasser 5 minutes"},
-        )
-
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                "https://api.fish.audio/v1/model",
-                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
-                data={
-                    "title": voice_name,
-                    "type": "voice",
-                    "train_mode": "fast",
-                    "visibility": "private",
-                },
-                files={"voices": (audio_file.filename or "voice.mp3", audio_bytes, content_type)},
-            )
-
-        if response.status_code not in (200, 201):
-            try:
-                detail = response.json()
-            except Exception:
-                detail = response.text[:500]
-            return JSONResponse(
-                status_code=502,
-                content={"error": f"Fish Audio cloning erreur {response.status_code}", "details": detail},
-            )
-
-        data = response.json()
-        model_id = data.get("_id") or data.get("id", "")
-        status = "ready" if data.get("state") == "done" else "processing"
-
-        return {
-            "cloned_voice_id": model_id,
-            "voice_name": voice_name,
-            "status": status,
-        }
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Erreur clone-voice: {str(e)}"})
-
-
-@app.get("/available-voices")
-async def available_voices(style: str = ""):
-    if not FISH_AUDIO_API_KEY:
-        catalog = VOICE_CATALOG
-        if style:
-            catalog = [v for v in catalog if style in v["styles"]]
-        return {
-            "voices": [
-                {
-                    "voice_id": v["voice_id"],
-                    "voice_name": v["voice_name"],
-                    "language": v["language"],
-                    "gender": v["gender"],
-                    "styles": v["styles"],
-                }
-                for v in catalog
-            ],
-            "source": "mock",
-        }
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(
-                "https://api.fish.audio/v1/model",
-                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
-                params={"page_size": 50, "sort_by": "task_count", "type": "voice"},
-            )
-
-        if response.status_code != 200:
-            return JSONResponse(
-                status_code=502,
-                content={"error": f"Fish Audio API erreur {response.status_code}"},
-            )
-
-        data = response.json()
-        voices = []
-        for item in data.get("items", []):
-            voice_entry = {
-                "voice_id": item.get("_id", ""),
-                "voice_name": item.get("title", ""),
-                "language": (item.get("languages") or ["unknown"])[0],
-                "gender": item.get("gender", "neutral"),
-                "styles": [],
-                "tags": item.get("tags", []),
-            }
-            voices.append(voice_entry)
-
-        if style:
-            style_lower = style.lower()
-            voices = [
-                v for v in voices
-                if style_lower in v["voice_name"].lower()
-                or any(style_lower in t.lower() for t in v.get("tags", []))
-            ]
-
-        return {"voices": voices, "count": len(voices), "source": "fish_audio"}
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Erreur available-voices: {str(e)}"})
 
 
 class SelectMusicRequest(BaseModel):
