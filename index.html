@@ -1054,7 +1054,8 @@ function _getPreviewAudio() {
 
 async function previewFishVoice(prefix) {
   const sel = document.getElementById(prefix + 'Voice');
-  if (!sel || !sel.value) { alert("Selectionnez une voix d'abord."); return; }
+  // sel.value vide = "Fish Audio — voix par défaut" (autorisé, pas de reference_id côté API)
+  if (!sel || sel.selectedIndex < 0) { alert("Selectionnez une voix d'abord."); return; }
   const btn = document.getElementById(prefix + 'VoicePreviewBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
   const apiUrl = getPipelineApiUrl() || 'https://viral-saas.onrender.com';
