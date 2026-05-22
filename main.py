@@ -674,6 +674,9 @@ class VideoRequest(BaseModel):
     video_source8: str = ""
     duration: int = 30
     subtitles: str = ""
+    # Backward compat — older payloads sent wan_video/wan_video_url; mapped to video_source in _process_video
+    wan_video: str | None = None
+    wan_video_url: str | None = None
 
 
 # ── UTILITAIRES FFMPEG ──────────────────────────────────────────────────────
@@ -1803,6 +1806,11 @@ async def _process_video(job_id: str, req: VideoRequest):
             req.video_source, req.video_source2, req.video_source3, req.video_source4,
             req.video_source5, req.video_source6, req.video_source7, req.video_source8,
         ] if u]
+        # Backward compat: old frontends send wan_video/wan_video_url — promote to source_clip_list[0]
+        if not source_clip_list:
+            _compat = req.wan_video or req.wan_video_url or ""
+            if _compat:
+                source_clip_list = [_compat]
         if source_clip_list:
             valid_video_urls_raw = source_clip_list
         else:
