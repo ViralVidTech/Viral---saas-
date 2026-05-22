@@ -40,3 +40,16 @@ next-env.d.ts
 out/
 .env
 build
+
+# Python
+__pycache__/
+*.pyc
+
+# Runtime directories (generated at startup)
+music/
+audio/
+videos/
+work/
+
+# Logs
+*.log
