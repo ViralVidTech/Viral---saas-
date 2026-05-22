@@ -11,6 +11,7 @@ import subprocess
 import shutil
 import asyncio
 import re
+import secrets
 from datetime import datetime, timezone, timedelta
 
 app = FastAPI()
@@ -209,6 +210,22 @@ JWT_SECRET         = os.getenv("JWT_SECRET", "")
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "10080"))
 BCRYPT_ROUNDS      = int(os.getenv("BCRYPT_ROUNDS", "12"))
 
+# ── PHASE 4 — Quotas / Plans / Watermark ─────────────────────────────────────
+FREE_MONTHLY_VIDEO_LIMIT     = int(os.getenv("FREE_MONTHLY_VIDEO_LIMIT",     "5"))
+PRO_MONTHLY_VIDEO_LIMIT      = int(os.getenv("PRO_MONTHLY_VIDEO_LIMIT",      "100"))
+BUSINESS_MONTHLY_VIDEO_LIMIT = int(os.getenv("BUSINESS_MONTHLY_VIDEO_LIMIT", "500"))
+GUEST_MONTHLY_VIDEO_LIMIT    = int(os.getenv("GUEST_MONTHLY_VIDEO_LIMIT",    "2"))
+_WATERMARK_TEXT_RAW          = os.getenv("WATERMARK_TEXT", "Made with ViralVidTech")
+WATERMARK_TEXT               = _WATERMARK_TEXT_RAW.replace("'", "").replace(":", "\\:")
+ADMIN_SECRET                 = os.getenv("ADMIN_SECRET", "")
+_PLAN_LIMITS: dict[str, int] = {
+    "guest":    GUEST_MONTHLY_VIDEO_LIMIT,
+    "free":     FREE_MONTHLY_VIDEO_LIMIT,
+    "pro":      PRO_MONTHLY_VIDEO_LIMIT,
+    "business": BUSINESS_MONTHLY_VIDEO_LIMIT,
+}
+_WATERMARK_PLANS = {"guest", "free"}
+
 try:
     from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, func as sql_func
     from sqlalchemy.orm import declarative_base, sessionmaker
@@ -225,10 +242,11 @@ _db_enabled = bool(DATABASE_URL) and _AUTH_DEPS_OK
 _engine       = None
 _SessionLocal = None
 _pwd_ctx      = None
-DBUser             = None
-DBVideoJob         = None
-DBGeneratedVideo   = None
-DBUploadedMusic    = None
+DBUser           = None
+DBVideoJob       = None
+DBGeneratedVideo = None
+DBUploadedMusic  = None
+DBUsageLog       = None
 
 if _db_enabled:
     _Base = declarative_base()
@@ -272,6 +290,15 @@ if _db_enabled:
         name        = Column(String(255), default="")
         storage_url = Column(Text, nullable=False)
         created_at  = Column(DateTime(timezone=True), server_default=sql_func.now())
+
+    class DBUsageLog(_Base):
+        __tablename__ = "usage_logs"
+        id        = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+        user_id   = Column(String(32), nullable=True,  index=True)
+        guest_id  = Column(String(64), nullable=True,  index=True)
+        action    = Column(String(50), nullable=False)
+        month_key = Column(String(7),  nullable=False, index=True)
+        created_at = Column(DateTime(timezone=True), server_default=sql_func.now())
 
     try:
         _engine       = create_engine(DATABASE_URL, pool_pre_ping=True)
@@ -365,6 +392,82 @@ def _db_record_uploaded_music(user_id: str | None, name: str, storage_url: str):
         db.close()
 
 
+# ── PHASE 4 helpers : quotas ──────────────────────────────────────────────────
+
+def get_plan_limit(plan: str) -> int:
+    return _PLAN_LIMITS.get(plan, GUEST_MONTHLY_VIDEO_LIMIT)
+
+def get_current_month_key() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+def _sanitize_guest_id(gid: str | None) -> str | None:
+    """Accepte uniquement une chaîne hexadécimale (32-64 chars)."""
+    if not gid:
+        return None
+    gid = gid.strip()[:64]
+    return gid if re.fullmatch(r"[a-f0-9]{8,64}", gid) else None
+
+def _get_user_plan(user_id: str) -> str:
+    """Retourne le plan de l'utilisateur depuis la DB (ne fait jamais confiance au client)."""
+    if not _db_enabled or not user_id:
+        return "free"
+    db = _SessionLocal()
+    try:
+        user = db.query(DBUser).filter_by(id=user_id).first()
+        return user.plan if user else "free"
+    except Exception:
+        return "free"
+    finally:
+        db.close()
+
+def get_usage_count(user_id: str | None = None, guest_id: str | None = None,
+                    action: str = "video_generation") -> int:
+    if not _db_enabled or (not user_id and not guest_id):
+        return 0
+    db = _SessionLocal()
+    try:
+        q = db.query(DBUsageLog).filter_by(action=action, month_key=get_current_month_key())
+        if user_id:
+            q = q.filter_by(user_id=user_id)
+        else:
+            q = q.filter_by(guest_id=guest_id)
+        return q.count()
+    except Exception as e:
+        print(f"[DB] get_usage_count error: {e}")
+        return 0
+    finally:
+        db.close()
+
+def check_video_quota(user_id: str | None = None, guest_id: str | None = None,
+                      plan: str = "guest") -> dict:
+    """Retourne {"allowed": bool, "used": int, "limit": int, "plan": str}."""
+    limit = get_plan_limit(plan)
+    if not _db_enabled:
+        return {"allowed": True, "used": 0, "limit": limit, "plan": plan}
+    used = get_usage_count(user_id=user_id, guest_id=guest_id)
+    return {"allowed": used < limit, "used": used, "limit": limit, "plan": plan}
+
+def record_usage(user_id: str | None = None, guest_id: str | None = None,
+                 action: str = "video_generation"):
+    if not _db_enabled or (not user_id and not guest_id):
+        return
+    db = _SessionLocal()
+    try:
+        db.add(DBUsageLog(
+            id=uuid.uuid4().hex, user_id=user_id, guest_id=guest_id,
+            action=action, month_key=get_current_month_key(),
+        ))
+        db.commit()
+    except Exception as e:
+        print(f"[DB] record_usage error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+def should_apply_watermark(plan: str) -> bool:
+    return plan in _WATERMARK_PLANS
+
+
 # ── Auth Pydantic schemas ─────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
@@ -382,15 +485,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _make_job(job_id: str, status: str = "queued", user_id: str | None = None) -> dict:
+def _make_job(job_id: str, status: str = "queued", user_id: str | None = None,
+              plan: str = "guest", guest_id: str | None = None) -> dict:
     now = _now()
     return {
         "job_id":     job_id,
-        "user_id":    user_id,  # None pour les invités
-        "status":     status,   # queued | processing | done | failed
-        "progress":   0,        # 0-100
-        "step":       "",       # étape machine (download, normalize, …)
-        "message":    "",       # message lisible utilisateur
+        "user_id":    user_id,
+        "plan":       plan,
+        "guest_id":   guest_id,
+        "status":     status,
+        "progress":   0,
+        "step":       "",
+        "message":    "",
         "video_url":  None,
         "error":      None,
         "created_at": now,
@@ -442,15 +548,16 @@ async def _run_video_job(job_id: str, processor):
         await _dequeue_next_job()
 
 
-def _enqueue_video_job(job_id: str, processor, user_id: str | None = None) -> dict:
+def _enqueue_video_job(job_id: str, processor, user_id: str | None = None,
+                       plan: str = "guest", guest_id: str | None = None) -> dict:
     """Tente de lancer ou de mettre en file un job vidéo.
     processor est un callable async(job_id) -> None — indépendant du moteur.
     Retourne {"status": "processing"|"queued"|"rejected", "position": int}."""
     global _active_job_count, _job_queue
 
     if _active_job_count < MAX_CONCURRENT_VIDEO_JOBS:
-        # Slot libre → démarrage immédiat
-        VIDEO_JOBS[job_id] = _make_job(job_id, status="processing", user_id=user_id)
+        VIDEO_JOBS[job_id] = _make_job(job_id, status="processing",
+                                       user_id=user_id, plan=plan, guest_id=guest_id)
         update_job(job_id, progress=5, step="starting", message="Démarrage du rendu…")
         _active_job_count += 1
         _db_create_video_job(job_id, user_id)
@@ -460,9 +567,9 @@ def _enqueue_video_job(job_id: str, processor, user_id: str | None = None) -> di
     if len(_job_queue) >= MAX_VIDEO_QUEUE_SIZE:
         return {"status": "rejected", "position": -1}
 
-    # File d'attente
     position = len(_job_queue) + 1
-    VIDEO_JOBS[job_id] = _make_job(job_id, status="queued", user_id=user_id)
+    VIDEO_JOBS[job_id] = _make_job(job_id, status="queued",
+                                   user_id=user_id, plan=plan, guest_id=guest_id)
     update_job(job_id, message=f"En attente (position {position})")
     _db_create_video_job(job_id, user_id)
     _job_queue.append((job_id, processor))
@@ -851,6 +958,7 @@ class VideoRequest(BaseModel):
     video_source8: str = ""
     duration: int = 30
     subtitles: str = ""
+    guest_id: str | None = None   # identifiant anonyme côté client pour le quota
     # Backward compat — older payloads sent wan_video/wan_video_url; mapped to video_source in _process_video
     wan_video: str | None = None
     wan_video_url: str | None = None
@@ -2343,6 +2451,29 @@ async def _process_video(job_id: str, req: VideoRequest):
             shutil.copy2(with_subtitles_path, output_path)
             print(f"[Pass3 job={job_id}] Sortie finale = copie de with_subtitles (pas de musique)")
 
+        # ── Watermark (PHASE 4) — avant upload et nettoyage ─────────────────────
+        _plan = VIDEO_JOBS.get(job_id, {}).get("plan", "guest")
+        if should_apply_watermark(_plan):
+            wm_path = output_path + ".wm.mp4"
+            try:
+                update_job(job_id, step="watermark", message="Application du watermark…")
+                await async_run_cmd([
+                    "ffmpeg", "-y", "-i", output_path,
+                    "-vf", (
+                        f"drawtext=text='{WATERMARK_TEXT}':fontsize=18:"
+                        "fontcolor=white@0.65:x=w-tw-16:y=h-th-20:"
+                        "shadowcolor=black@0.8:shadowx=1:shadowy=1"
+                    ),
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                    "-c:a", "copy", wm_path,
+                ])
+                os.replace(wm_path, output_path)
+                print(f"[Watermark job={job_id}] plan={_plan} applied")
+            except Exception as _wm_err:
+                print(f"[Watermark job={job_id}] WARN: failed, uploading without: {_wm_err}")
+                if os.path.exists(wm_path):
+                    os.remove(wm_path)
+
         # Nettoyage des fichiers intermédiaires (job_dir) — vidéo finale conservée
         cleanup_job_files(job_id, job_dir=job_dir)
 
@@ -2371,14 +2502,25 @@ async def _process_video(job_id: str, req: VideoRequest):
         mark_job_failed(job_id, "PROCESSING_ERROR", f"Erreur create-video: {str(e)}")
 
 
-async def _create_video_job(req, user_id: str | None = None) -> JSONResponse:
+async def _create_video_job(req, user_id: str | None = None,
+                            plan: str = "guest", guest_id: str | None = None) -> JSONResponse:
     """Logique commune à /create-video et /video-jobs."""
     if not ffmpeg_exists():
         return JSONResponse(status_code=500, content={"error": "FFmpeg non installé"})
 
+    # ── Quota check (PHASE 4) ─────────────────────────────────────────────────
+    quota = check_video_quota(user_id=user_id, guest_id=guest_id, plan=plan)
+    if not quota["allowed"]:
+        return JSONResponse(status_code=403, content={
+            "success": False,
+            "error_code": "QUOTA_EXCEEDED",
+            "message": f"Quota mensuel dépassé ({quota['used']}/{quota['limit']} vidéos ce mois-ci).",
+            "used": quota["used"], "limit": quota["limit"], "plan": plan,
+        })
+
     job_id = uuid.uuid4().hex
     processor = lambda jid: _process_video(jid, req)
-    result = _enqueue_video_job(job_id, processor, user_id=user_id)
+    result = _enqueue_video_job(job_id, processor, user_id=user_id, plan=plan, guest_id=guest_id)
 
     if result["status"] == "rejected":
         return JSONResponse(status_code=429, content={
@@ -2386,11 +2528,16 @@ async def _create_video_job(req, user_id: str | None = None) -> JSONResponse:
             "queue_size": MAX_VIDEO_QUEUE_SIZE,
         })
 
+    record_usage(user_id=user_id, guest_id=guest_id)
+
     return JSONResponse(status_code=202, content={
         "success": True,
         "job_id": job_id,
         "status": result["status"],
         "queue_position": result["position"],
+        "plan": plan,
+        "quota_used": quota["used"] + 1,
+        "quota_limit": quota["limit"],
         "message": (
             "Rendu démarré immédiatement."
             if result["status"] == "processing"
@@ -2467,20 +2614,83 @@ async def auth_me(request: Request):
         db.close()
 
 
+# ── Usage / Quota endpoints ───────────────────────────────────────────────────
+
+@app.get("/usage/me")
+async def usage_me(request: Request, guest_id: str = Query(default="")):
+    """Retourne le quota du mois courant pour l'utilisateur connecté ou l'invité."""
+    cu = await get_current_user_optional(request)
+    if cu:
+        user_id = cu["user_id"]
+        plan    = _get_user_plan(user_id)
+        used    = get_usage_count(user_id=user_id)
+        gid     = None
+    else:
+        user_id = None
+        plan    = "guest"
+        gid     = _sanitize_guest_id(guest_id)
+        used    = get_usage_count(guest_id=gid) if gid else 0
+    limit = get_plan_limit(plan)
+    return JSONResponse(status_code=200, content={
+        "plan":      plan,
+        "used":      used,
+        "limit":     limit,
+        "remaining": max(0, limit - used),
+        "month_key": get_current_month_key(),
+    })
+
+
+# ── Admin endpoints ───────────────────────────────────────────────────────────
+
+class AdminSetPlanRequest(BaseModel):
+    plan: str
+
+@app.post("/admin/users/{user_id}/plan")
+async def admin_set_plan(user_id: str, request: Request, body: AdminSetPlanRequest):
+    """Change le plan d'un utilisateur. Nécessite X-Admin-Secret et ADMIN_SECRET."""
+    if not ADMIN_SECRET:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    if not secrets.compare_digest(request.headers.get("X-Admin-Secret", ""), ADMIN_SECRET):
+        return JSONResponse(status_code=403, content={"error": "Forbidden"})
+    if not _db_enabled:
+        return JSONResponse(status_code=503, content={"error": "Database not configured"})
+    if body.plan not in ("free", "pro", "business"):
+        return JSONResponse(status_code=400, content={"error": "Plan invalide. Valeurs : free, pro, business"})
+    db = _SessionLocal()
+    try:
+        user = db.query(DBUser).filter_by(id=user_id).first()
+        if not user:
+            return JSONResponse(status_code=404, content={"error": "Utilisateur introuvable"})
+        user.plan = body.plan
+        db.commit()
+        return JSONResponse(status_code=200, content={"user_id": user_id, "plan": body.plan})
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        db.close()
+
+
 # ── Video job endpoints ────────────────────────────────────────────────────────
 
 @app.post("/create-video")
 async def create_video(request: Request, req: VideoRequest):
     """Endpoint historique — conservé pour compatibilité."""
     cu = await get_current_user_optional(request)
-    return await _create_video_job(req, user_id=cu["user_id"] if cu else None)
+    user_id  = cu["user_id"] if cu else None
+    plan     = _get_user_plan(user_id) if user_id else "guest"
+    guest_id = None if user_id else _sanitize_guest_id(req.guest_id)
+    return await _create_video_job(req, user_id=user_id, plan=plan, guest_id=guest_id)
 
 
 @app.post("/video-jobs")
 async def create_video_job(request: Request, req: VideoRequest):
     """Nouvel endpoint RESTful pour créer un job vidéo."""
     cu = await get_current_user_optional(request)
-    return await _create_video_job(req, user_id=cu["user_id"] if cu else None)
+    user_id  = cu["user_id"] if cu else None
+    plan     = _get_user_plan(user_id) if user_id else "guest"
+    guest_id = None if user_id else _sanitize_guest_id(req.guest_id)
+    return await _create_video_job(req, user_id=user_id, plan=plan, guest_id=guest_id)
 
 
 async def _check_job_access(job_id: str, request: Request):
