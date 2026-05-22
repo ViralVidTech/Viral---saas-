@@ -46,6 +46,13 @@ LTX_AUTH_TOKEN  = os.environ.get("LTX_AUTH_TOKEN", "")
 LTX_TIMEOUT     = int(os.environ.get("LTX_TIMEOUT", "1800"))    # secondes — défaut 30 min
 LTX_MAX_RETRIES = int(os.environ.get("LTX_MAX_RETRIES", "3"))   # tentatives submit
 
+# Stockage durable (Cloudflare R2 ou AWS S3 compatible)
+R2_ENDPOINT_URL      = os.getenv("R2_ENDPOINT_URL", "")
+R2_ACCESS_KEY_ID     = os.getenv("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
+R2_BUCKET_NAME       = os.getenv("R2_BUCKET_NAME", "")
+R2_PUBLIC_BASE_URL   = os.getenv("R2_PUBLIC_BASE_URL", "").rstrip("/")
+
 AUDIO_DIR = "audio"
 VIDEO_DIR = "videos"
 WORK_DIR = "work"
@@ -59,6 +66,62 @@ os.makedirs(MUSIC_DIR, exist_ok=True)
 os.makedirs(STATIC_MUSIC_DIR, exist_ok=True)
 
 print(f"[Startup] Fish Audio API key detected: {'YES' if FISH_AUDIO_API_KEY else 'NO'}")
+print(f"[Startup] R2 Storage: {'ENABLED (bucket=' + R2_BUCKET_NAME + ')' if R2_ENDPOINT_URL and R2_BUCKET_NAME else 'DISABLED (local only)'}")
+
+# ── Stockage durable R2 / S3 ─────────────────────────────────────────────────
+
+try:
+    import boto3
+    from botocore.config import Config as BotocoreConfig
+    _BOTO3_OK = True
+except ImportError:
+    _BOTO3_OK = False
+
+
+def _storage_enabled() -> bool:
+    return bool(_BOTO3_OK and R2_ENDPOINT_URL and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME)
+
+
+def _r2_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=R2_ENDPOINT_URL,
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        config=BotocoreConfig(signature_version="s3v4"),
+        region_name="auto",
+    )
+
+
+def get_public_url(remote_key: str) -> str:
+    """Retourne l'URL publique d'un objet R2 à partir de sa clé."""
+    base = R2_PUBLIC_BASE_URL or f"{R2_ENDPOINT_URL}/{R2_BUCKET_NAME}"
+    return f"{base}/{remote_key}"
+
+
+async def upload_file_to_storage(local_path: str, remote_key: str) -> str:
+    """Upload local_path vers R2 et retourne l'URL publique.
+    Retourne "" si R2 n'est pas configuré (comportement local inchangé)."""
+    if not _storage_enabled():
+        return ""
+    loop = asyncio.get_event_loop()
+    def _do_upload():
+        _r2_client().upload_file(local_path, R2_BUCKET_NAME, remote_key)
+    await loop.run_in_executor(None, _do_upload)
+    url = get_public_url(remote_key)
+    print(f"[R2] Uploaded {remote_key} → {url}")
+    return url
+
+
+async def delete_file_from_storage(remote_key: str):
+    """Supprime un objet R2. Silencieux si R2 non configuré."""
+    if not _storage_enabled():
+        return
+    loop = asyncio.get_event_loop()
+    def _do_delete():
+        _r2_client().delete_object(Bucket=R2_BUCKET_NAME, Key=remote_key)
+    await loop.run_in_executor(None, _do_delete)
+    print(f"[R2] Deleted {remote_key}")
 
 def _runpod_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=RUNPOD_BASE_URL, timeout=RUNPOD_TIMEOUT)
@@ -623,19 +686,27 @@ async def generate_audio_fish(req: FishTTSRequest):
         if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
             return {"error": "Fish Audio a retourné un fichier vide"}
 
-        audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
-
         sync_filename = filename.replace(".mp3", "_sync.json")
         sync_filepath = os.path.join(AUDIO_DIR, sync_filename)
-
         words = req.text.strip().split()
         with open(sync_filepath, "w", encoding="utf-8") as f:
             json.dump({"words": words, "timepoints": []}, f)
 
+        r2_audio = await upload_file_to_storage(filepath, f"audio/{filename}")
+        r2_sync  = await upload_file_to_storage(sync_filepath, f"audio/{sync_filename}")
+        if r2_audio:
+            audio_url = r2_audio
+            sync_url  = r2_sync
+            os.remove(filepath)
+            os.remove(sync_filepath)
+        else:
+            audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
+            sync_url  = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
+
         return {
             "success": True,
             "audio_url": audio_url,
-            "sync_url": f"{PUBLIC_BASE_URL}/audio/{sync_filename}",
+            "sync_url": sync_url,
             "filename": filename,
             "provider": "fish_audio"
         }
@@ -1314,7 +1385,6 @@ async def generate_audio(req: TTSRequest):
         filepath = os.path.join(AUDIO_DIR, filename)
         with open(filepath, "wb") as f:
             f.write(base64.b64decode(audio_content))
-        audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
 
         timepoints = data.get("timepoints", []) if supports_timepoints else []
 
@@ -1323,7 +1393,16 @@ async def generate_audio(req: TTSRequest):
         with open(sync_filepath, "w", encoding="utf-8") as f:
             json.dump({"words": words, "timepoints": timepoints}, f)
 
-        sync_url = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
+        r2_audio = await upload_file_to_storage(filepath, f"audio/{filename}")
+        r2_sync  = await upload_file_to_storage(sync_filepath, f"audio/{sync_filename}")
+        if r2_audio:
+            audio_url = r2_audio
+            sync_url  = r2_sync
+            os.remove(filepath)
+            os.remove(sync_filepath)
+        else:
+            audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
+            sync_url  = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
 
         return {
             "success": True,
@@ -1763,7 +1842,14 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         shutil.rmtree(job_dir, ignore_errors=True)
 
-        video_url = f"{PUBLIC_BASE_URL}/video/{output_filename}"
+        r2_url = await upload_file_to_storage(output_path, f"videos/{output_filename}")
+        if r2_url:
+            video_url = r2_url
+            os.remove(output_path)
+            print(f"[Storage job={job_id}] vidéo uploadée R2, fichier local supprimé")
+        else:
+            video_url = f"{PUBLIC_BASE_URL}/video/{output_filename}"
+
         VIDEO_JOBS[job_id] = {"status": "done", "video_url": video_url}
 
     except httpx.HTTPError as e:
@@ -2824,7 +2910,12 @@ async def upload_music(
     # Keep only safe characters: letters (including accented), digits, spaces, hyphens, underscores
     final_name = re.sub(r"[^a-zA-Z0-9À-ÿ _\-]", "", raw_name)[:80].strip() or music_id
 
-    file_url = f"{PUBLIC_BASE_URL}/music/{saved_filename}" if PUBLIC_BASE_URL else saved_path
+    r2_url = await upload_file_to_storage(saved_path, f"music/{saved_filename}")
+    if r2_url:
+        file_url = r2_url
+        os.remove(saved_path)
+    else:
+        file_url = f"{PUBLIC_BASE_URL}/music/{saved_filename}" if PUBLIC_BASE_URL else f"/music/{saved_filename}"
 
     return {
         "music_id": music_id,
