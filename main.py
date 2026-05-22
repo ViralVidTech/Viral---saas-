@@ -128,27 +128,56 @@ async def delete_file_from_storage(remote_key: str):
     await loop.run_in_executor(None, _do_delete)
     print(f"[R2] Deleted {remote_key}")
 
+def _is_under(child: str, parent: str) -> bool:
+    """Retourne True si child est strictement à l'intérieur de parent.
+    Résout realpath() pour neutraliser symlinks et composants '..'."""
+    child  = os.path.realpath(os.path.abspath(child))
+    parent = os.path.realpath(os.path.abspath(parent))
+    return child.startswith(parent + os.sep)
+
+
 def cleanup_job_files(job_id: str, job_dir: str = None, extra_files: list = None) -> int:
-    """Supprime les fichiers temporaires d'un job et log chaque suppression.
-    - job_dir  : répertoire de travail FFmpeg (tous les fichiers intermédiaires)
-    - extra_files : fichiers hors job_dir à supprimer (ex : vidéo finale après upload R2)
-    Retourne le nombre de fichiers supprimés."""
+    """Supprime les fichiers temporaires d'un job avec validation de chemin stricte.
+
+    Règles de sécurité :
+    - job_dir doit être dans WORK_DIR — refusé sinon
+    - chaque extra_file doit être dans VIDEO_DIR, AUDIO_DIR, MUSIC_DIR ou WORK_DIR
+    - tout chemin hors périmètre est refusé avec log [Cleanup] refused unsafe path
+    - os.path.realpath() neutralise les symlinks et les '..' avant comparaison
+    """
     deleted = 0
 
-    if job_dir and os.path.isdir(job_dir):
-        for dirpath, _, filenames in os.walk(job_dir, topdown=False):
-            for fname in filenames:
-                fpath = os.path.join(dirpath, fname)
-                try:
-                    os.remove(fpath)
-                    print(f"[Cleanup job={job_id}] deleted file {fpath}")
-                    deleted += 1
-                except Exception as exc:
-                    print(f"[Cleanup job={job_id}] failed to delete {fpath}: {exc}")
-        shutil.rmtree(job_dir, ignore_errors=True)
+    # ── Validation et nettoyage de job_dir ───────────────────────────────────
+    if job_dir:
+        if not _is_under(job_dir, WORK_DIR):
+            print(f"[Cleanup job={job_id}] refused unsafe path: {job_dir}")
+        elif os.path.isdir(job_dir):
+            real_job_dir = os.path.realpath(os.path.abspath(job_dir))
+            for dirpath, _, filenames in os.walk(job_dir, topdown=False):
+                for fname in filenames:
+                    fpath = os.path.join(dirpath, fname)
+                    # Vérifie aussi que chaque fichier est bien sous job_dir
+                    # (protection contre les symlinks à l'intérieur du dossier)
+                    if not _is_under(fpath, job_dir):
+                        print(f"[Cleanup job={job_id}] refused unsafe path: {fpath}")
+                        continue
+                    try:
+                        os.remove(fpath)
+                        print(f"[Cleanup job={job_id}] deleted file {fpath}")
+                        deleted += 1
+                    except Exception as exc:
+                        print(f"[Cleanup job={job_id}] failed to delete {fpath}: {exc}")
+            shutil.rmtree(job_dir, ignore_errors=True)
 
+    # ── Validation et nettoyage des fichiers individuels ─────────────────────
+    _allowed_roots = (VIDEO_DIR, AUDIO_DIR, MUSIC_DIR, WORK_DIR)
     for fpath in (extra_files or []):
-        if fpath and os.path.exists(fpath):
+        if not fpath:
+            continue
+        if not any(_is_under(fpath, root) for root in _allowed_roots):
+            print(f"[Cleanup job={job_id}] refused unsafe path: {fpath}")
+            continue
+        if os.path.exists(fpath):
             try:
                 os.remove(fpath)
                 print(f"[Cleanup job={job_id}] deleted file {fpath}")
