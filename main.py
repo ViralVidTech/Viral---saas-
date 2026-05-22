@@ -1042,6 +1042,7 @@ def _catalog_as_fish_voices():
             "style_hint": ", ".join(parts) if parts else "",
             "description": "",
             "tags": v.get("styles", []),
+            "styles": v.get("styles", []),
             "preview_url": v.get("preview_url") or "",
             "preview_text": f"Bonjour, je suis {v.get('voice_name', 'une voix')} de ViralVidTech.",
         })
@@ -1106,18 +1107,29 @@ async def list_fish_voices():
                 "style_hint": gender_label,
                 "description": item.get("description", ""),
                 "tags": tags,
+                "styles": tags,
                 "preview_url": "",
                 "preview_text": f"Bonjour, je suis {title}, une voix {lang_name} pour ViralVidTech.",
             })
 
+        local_voices = _catalog_as_fish_voices()
         if not voices:
             print("[fish-voices] API Fish Audio a retourné 0 voix — fallback local")
-            return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback_empty"}
+            return {"success": True, "voices": local_voices, "source": "local_fallback_empty"}
+
+        # Toujours garder le catalogue local disponible en secours.
+        # Ainsi les menus ne deviennent jamais vides si l'API Fish change son format.
+        seen = {v.get("id") or v.get("voice_id") for v in voices}
+        for lv in local_voices:
+            lid = lv.get("id") or lv.get("voice_id")
+            if lid and lid not in seen:
+                voices.append(lv)
+                seen.add(lid)
 
         # Priorité : Français d'abord
-        voices.sort(key=lambda v: (_LANG_PRIORITY.get(v["language"], 9), v["name"]))
-        print(f"[fish-voices] {len(voices)} voix récupérées depuis Fish Audio API")
-        return {"success": True, "voices": voices, "source": "live"}
+        voices.sort(key=lambda v: (_LANG_PRIORITY.get(v.get("language", ""), 9), v.get("name", "")))
+        print(f"[fish-voices] {len(voices)} voix disponibles (API + catalogue local)")
+        return {"success": True, "voices": voices, "source": "live_plus_local"}
 
     except Exception as e:
         print(f"[fish-voices] Exception: {e} — fallback local")
