@@ -1062,15 +1062,14 @@ async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitl
 
   const clips = Array.isArray(videoUrls) ? videoUrls : [videoUrls];
   const payload = {
-    video_source: clips[0] || '',
-    wan_video:  clips[0] || '',
-    wan_video2: clips[1] || '',
-    wan_video3: clips[2] || '',
-    wan_video4: clips[3] || '',
-    wan_video5: clips[4] || '',
-    wan_video6: clips[5] || '',
-    wan_video7: clips[6] || '',
-    wan_video8: clips[7] || '',
+    video_source:  clips[0] || '',
+    video_source2: clips[1] || '',
+    video_source3: clips[2] || '',
+    video_source4: clips[3] || '',
+    video_source5: clips[4] || '',
+    video_source6: clips[5] || '',
+    video_source7: clips[6] || '',
+    video_source8: clips[7] || '',
     audio_url: audioUrl,
     music_url: musicUrl,
     ltx_audio_mode: ltxAudioMode || 'fish',
@@ -1640,7 +1639,7 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
     // 4 — FFmpeg (stock mode)
     setStatus('p3Status', '⏳ FFmpeg assemble la vidéo stock…', 'ready');
     const videoFormat3 = getPipelineFormat('p3');
-    const body = { audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, video_format: videoFormat3, pipeline_mode: 'stock', video_source: '', wan_video: '',
+    const body = { audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, video_format: videoFormat3, pipeline_mode: 'stock', video_source: '',
       text1: window._p3sc1||'', text2: window._p3sc2||'', text3: window._p3sc3||'', text4: window._p3sc4||'' };
     for (let i = 1; i <= 32; i++) body[`video_url${i === 1 ? '' : i}`] = window[`_p3sv${i}`] || '';
     const ffR = await fetch(`${apiUrl}/create-video`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) });

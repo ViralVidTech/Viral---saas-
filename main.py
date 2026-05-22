@@ -17,7 +17,10 @@ app = FastAPI()
 
 VIDEO_JOBS: dict = {}   # job_id → full job dict (source de vérité)
 _active_job_count: int = 0          # jobs actuellement en cours de rendu
-_job_queue: list = []               # [(job_id, req), ...] jobs en attente
+_job_queue: list = []               # [(job_id, processor), ...] jobs en attente
+
+# Queue in-memory acceptable for MVP / single Render instance only.
+# Production multi-instance => PostgreSQL or Redis queue required.
 
 WAN_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
 WAN_ANIMATE_JOBS = {}  # job_id -> {"status": "processing/done/error", "video_path": str, "detail": str}
@@ -53,6 +56,7 @@ LTX_MAX_RETRIES = int(os.environ.get("LTX_MAX_RETRIES", "3"))   # tentatives sub
 # Concurrence des rendus vidéo
 MAX_CONCURRENT_VIDEO_JOBS = int(os.getenv("MAX_CONCURRENT_VIDEO_JOBS", "1"))
 MAX_VIDEO_QUEUE_SIZE      = int(os.getenv("MAX_VIDEO_QUEUE_SIZE", "10"))
+DEBUG_MODE                = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
 # Stockage durable (Cloudflare R2 ou AWS S3 compatible)
 R2_ENDPOINT_URL      = os.getenv("R2_ENDPOINT_URL", "").rstrip("/")
@@ -242,28 +246,30 @@ async def _dequeue_next_job():
     global _active_job_count, _job_queue
     if not _job_queue or _active_job_count >= MAX_CONCURRENT_VIDEO_JOBS:
         return
-    next_job_id, next_req = _job_queue.pop(0)
+    next_job_id, next_processor = _job_queue.pop(0)
     queue_remaining = len(_job_queue)
     print(f"[Queue] Démarrage job {next_job_id} — {queue_remaining} job(s) restant(s) en file")
     update_job(next_job_id, status="processing", progress=5,
                step="starting", message="Démarrage du rendu…")
     _active_job_count += 1
-    asyncio.create_task(_run_video_job(next_job_id, next_req))
+    asyncio.create_task(_run_video_job(next_job_id, next_processor))
 
 
-async def _run_video_job(job_id: str, req):
-    """Wrapper qui gère le compteur actif et déclenche la queue après chaque job."""
+async def _run_video_job(job_id: str, processor):
+    """Wrapper qui gère le compteur actif et déclenche la queue après chaque job.
+    processor est un callable async(job_id) -> None, indépendant du moteur."""
     global _active_job_count
     try:
-        await _process_video(job_id, req)
+        await processor(job_id)
     finally:
         _active_job_count -= 1
         print(f"[Queue] Job {job_id} terminé — slots libres: {MAX_CONCURRENT_VIDEO_JOBS - _active_job_count}/{MAX_CONCURRENT_VIDEO_JOBS}")
         await _dequeue_next_job()
 
 
-def _enqueue_video_job(job_id: str, req) -> dict:
+def _enqueue_video_job(job_id: str, processor) -> dict:
     """Tente de lancer ou de mettre en file un job vidéo.
+    processor est un callable async(job_id) -> None — indépendant du moteur.
     Retourne {"status": "processing"|"queued"|"rejected", "position": int}."""
     global _active_job_count, _job_queue
 
@@ -272,7 +278,7 @@ def _enqueue_video_job(job_id: str, req) -> dict:
         VIDEO_JOBS[job_id] = _make_job(job_id, status="processing")
         update_job(job_id, progress=5, step="starting", message="Démarrage du rendu…")
         _active_job_count += 1
-        asyncio.create_task(_run_video_job(job_id, req))
+        asyncio.create_task(_run_video_job(job_id, processor))
         return {"status": "processing", "position": 0}
 
     if len(_job_queue) >= MAX_VIDEO_QUEUE_SIZE:
@@ -282,7 +288,7 @@ def _enqueue_video_job(job_id: str, req) -> dict:
     position = len(_job_queue) + 1
     VIDEO_JOBS[job_id] = _make_job(job_id, status="queued")
     update_job(job_id, message=f"En attente (position {position})")
-    _job_queue.append((job_id, req))
+    _job_queue.append((job_id, processor))
     print(f"[Queue] Job {job_id} mis en file — position {position}/{MAX_VIDEO_QUEUE_SIZE}")
     return {"status": "queued", "position": position}
 
@@ -290,6 +296,30 @@ def _enqueue_video_job(job_id: str, req) -> dict:
 async def process_job_queue():
     """Alias public pour forcer un déqueue (utile en debug)."""
     await _dequeue_next_job()
+
+
+async def _fake_video_job(job_id: str, sleep_per_step: float = 2.0):
+    """Fake job — no LTX, no FFmpeg, no API calls. For queue/progress testing only."""
+    steps = [
+        (5,   "starting",  "Initialisation…"),
+        (20,  "download",  "Simulation téléchargement clips…"),
+        (40,  "normalize", "Simulation normalisation…"),
+        (60,  "assemble",  "Simulation assemblage…"),
+        (80,  "music",     "Simulation mixage musique…"),
+        (100, "done",      "Job de test terminé."),
+    ]
+    try:
+        for progress, step, message in steps:
+            if progress < 100:
+                update_job(job_id, progress=progress, step=step,
+                           message=message, status="processing")
+                await asyncio.sleep(sleep_per_step)
+            else:
+                update_job(job_id, status="done", progress=100,
+                           step="done", message="Job de test terminé.",
+                           video_url="https://example.com/test-video.mp4")
+    except Exception as e:
+        mark_job_failed(job_id, "DEBUG_ERROR", str(e))
 
 
 def _runpod_client() -> httpx.AsyncClient:
@@ -634,14 +664,14 @@ class VideoRequest(BaseModel):
     audio_url: str = ""
     sync_url: str = ""
     music_url: str = ""
-    wan_video: str = ""
-    wan_video2: str = ""
-    wan_video3: str = ""
-    wan_video4: str = ""
-    wan_video5: str = ""
-    wan_video6: str = ""
-    wan_video7: str = ""
-    wan_video8: str = ""
+    video_source: str = ""
+    video_source2: str = ""
+    video_source3: str = ""
+    video_source4: str = ""
+    video_source5: str = ""
+    video_source6: str = ""
+    video_source7: str = ""
+    video_source8: str = ""
     duration: int = 30
     subtitles: str = ""
 
@@ -1769,24 +1799,24 @@ async def _process_video(job_id: str, req: VideoRequest):
             (req.text8 or "").strip()[:200],
         ]
 
-        wan_clip_list = [u for u in [
-            req.wan_video, req.wan_video2, req.wan_video3, req.wan_video4,
-            req.wan_video5, req.wan_video6, req.wan_video7, req.wan_video8,
+        source_clip_list = [u for u in [
+            req.video_source, req.video_source2, req.video_source3, req.video_source4,
+            req.video_source5, req.video_source6, req.video_source7, req.video_source8,
         ] if u]
-        if wan_clip_list:
-            valid_video_urls_raw = wan_clip_list
+        if source_clip_list:
+            valid_video_urls_raw = source_clip_list
         else:
             valid_video_urls_raw = [u for u in all_video_urls if u]
         if not valid_video_urls_raw:
             mark_job_failed(job_id, "NO_VIDEO", "Aucune vidéo fournie")
             return
 
-        # MODE WAN : 1 clip per scene (each wan clip = 1 scene), MODE PEXELS : 5 clips per scene
-        if wan_clip_list:
+        # MODE SOURCE : 1 clip per scene (each source clip = 1 scene), MODE PEXELS : 5 clips per scene
+        if source_clip_list:
             CLIPS_PER_SCENE = 1
-            nb_scenes = len(wan_clip_list)
+            nb_scenes = len(source_clip_list)
             nb_clips_total = nb_scenes
-            clip_urls = wan_clip_list
+            clip_urls = source_clip_list
             subtitle_texts = [
                 all_subtitle_texts[i] if i < len(all_subtitle_texts) else ""
                 for i in range(nb_scenes)
@@ -1840,14 +1870,14 @@ async def _process_video(job_id: str, req: VideoRequest):
 
         clip_duration = real_total_duration / nb_clips_total
         update_job(job_id, progress=20, step="download",
-                   message=f"Téléchargement des clips ({len(clip_urls if not wan_clip_list else wan_clip_list)} clips)…")
+                   message=f"Téléchargement des clips ({len(clip_urls if not source_clip_list else source_clip_list)} clips)…")
 
-        if wan_clip_list:
+        if source_clip_list:
             raw_paths = []
-            if len(wan_clip_list) == 1:
+            if len(source_clip_list) == 1:
                 # Single clip: download once and copy per scene
                 raw_master = os.path.join(job_dir, "raw_master.mp4")
-                await download_file(wan_clip_list[0], raw_master, retries=5)
+                await download_file(source_clip_list[0], raw_master, retries=5)
                 for i in range(nb_scenes):
                     dst = os.path.join(job_dir, f"raw_{i}.mp4")
                     shutil.copy2(raw_master, dst)
@@ -1868,7 +1898,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             ])
 
         downloaded = [p for p in raw_paths if os.path.exists(p)]
-        print(f"[Pass1 job={job_id}] clips_received={len(wan_clip_list or clip_urls)} downloaded={len(downloaded)}")
+        print(f"[Pass1 job={job_id}] clips_received={len(source_clip_list or clip_urls)} downloaded={len(downloaded)}")
 
         # ── Mode LTX audio : extraire l'audio du clip LTX avant normalisation ──
         if ltx_audio_mode == "ltx" and not voice_path and downloaded:
@@ -1902,7 +1932,7 @@ async def _process_video(job_id: str, req: VideoRequest):
             src, dst = args
             if not os.path.exists(src):
                 return
-            loop_args = ["-stream_loop", "-1"] if (nb_clips_total == 1 or bool(wan_clip_list)) else []
+            loop_args = ["-stream_loop", "-1"] if (nb_clips_total == 1 or bool(source_clip_list)) else []
             run_cmd([
                 "ffmpeg", "-y", *loop_args, "-i", src,
                 "-t", str(clip_duration),
@@ -2160,7 +2190,8 @@ async def _create_video_job(req) -> JSONResponse:
         return JSONResponse(status_code=500, content={"error": "FFmpeg non installé"})
 
     job_id = uuid.uuid4().hex
-    result = _enqueue_video_job(job_id, req)
+    processor = lambda jid: _process_video(jid, req)
+    result = _enqueue_video_job(job_id, processor)
 
     if result["status"] == "rejected":
         return JSONResponse(status_code=429, content={
@@ -2217,6 +2248,28 @@ async def get_video_job_status(job_id: str):
         "video_url": job.get("video_url"),
         "error":     job.get("error"),
         "updated_at": job.get("updated_at"),
+    })
+
+
+@app.post("/debug/test-video-job")
+async def debug_test_video_job(sleep_per_step: float = 2.0):
+    """Crée un faux job pour tester la queue/progression sans LTX/FFmpeg/API.
+    Nécessite DEBUG_MODE=true."""
+    if not DEBUG_MODE:
+        return JSONResponse(status_code=403,
+                            content={"error": "DEBUG_MODE non activé. Définir DEBUG_MODE=true."})
+    job_id = uuid.uuid4().hex
+    processor = lambda jid: _fake_video_job(jid, sleep_per_step)
+    result = _enqueue_video_job(job_id, processor)
+    if result["status"] == "rejected":
+        return JSONResponse(status_code=429,
+                            content={"error": f"File d'attente pleine ({MAX_VIDEO_QUEUE_SIZE} max)"})
+    return JSONResponse(status_code=202, content={
+        "success": True,
+        "job_id": job_id,
+        "status": result["status"],
+        "queue_position": result["position"],
+        "poll_url": f"/video-jobs/{job_id}/status",
     })
 
 
