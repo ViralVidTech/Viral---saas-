@@ -47,7 +47,7 @@ LTX_TIMEOUT     = int(os.environ.get("LTX_TIMEOUT", "1800"))    # secondes — d
 LTX_MAX_RETRIES = int(os.environ.get("LTX_MAX_RETRIES", "3"))   # tentatives submit
 
 # Stockage durable (Cloudflare R2 ou AWS S3 compatible)
-R2_ENDPOINT_URL      = os.getenv("R2_ENDPOINT_URL", "")
+R2_ENDPOINT_URL      = os.getenv("R2_ENDPOINT_URL", "").rstrip("/")
 R2_ACCESS_KEY_ID     = os.getenv("R2_ACCESS_KEY_ID", "")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
 R2_BUCKET_NAME       = os.getenv("R2_BUCKET_NAME", "")
@@ -101,16 +101,21 @@ def get_public_url(remote_key: str) -> str:
 
 async def upload_file_to_storage(local_path: str, remote_key: str) -> str:
     """Upload local_path vers R2 et retourne l'URL publique.
-    Retourne "" si R2 n'est pas configuré (comportement local inchangé)."""
+    Retourne "" si R2 non configuré OU si l'upload échoue (fallback local garanti).
+    Le fichier local n'est JAMAIS supprimé par cette fonction."""
     if not _storage_enabled():
         return ""
     loop = asyncio.get_event_loop()
     def _do_upload():
         _r2_client().upload_file(local_path, R2_BUCKET_NAME, remote_key)
-    await loop.run_in_executor(None, _do_upload)
-    url = get_public_url(remote_key)
-    print(f"[R2] Uploaded {remote_key} → {url}")
-    return url
+    try:
+        await loop.run_in_executor(None, _do_upload)
+        url = get_public_url(remote_key)
+        print(f"[R2] Uploaded {remote_key} → {url}")
+        return url
+    except Exception as r2_exc:
+        print(f"[R2] ERREUR upload {remote_key}: {r2_exc} — fallback URL locale")
+        return ""
 
 
 async def delete_file_from_storage(remote_key: str):
@@ -694,12 +699,19 @@ async def generate_audio_fish(req: FishTTSRequest):
 
         r2_audio = await upload_file_to_storage(filepath, f"audio/{filename}")
         r2_sync  = await upload_file_to_storage(sync_filepath, f"audio/{sync_filename}")
-        if r2_audio:
+        if r2_audio and r2_sync:
+            # Les deux uploads ont réussi : on peut supprimer les fichiers locaux
             audio_url = r2_audio
             sync_url  = r2_sync
             os.remove(filepath)
             os.remove(sync_filepath)
+        elif r2_audio:
+            # MP3 uploadé mais sync échoué : on garde le JSON local, URL mixte
+            audio_url = r2_audio
+            sync_url  = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
+            os.remove(filepath)
         else:
+            # R2 non configuré ou échec total : fallback local complet
             audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
             sync_url  = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
 
@@ -1395,11 +1407,15 @@ async def generate_audio(req: TTSRequest):
 
         r2_audio = await upload_file_to_storage(filepath, f"audio/{filename}")
         r2_sync  = await upload_file_to_storage(sync_filepath, f"audio/{sync_filename}")
-        if r2_audio:
+        if r2_audio and r2_sync:
             audio_url = r2_audio
             sync_url  = r2_sync
             os.remove(filepath)
             os.remove(sync_filepath)
+        elif r2_audio:
+            audio_url = r2_audio
+            sync_url  = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
+            os.remove(filepath)
         else:
             audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
             sync_url  = f"{PUBLIC_BASE_URL}/audio/{sync_filename}"
