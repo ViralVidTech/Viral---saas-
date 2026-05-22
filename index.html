@@ -752,7 +752,10 @@ function filterVoicesByStyle(voices, styleVal, voiceSel) {
     const code = raw.split('-')[0].toLowerCase();
     const langName = v.language_name || _LANG_FR[code] || raw.toUpperCase() || 'Autre';
     if (!byLang[langName]) byLang[langName] = [];
-    const matchStyle = !styleVal || (v.style && v.style === styleVal)
+    // Si la voix n'a pas d'info de style (cas des voix Fish Audio live), on l'inclut toujours
+    const hasStyleInfo = v.style || (Array.isArray(v.styles) && v.styles.length > 0);
+    const matchStyle = !styleVal || !hasStyleInfo
+      || (v.style === styleVal)
       || (Array.isArray(v.styles) && v.styles.includes(styleVal));
     if (matchStyle) byLang[langName].push(v);
   });
@@ -1097,16 +1100,37 @@ async function previewFishVoice(prefix) {
   }
 }
 
+let _musicPlayingPrefix = '';
 function previewMusic(prefix) {
+  const btn = document.getElementById(prefix + 'MusicPreviewBtn');
+  const audio = _getPreviewAudio();
+  // Stop si ce prefix joue deja
+  if (_musicPlayingPrefix === prefix && !audio.paused) {
+    audio.pause();
+    audio.currentTime = 0;
+    _musicPlayingPrefix = '';
+    if (btn) btn.textContent = '▶';
+    return;
+  }
   const sel = document.getElementById(prefix + 'Music');
   if (!sel) return;
   const opt = sel.options[sel.selectedIndex];
   const url = (opt && (opt.dataset.preview || opt.value)) || '';
   if (!url) return;
-  const audio = _getPreviewAudio();
+  // Reinitialiser le bouton de l'ancien prefix
+  if (_musicPlayingPrefix) {
+    const oldBtn = document.getElementById(_musicPlayingPrefix + 'MusicPreviewBtn');
+    if (oldBtn) oldBtn.textContent = '▶';
+  }
+  _musicPlayingPrefix = prefix;
   audio.src = url;
   audio.load();
-  audio.play();
+  audio.play().catch(function(e) { console.warn('[preview-music]', e); });
+  if (btn) btn.textContent = '⏹';
+  audio.onended = function() {
+    _musicPlayingPrefix = '';
+    if (btn) btn.textContent = '▶';
+  };
 }
 
 function installMediaPreviewControls() {

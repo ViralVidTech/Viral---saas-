@@ -925,18 +925,17 @@ async def preview_fish_voice(req: VoicePreviewRequest):
         print(f"[preview-fish-voice] voice_id={req.voice_id!r}")
         resp = await _tts(req.voice_id)
 
-        # Si la voix specifique echoue (ex: faux UUID du catalogue local), retenter sans voice
-        if resp.status_code != 200:
-            print(f"[preview-fish-voice] voice specifique echec {resp.status_code}, retry sans voice")
-            resp = await _tts(None)
-
         if resp.status_code != 200:
             try:
                 detail = resp.json()
             except Exception:
                 detail = resp.text[:300]
             print(f"[preview-fish-voice] ERREUR Fish Audio {resp.status_code}: {detail}")
-            return JSONResponse(status_code=502, content={"error": f"Fish Audio {resp.status_code}", "detail": str(detail)})
+            return JSONResponse(status_code=502, content={
+                "error": f"Fish Audio a refuse cette voix ({resp.status_code}). "
+                         "Utilisez une voix que vous avez creee dans votre compte Fish Audio.",
+                "detail": str(detail),
+            })
 
         filename = f"preview_{uuid.uuid4().hex[:8]}.mp3"
         filepath = os.path.join(AUDIO_DIR, filename)
@@ -1056,29 +1055,15 @@ async def list_fish_voices():
         print("[fish-voices] Pas de FISH_AUDIO_API_KEY — utilisation du catalogue local")
         return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local"}
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(
-                "https://api.fish.audio/v1/model",
-                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
-                params={"page_size": 50, "sort_by": "task_count", "type": "voice"},
-            )
-
-        if response.status_code != 200:
-            print(f"[fish-voices] API Fish Audio erreur {response.status_code} — fallback local")
-            return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
-
-        data = response.json()
-        voices = []
-        for item in data.get("items", []):
+    def _parse_items(items):
+        result = []
+        for item in items:
             voice_id = item.get("_id", "")
             langs = item.get("languages") or []
             lang_code = langs[0].split("-")[0].lower() if langs else "unknown"
             lang_name = _LANG_LABELS.get(lang_code, lang_code.upper())
             title = item.get("title", voice_id)
             tags = item.get("tags", [])
-
-            # Détection genre depuis tags/titre
             title_lower = title.lower()
             tags_lower = [t.lower() for t in tags]
             gender_raw = ""
@@ -1086,29 +1071,46 @@ async def list_fish_voices():
                 gender_raw = "female"
             elif any(w in title_lower or w in " ".join(tags_lower) for w in ["male", "man", "homme", "boy"]):
                 gender_raw = "male"
-
             gender_label = "Femme" if gender_raw == "female" else ("Homme" if gender_raw == "male" else "")
-            display_label = f"{title} — {lang_name}"
-            if gender_label:
-                display_label = f"{title} — {lang_name}, {gender_label}"
-
-            voices.append({
-                "id": voice_id,
-                "name": title,
-                "display_label": display_label,
-                "language": lang_code,
-                "language_name": lang_name,
-                "gender": gender_raw,
-                "gender_label": gender_label,
-                "accent": "",
-                "style_hint": gender_label,
-                "description": item.get("description", ""),
-                "tags": tags,
+            display_label = f"{title} — {lang_name}" + (f", {gender_label}" if gender_label else "")
+            result.append({
+                "id": voice_id, "name": title, "display_label": display_label,
+                "language": lang_code, "language_name": lang_name,
+                "gender": gender_raw, "gender_label": gender_label,
+                "accent": "", "style_hint": gender_label,
+                "description": item.get("description", ""), "tags": tags,
             })
+        return result
 
-        # Priorité : Français d'abord
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # 1. Voix de l'utilisateur en priorité (self=true) — garanties compatibles TTS
+            r_self = await client.get(
+                "https://api.fish.audio/v1/model",
+                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
+                params={"page_size": 50, "self": "true", "type": "tts"},
+            )
+            own_voices = _parse_items(r_self.json().get("items", [])) if r_self.status_code == 200 else []
+
+            # 2. Voix publiques en complément
+            r_pub = await client.get(
+                "https://api.fish.audio/v1/model",
+                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
+                params={"page_size": 50, "sort_by": "task_count", "type": "tts"},
+            )
+
+        if r_pub.status_code != 200 and not own_voices:
+            print(f"[fish-voices] API erreur {r_pub.status_code} — fallback local")
+            return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
+
+        pub_voices = _parse_items(r_pub.json().get("items", [])) if r_pub.status_code == 200 else []
+
+        # Fusionner : propres voix en tête, puis publiques sans doublon
+        seen_ids = {v["id"] for v in own_voices}
+        voices = own_voices + [v for v in pub_voices if v["id"] not in seen_ids]
+
         voices.sort(key=lambda v: (_LANG_PRIORITY.get(v["language"], 9), v["name"]))
-        print(f"[fish-voices] {len(voices)} voix récupérées depuis Fish Audio API")
+        print(f"[fish-voices] {len(own_voices)} voix utilisateur + {len(pub_voices)} publiques = {len(voices)} total")
         return {"success": True, "voices": voices, "source": "live"}
 
     except Exception as e:
