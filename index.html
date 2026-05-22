@@ -559,14 +559,16 @@
 
 <div class="modal-overlay" id="authModal">
   <div class="modal" id="login">
-    <div class="modal-header">
+    <div class="modal-header" style="justify-content:space-between;align-items:center;">
       <div><h2 style="margin:0;">User Login</h2><p style="margin:6px 0 0;color:var(--muted);">Create a local demo account to unlock the dashboard experience.</p></div>
       <button class="close-btn" id="closeModalBtn">✕</button>
     </div>
-    <div class="field"><label>Name</label><input id="authName" type="text" placeholder="John Creator"/></div>
-    <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="john@example.com"/></div>
-    <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="••••••••"/></div>
-    <div class="actions"><button class="primary-btn" id="loginBtn">Login / Register</button></div>
+    <div class="field"><label>Email</label><input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email"/></div>
+    <div class="field"><label>Password</label><input id="authPassword" type="password" placeholder="Min. 8 characters" autocomplete="current-password"/></div>
+    <div class="actions" style="gap:8px;display:flex;">
+      <button class="primary-btn" id="loginBtn" style="flex:1;">Login</button>
+      <button class="gold-btn" id="registerBtn" style="flex:1;">Create account</button>
+    </div>
     <div class="status" id="authStatus"></div>
   </div>
 </div>
@@ -694,19 +696,35 @@ async function scanTrends(){
   finally{scanBtn.disabled=false;scanBtn.textContent='Scan trends';}
 }
 
-// AUTH
+// AUTH — JWT
+function getAuthHeaders(){
+  const token=localStorage.getItem('viral_jwt');
+  return token ? {'Authorization':'Bearer '+token,'Content-Type':'application/json'} : {'Content-Type':'application/json'};
+}
+function _getAuthUser(){try{return JSON.parse(localStorage.getItem('viral_user')||'null');}catch(e){return null;}}
 function updateAuthUI(){
-  let user=null;try{user=JSON.parse(localStorage.getItem('viral_user')||'null');}catch(e){user=null;}
-  if(user){userBadge.classList.add('show');userBadgeText.textContent=user.name;document.getElementById('openLoginBtn').style.display='none';document.getElementById('logoutBtn').style.display='inline-flex';}
+  const user=_getAuthUser();
+  if(user){userBadge.classList.add('show');userBadgeText.textContent=user.email;document.getElementById('openLoginBtn').style.display='none';document.getElementById('logoutBtn').style.display='inline-flex';}
   else{userBadge.classList.remove('show');document.getElementById('openLoginBtn').style.display='inline-flex';document.getElementById('logoutBtn').style.display='none';}
 }
-function loginUser(){
-  const n=document.getElementById('authName'),e=document.getElementById('authEmail'),p=document.getElementById('authPassword'),s=document.getElementById('authStatus');
-  if(!n.value.trim()||!e.value.trim()||!p.value.trim()){s.textContent='Please fill in all fields.';s.className='status error';return;}
-  localStorage.setItem('viral_user',JSON.stringify({name:n.value.trim(),email:e.value.trim()}));
-  s.textContent='You are now logged in.';s.className='status success';updateAuthUI();setTimeout(()=>authModal.classList.remove('open'),500);
+async function _authCall(endpoint){
+  const e=document.getElementById('authEmail'),p=document.getElementById('authPassword'),s=document.getElementById('authStatus');
+  const apiUrl=getApiUrl();
+  if(!e.value.trim()||!p.value.trim()){s.textContent='Email and password required.';s.className='status error';return;}
+  s.textContent='…';s.className='status';
+  try{
+    const r=await fetch(`${apiUrl}${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e.value.trim(),password:p.value})});
+    const d=await r.json();
+    if(!r.ok){s.textContent=d.error||'Error';s.className='status error';return;}
+    localStorage.setItem('viral_jwt',d.token);
+    localStorage.setItem('viral_user',JSON.stringify({email:d.email,user_id:d.user_id,plan:d.plan}));
+    s.textContent='Logged in as '+d.email;s.className='status success';
+    updateAuthUI();setTimeout(()=>authModal.classList.remove('open'),700);
+  }catch(err){s.textContent='Network error: '+err.message;s.className='status error';}
 }
-function logoutUser(){localStorage.removeItem('viral_user');updateAuthUI();setStatus('status','You have been logged out.','success');}
+function loginUser(){_authCall('/auth/login');}
+function registerUser(){_authCall('/auth/register');}
+function logoutUser(){localStorage.removeItem('viral_jwt');localStorage.removeItem('viral_user');updateAuthUI();setStatus('status','Logged out.','success');}
 
 // INIT
 const savedApiUrl=localStorage.getItem('viral_api_url');if(savedApiUrl&&apiUrlInput)apiUrlInput.value=savedApiUrl;
@@ -715,6 +733,7 @@ document.getElementById('scanBtn').addEventListener('click',scanTrends);
 document.getElementById('openLoginBtn').addEventListener('click',()=>authModal.classList.add('open'));
 document.getElementById('closeModalBtn').addEventListener('click',()=>authModal.classList.remove('open'));
 document.getElementById('loginBtn').addEventListener('click',loginUser);
+document.getElementById('registerBtn').addEventListener('click',registerUser);
 document.getElementById('logoutBtn').addEventListener('click',logoutUser);
 authModal.addEventListener('click',e=>{if(e.target===authModal)authModal.classList.remove('open');});
 document.getElementById('plan1Btn').addEventListener('click',()=>addActivity('Plan selected','Starter plan clicked.'));
@@ -1342,7 +1361,8 @@ async function loadPipelineData() {
     fd.append('music_name', file.name.replace(/\.[^.]+$/, ''));
 
     try {
-      const r = await fetch(`${apiUrl}/upload-music`, { method: 'POST', body: fd });
+      const token=localStorage.getItem('viral_jwt');
+      const r = await fetch(`${apiUrl}/upload-music`, { method: 'POST', body: fd, headers: token ? {'Authorization':'Bearer '+token} : {} });
       const d = await r.json();
       if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
 

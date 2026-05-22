@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse, Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -11,7 +11,7 @@ import subprocess
 import shutil
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 app = FastAPI()
 
@@ -202,16 +202,191 @@ def cleanup_job_files(job_id: str, job_dir: str = None, extra_files: list = None
     return deleted
 
 
+# ── PHASE 3 — Base de données / Authentification ────────────────────────────
+
+DATABASE_URL       = os.getenv("DATABASE_URL", "")
+JWT_SECRET         = os.getenv("JWT_SECRET", "")
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "10080"))
+BCRYPT_ROUNDS      = int(os.getenv("BCRYPT_ROUNDS", "12"))
+
+try:
+    from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, func as sql_func
+    from sqlalchemy.orm import declarative_base, sessionmaker
+    from passlib.context import CryptContext
+    from jose import JWTError, jwt as _jose_jwt
+    _AUTH_DEPS_OK = True
+except ImportError as _e:
+    print(f"[Startup] Auth/DB deps manquantes: {_e}")
+    _AUTH_DEPS_OK = False
+
+_db_enabled = bool(DATABASE_URL) and _AUTH_DEPS_OK
+
+# Stubs — redéfinis dans le bloc _db_enabled ci-dessous si DB active
+_engine       = None
+_SessionLocal = None
+_pwd_ctx      = None
+DBUser             = None
+DBVideoJob         = None
+DBGeneratedVideo   = None
+DBUploadedMusic    = None
+
+if _db_enabled:
+    _Base = declarative_base()
+
+    class DBUser(_Base):
+        __tablename__ = "users"
+        id            = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+        email         = Column(String(255), unique=True, nullable=False, index=True)
+        password_hash = Column(String(255), nullable=False)
+        plan          = Column(String(50), default="free")
+        created_at    = Column(DateTime(timezone=True), server_default=sql_func.now())
+        updated_at    = Column(DateTime(timezone=True), server_default=sql_func.now(), onupdate=sql_func.now())
+
+    class DBVideoJob(_Base):
+        __tablename__ = "video_jobs"
+        id         = Column(String(32), primary_key=True)
+        user_id    = Column(String(32), nullable=True)   # nullable — compat invités
+        status     = Column(String(20), default="queued")
+        progress   = Column(Integer, default=0)
+        step       = Column(String(50), default="")
+        message    = Column(Text, default="")
+        video_url  = Column(Text, nullable=True)
+        error      = Column(Text, nullable=True)
+        created_at = Column(DateTime(timezone=True), server_default=sql_func.now())
+        updated_at = Column(DateTime(timezone=True), server_default=sql_func.now(), onupdate=sql_func.now())
+
+    class DBGeneratedVideo(_Base):
+        __tablename__    = "generated_videos"
+        id               = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+        user_id          = Column(String(32), nullable=True)
+        job_id           = Column(String(32), nullable=False)
+        title            = Column(String(255), default="")
+        video_url        = Column(Text, nullable=False)
+        duration_seconds = Column(Integer, default=0)
+        created_at       = Column(DateTime(timezone=True), server_default=sql_func.now())
+
+    class DBUploadedMusic(_Base):
+        __tablename__ = "uploaded_music"
+        id          = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
+        user_id     = Column(String(32), nullable=True)
+        name        = Column(String(255), default="")
+        storage_url = Column(Text, nullable=False)
+        created_at  = Column(DateTime(timezone=True), server_default=sql_func.now())
+
+    try:
+        _engine       = create_engine(DATABASE_URL, pool_pre_ping=True)
+        _SessionLocal = sessionmaker(bind=_engine, autocommit=False, autoflush=False)
+        _pwd_ctx      = CryptContext(schemes=["bcrypt"], bcrypt__rounds=BCRYPT_ROUNDS, deprecated="auto")
+        _Base.metadata.create_all(bind=_engine)
+        print("[Startup] Database: ENABLED")
+    except Exception as _db_init_err:
+        print(f"[Startup] Database: ERROR — {_db_init_err}")
+        _db_enabled = False
+else:
+    print("[Startup] Database: DISABLED")
+
+
+# ── Auth helpers ──────────────────────────────────────────────────────────────
+
+def _hash_password(password: str) -> str:
+    return _pwd_ctx.hash(password)
+
+def _verify_password(plain: str, hashed: str) -> bool:
+    return _pwd_ctx.verify(plain, hashed)
+
+def _create_jwt(user_id: str, email: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
+    return _jose_jwt.encode(
+        {"sub": user_id, "email": email, "exp": expire},
+        JWT_SECRET, algorithm="HS256",
+    )
+
+def _decode_jwt(token: str) -> dict | None:
+    try:
+        return _jose_jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except JWTError:
+        return None
+
+async def get_current_user_optional(request: Request) -> dict | None:
+    """Retourne {"user_id": str, "email": str} si token Bearer valide, sinon None."""
+    if not _db_enabled or not JWT_SECRET:
+        return None
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    payload = _decode_jwt(auth[7:])
+    if not payload:
+        return None
+    return {"user_id": payload.get("sub"), "email": payload.get("email")}
+
+
+# ── DB write helpers ──────────────────────────────────────────────────────────
+
+def _db_create_video_job(job_id: str, user_id: str | None):
+    if not _db_enabled:
+        return
+    db = _SessionLocal()
+    try:
+        db.add(DBVideoJob(id=job_id, user_id=user_id, status="queued"))
+        db.commit()
+    except Exception as e:
+        print(f"[DB] create_video_job error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+def _db_record_generated_video(job_id: str, user_id: str | None, video_url: str, duration: int):
+    if not _db_enabled:
+        return
+    db = _SessionLocal()
+    try:
+        db.add(DBGeneratedVideo(
+            id=uuid.uuid4().hex, user_id=user_id, job_id=job_id,
+            video_url=video_url, duration_seconds=int(duration),
+        ))
+        db.commit()
+    except Exception as e:
+        print(f"[DB] record_generated_video error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+def _db_record_uploaded_music(user_id: str | None, name: str, storage_url: str):
+    if not _db_enabled:
+        return
+    db = _SessionLocal()
+    try:
+        db.add(DBUploadedMusic(id=uuid.uuid4().hex, user_id=user_id, name=name, storage_url=storage_url))
+        db.commit()
+    except Exception as e:
+        print(f"[DB] record_uploaded_music error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+# ── Auth Pydantic schemas ─────────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
 # ── Gestion des jobs vidéo ────────────────────────────────────────────────────
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _make_job(job_id: str, status: str = "queued") -> dict:
+def _make_job(job_id: str, status: str = "queued", user_id: str | None = None) -> dict:
     now = _now()
     return {
         "job_id":     job_id,
+        "user_id":    user_id,  # None pour les invités
         "status":     status,   # queued | processing | done | failed
         "progress":   0,        # 0-100
         "step":       "",       # étape machine (download, normalize, …)
@@ -267,7 +442,7 @@ async def _run_video_job(job_id: str, processor):
         await _dequeue_next_job()
 
 
-def _enqueue_video_job(job_id: str, processor) -> dict:
+def _enqueue_video_job(job_id: str, processor, user_id: str | None = None) -> dict:
     """Tente de lancer ou de mettre en file un job vidéo.
     processor est un callable async(job_id) -> None — indépendant du moteur.
     Retourne {"status": "processing"|"queued"|"rejected", "position": int}."""
@@ -275,9 +450,10 @@ def _enqueue_video_job(job_id: str, processor) -> dict:
 
     if _active_job_count < MAX_CONCURRENT_VIDEO_JOBS:
         # Slot libre → démarrage immédiat
-        VIDEO_JOBS[job_id] = _make_job(job_id, status="processing")
+        VIDEO_JOBS[job_id] = _make_job(job_id, status="processing", user_id=user_id)
         update_job(job_id, progress=5, step="starting", message="Démarrage du rendu…")
         _active_job_count += 1
+        _db_create_video_job(job_id, user_id)
         asyncio.create_task(_run_video_job(job_id, processor))
         return {"status": "processing", "position": 0}
 
@@ -286,8 +462,9 @@ def _enqueue_video_job(job_id: str, processor) -> dict:
 
     # File d'attente
     position = len(_job_queue) + 1
-    VIDEO_JOBS[job_id] = _make_job(job_id, status="queued")
+    VIDEO_JOBS[job_id] = _make_job(job_id, status="queued", user_id=user_id)
     update_job(job_id, message=f"En attente (position {position})")
+    _db_create_video_job(job_id, user_id)
     _job_queue.append((job_id, processor))
     print(f"[Queue] Job {job_id} mis en file — position {position}/{MAX_VIDEO_QUEUE_SIZE}")
     return {"status": "queued", "position": position}
@@ -2180,6 +2357,8 @@ async def _process_video(job_id: str, req: VideoRequest):
         update_job(job_id, status="done", progress=100, step="done",
                    message="Vidéo prête !", video_url=video_url)
         print(f"[Job {job_id}] done → {video_url}")
+        _user_id = VIDEO_JOBS.get(job_id, {}).get("user_id")
+        _db_record_generated_video(job_id, _user_id, video_url, req.duration)
 
     except httpx.HTTPError as e:
         cleanup_job_files(job_id, job_dir=job_dir) if job_dir else None
@@ -2192,14 +2371,14 @@ async def _process_video(job_id: str, req: VideoRequest):
         mark_job_failed(job_id, "PROCESSING_ERROR", f"Erreur create-video: {str(e)}")
 
 
-async def _create_video_job(req) -> JSONResponse:
+async def _create_video_job(req, user_id: str | None = None) -> JSONResponse:
     """Logique commune à /create-video et /video-jobs."""
     if not ffmpeg_exists():
         return JSONResponse(status_code=500, content={"error": "FFmpeg non installé"})
 
     job_id = uuid.uuid4().hex
     processor = lambda jid: _process_video(jid, req)
-    result = _enqueue_video_job(job_id, processor)
+    result = _enqueue_video_job(job_id, processor, user_id=user_id)
 
     if result["status"] == "rejected":
         return JSONResponse(status_code=429, content={
@@ -2220,16 +2399,88 @@ async def _create_video_job(req) -> JSONResponse:
     })
 
 
+# ── Auth endpoints ────────────────────────────────────────────────────────────
+
+@app.post("/auth/register", status_code=201)
+async def auth_register(req: RegisterRequest):
+    if not _db_enabled:
+        return JSONResponse(status_code=503, content={"error": "Base de données non configurée"})
+    email = req.email.strip().lower()
+    if not email or "@" not in email:
+        return JSONResponse(status_code=400, content={"error": "Email invalide"})
+    if len(req.password) < 8:
+        return JSONResponse(status_code=400, content={"error": "Mot de passe minimum 8 caractères"})
+    db = _SessionLocal()
+    try:
+        if db.query(DBUser).filter_by(email=email).first():
+            return JSONResponse(status_code=409, content={"error": "Email déjà utilisé"})
+        user = DBUser(id=uuid.uuid4().hex, email=email, password_hash=_hash_password(req.password))
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return JSONResponse(status_code=201, content={
+            "user_id": user.id, "email": user.email,
+            "plan": user.plan, "token": _create_jwt(user.id, user.email),
+        })
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        db.close()
+
+
+@app.post("/auth/login")
+async def auth_login(req: LoginRequest):
+    if not _db_enabled:
+        return JSONResponse(status_code=503, content={"error": "Base de données non configurée"})
+    email = req.email.strip().lower()
+    db = _SessionLocal()
+    try:
+        user = db.query(DBUser).filter_by(email=email).first()
+        if not user or not _verify_password(req.password, user.password_hash):
+            return JSONResponse(status_code=401, content={"error": "Email ou mot de passe incorrect"})
+        return JSONResponse(status_code=200, content={
+            "user_id": user.id, "email": user.email,
+            "plan": user.plan, "token": _create_jwt(user.id, user.email),
+        })
+    finally:
+        db.close()
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    cu = await get_current_user_optional(request)
+    if not cu:
+        return JSONResponse(status_code=401, content={"error": "Non authentifié"})
+    if not _db_enabled:
+        return JSONResponse(status_code=200, content=cu)
+    db = _SessionLocal()
+    try:
+        user = db.query(DBUser).filter_by(id=cu["user_id"]).first()
+        if not user:
+            return JSONResponse(status_code=404, content={"error": "Utilisateur introuvable"})
+        return JSONResponse(status_code=200, content={
+            "user_id": user.id, "email": user.email, "plan": user.plan,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        })
+    finally:
+        db.close()
+
+
+# ── Video job endpoints ────────────────────────────────────────────────────────
+
 @app.post("/create-video")
-async def create_video(req: VideoRequest):
+async def create_video(request: Request, req: VideoRequest):
     """Endpoint historique — conservé pour compatibilité."""
-    return await _create_video_job(req)
+    cu = await get_current_user_optional(request)
+    return await _create_video_job(req, user_id=cu["user_id"] if cu else None)
 
 
 @app.post("/video-jobs")
-async def create_video_job(req: VideoRequest):
+async def create_video_job(request: Request, req: VideoRequest):
     """Nouvel endpoint RESTful pour créer un job vidéo."""
-    return await _create_video_job(req)
+    cu = await get_current_user_optional(request)
+    return await _create_video_job(req, user_id=cu["user_id"] if cu else None)
 
 
 @app.get("/video-jobs/{job_id}")
@@ -3267,6 +3518,7 @@ async def select_music(req: SelectMusicRequest):
 
 @app.post("/upload-music")
 async def upload_music(
+    request: Request,
     music_file: UploadFile = File(...),
     music_name: str = Form(""),
 ):
@@ -3315,6 +3567,9 @@ async def upload_music(
         os.remove(saved_path)
     else:
         file_url = f"{PUBLIC_BASE_URL}/music/{saved_filename}" if PUBLIC_BASE_URL else f"/music/{saved_filename}"
+
+    cu = await get_current_user_optional(request)
+    _db_record_uploaded_music(cu["user_id"] if cu else None, final_name, file_url)
 
     return {
         "music_id": music_id,
@@ -3771,6 +4026,28 @@ async def health():
             raise HTTPException(status_code=exc.response.status_code, detail=f"RunPod unreachable: {exc}")
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"RunPod unreachable: {exc}")
+
+
+@app.get("/health/deep")
+async def health_deep():
+    """Statut détaillé de toutes les dépendances."""
+    db_ok = False
+    if _db_enabled:
+        try:
+            db = _SessionLocal()
+            db.execute(__import__("sqlalchemy").text("SELECT 1"))
+            db.close()
+            db_ok = True
+        except Exception:
+            db_ok = False
+    return {
+        "status":          "ok",
+        "database":        db_ok,
+        "auth":            _db_enabled and bool(JWT_SECRET),
+        "storage":         _storage_enabled(),
+        "fish_audio_key":  bool(FISH_AUDIO_API_KEY),
+        "anthropic_key":   bool(ANTHROPIC_API_KEY),
+    }
 
 
 @app.post("/qwen/analyze")
