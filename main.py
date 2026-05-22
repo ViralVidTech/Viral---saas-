@@ -927,13 +927,13 @@ async def preview_fish_voice(req: VoicePreviewRequest):
         filepath = os.path.join(AUDIO_DIR, filename)
         with open(filepath, "wb") as f:
             f.write(response.content)
-        r2_url = await upload_file_to_storage(filepath, f"audio/{filename}")
-        if r2_url:
+        if os.path.getsize(filepath) == 0:
             os.remove(filepath)
-            audio_url = r2_url
-        else:
-            base = PUBLIC_BASE_URL or ""
-            audio_url = f"{base}/audio/{filename}"
+            return JSONResponse(status_code=502, content={"error": "Fish Audio a retourne un fichier vide"})
+        # Toujours retourner une URL locale — evite les problemes CORS R2 dans le navigateur
+        base = (PUBLIC_BASE_URL or "").rstrip("/")
+        audio_url = f"{base}/audio/{filename}"
+        print(f"[preview-fish-voice] OK — {len(response.content)} bytes → {audio_url}")
         return {"success": True, "audio_url": audio_url}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
