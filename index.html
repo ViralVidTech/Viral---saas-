@@ -260,7 +260,12 @@
         <hr class="section-divider">
         <div class="two-col">
           <div class="field"><label>Style de voix</label><select id="p1VoiceStyle"><option value="">Tous les styles</option></select></div>
-          <div class="field"><label>Voix Fish Audio</label><select id="p1Voice"><option value="">Chargement…</option></select></div>
+          <div class="field"><label>Voix Fish Audio</label>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <select id="p1Voice" style="flex:1;"><option value="">Chargement…</option></select>
+              <button class="secondary-btn" id="p1VoicePreviewBtn" style="white-space:nowrap;padding:10px 12px;" onclick="previewVoice('p1Voice','p1VoicePreviewBtn','p1Status')">▶ Voix</button>
+            </div>
+          </div>
         </div>
         <div>
           <div style="display:flex;align-items:center;gap:10px;">
@@ -283,6 +288,7 @@
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p1Music" style="flex:1;"><option value="">Pas de musique</option></select>
+            <button class="secondary-btn" id="p1MusicPreviewBtn" style="white-space:nowrap;padding:10px 14px;" onclick="toggleMusicPreview('p1Music','p1MusicPreviewBtn')">▶ Écouter</button>
             <input type="file" id="p1MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p1MusicFile').click()">📁 Upload</button>
           </div>
@@ -332,7 +338,12 @@
         <hr class="section-divider">
         <div class="two-col">
           <div class="field"><label>Style de voix</label><select id="p2VoiceStyle"><option value="">Tous les styles</option></select></div>
-          <div class="field"><label>Voix Fish Audio</label><select id="p2Voice"><option value="">Chargement…</option></select></div>
+          <div class="field"><label>Voix Fish Audio</label>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <select id="p2Voice" style="flex:1;"><option value="">Chargement…</option></select>
+              <button class="secondary-btn" id="p2VoicePreviewBtn" style="white-space:nowrap;padding:10px 12px;" onclick="previewVoice('p2Voice','p2VoicePreviewBtn','p2Status')">▶ Voix</button>
+            </div>
+          </div>
         </div>
         <div>
           <div style="display:flex;align-items:center;gap:10px;">
@@ -355,6 +366,7 @@
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p2Music" style="flex:1;"><option value="">Pas de musique</option></select>
+            <button class="secondary-btn" id="p2MusicPreviewBtn" style="white-space:nowrap;padding:10px 14px;" onclick="toggleMusicPreview('p2Music','p2MusicPreviewBtn')">▶ Écouter</button>
             <input type="file" id="p2MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p2MusicFile').click()">📁 Upload</button>
           </div>
@@ -391,7 +403,12 @@
         <hr class="section-divider">
         <div class="two-col">
           <div class="field"><label>Style de voix</label><select id="p3VoiceStyle"><option value="">Tous les styles</option></select></div>
-          <div class="field"><label>Voix Fish Audio</label><select id="p3Voice"><option value="">Chargement…</option></select></div>
+          <div class="field"><label>Voix Fish Audio</label>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <select id="p3Voice" style="flex:1;"><option value="">Chargement…</option></select>
+              <button class="secondary-btn" id="p3VoicePreviewBtn" style="white-space:nowrap;padding:10px 12px;" onclick="previewVoice('p3Voice','p3VoicePreviewBtn','p3Status')">▶ Voix</button>
+            </div>
+          </div>
         </div>
         <div>
           <div style="display:flex;align-items:center;gap:10px;">
@@ -408,6 +425,7 @@
         <div class="field"><label>Musique de fond</label>
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p3Music" style="flex:1;"><option value="">Pas de musique</option></select>
+            <button class="secondary-btn" id="p3MusicPreviewBtn" style="white-space:nowrap;padding:10px 14px;" onclick="toggleMusicPreview('p3Music','p3MusicPreviewBtn')">▶ Écouter</button>
             <input type="file" id="p3MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p3MusicFile').click()">📁 Upload</button>
           </div>
@@ -460,7 +478,12 @@
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p4UseVoice"><span class="toggle-slider"></span></label><span>Voix Fish Audio (optionnel)</span></div>
         <div id="p4VoiceArea" style="display:none;" class="two-col">
           <div class="field"><label>Style de voix</label><select id="p4VoiceStyle"><option value="">Tous les styles</option></select></div>
-          <div class="field"><label>Voix Fish Audio</label><select id="p4Voice"><option value="">Chargement…</option></select></div>
+          <div class="field"><label>Voix Fish Audio</label>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <select id="p4Voice" style="flex:1;"><option value="">Chargement…</option></select>
+              <button class="secondary-btn" id="p4VoicePreviewBtn" style="white-space:nowrap;padding:10px 12px;" onclick="previewVoice('p4Voice','p4VoicePreviewBtn','p4Status')">▶ Voix</button>
+            </div>
+          </div>
         </div>
         <div class="field" id="p4VoiceTextArea" style="display:none;">
           <label>Texte à lire</label>
@@ -482,6 +505,7 @@
         <div id="p4MusicArea" style="display:none;" class="field">
           <div style="display:flex;gap:10px;align-items:center;">
             <select id="p4Music" style="flex:1;"><option value="">Pas de musique</option></select>
+            <button class="secondary-btn" id="p4MusicPreviewBtn" style="white-space:nowrap;padding:10px 14px;" onclick="toggleMusicPreview('p4Music','p4MusicPreviewBtn')">▶ Écouter</button>
             <input type="file" id="p4MusicFile" accept="audio/*" style="display:none;">
             <button class="secondary-btn" style="white-space:nowrap;padding:10px 14px;" onclick="document.getElementById('p4MusicFile').click()">📁 Upload</button>
           </div>
@@ -788,62 +812,60 @@ function getApiCandidates() {
   const primary = getPipelineApiUrl();
   if (primary) candidates.push(primary);
   if (window.location && window.location.origin && !candidates.includes(window.location.origin)) candidates.push(window.location.origin);
-  if (!candidates.includes('https://viral-saas.onrender.com')) candidates.push('https://viral-saas.onrender.com');
+  if (!candidates.includes(‘https://viral-saas.onrender.com’)) candidates.push(‘https://viral-saas.onrender.com’);
   return candidates.filter(Boolean);
 }
 
+// Essaie plusieurs serveurs dans l’ordre, retourne le premier JSON valide ou null
 async function fetchJsonWithFallback(path, options) {
-  let lastError = null;
   for (const base of getApiCandidates()) {
     try {
       const r = await fetch(`${base}${path}`, options || {});
-      const text = await r.text();
-      let data = {};
-      try { data = text ? JSON.parse(text) : {}; } catch(jsonErr) { throw new Error(`Réponse non JSON depuis ${base}${path}`); }
-      if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
-      return { data, base };
-    } catch (e) {
-      lastError = e;
-      console.warn(`[API fallback] ${path} échoué:`, e.message);
+      if (!r.ok) { console.warn(`[API] ${base}${path} → HTTP ${r.status}`); continue; }
+      const ct = r.headers.get(‘content-type’) || ‘’;
+      if (!ct.includes(‘json’)) { console.warn(`[API] ${base}${path} → non-JSON (${ct})`); continue; }
+      return await r.json();
+    } catch(e) {
+      console.warn(`[API] ${base}${path} → ${e.message}`);
     }
   }
-  throw lastError || new Error(`Impossible de charger ${path}`);
+  console.error(`[API] Tous les serveurs ont échoué pour ${path}`);
+  return null;
 }
 
 function getAuthHeaders(){
-  const token = localStorage.getItem('viral_token') || localStorage.getItem('auth_token') || '';
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
+  const token = localStorage.getItem(‘viral_token’) || localStorage.getItem(‘auth_token’) || ‘’;
+  return token ? { ‘Authorization’: `Bearer ${token}` } : {};
 }
 
 function getPipelineFormat(prefix){
-  return document.getElementById(`${prefix}Format`)?.value || 'hd';
+  return document.getElementById(`${prefix}Format`)?.value || ‘hd’;
 }
 
 function videoFormatToLtxResolution(format){
-  const f = (format || 'hd').toLowerCase();
-  if (f === 'tiktok') return 'portrait';
-  if (f === 'square') return 'square';
-  return '720p';
+  const f = (format || ‘hd’).toLowerCase();
+  if (f === ‘tiktok’) return ‘portrait’;
+  if (f === ‘square’) return ‘square’;
+  return ‘720p’;
 }
 
 function installMediaPreviewControls(){
-  ['p1','p2','p3','p4'].forEach(prefix => {
+  [‘p1’,’p2’,’p3’,’p4’].forEach(prefix => {
     const voiceSel = document.getElementById(`${prefix}Voice`);
     if (voiceSel && !document.getElementById(`${prefix}VoicePreviewBtn`)) {
-      const row = document.createElement('div');
-      row.className = 'preview-row';
+      const row = document.createElement(‘div’);
+      row.className = ‘preview-row’;
       row.innerHTML = `<button class="secondary-btn" type="button" id="${prefix}VoicePreviewBtn">▶️ Écouter la voix</button><audio id="${prefix}VoicePreviewAudio" class="preview-audio" controls></audio>`;
-      voiceSel.insertAdjacentElement('afterend', row);
-      document.getElementById(`${prefix}VoicePreviewBtn`).addEventListener('click', () => previewFishVoice(prefix));
+      voiceSel.insertAdjacentElement(‘afterend’, row);
+      document.getElementById(`${prefix}VoicePreviewBtn`).addEventListener(‘click’, () => previewFishVoice(prefix));
     }
-
     const musicSel = document.getElementById(`${prefix}Music`);
     if (musicSel && !document.getElementById(`${prefix}MusicPreviewBtn`)) {
-      const row = document.createElement('div');
-      row.className = 'preview-row';
+      const row = document.createElement(‘div’);
+      row.className = ‘preview-row’;
       row.innerHTML = `<button class="secondary-btn" type="button" id="${prefix}MusicPreviewBtn">▶️ Écouter la musique</button><audio id="${prefix}MusicPreviewAudio" class="preview-audio" controls></audio>`;
-      musicSel.parentElement?.insertAdjacentElement('afterend', row);
-      document.getElementById(`${prefix}MusicPreviewBtn`).addEventListener('click', () => previewMusic(prefix));
+      musicSel.parentElement?.insertAdjacentElement(‘afterend’, row);
+      document.getElementById(`${prefix}MusicPreviewBtn`).addEventListener(‘click’, () => previewMusic(prefix));
     }
   });
 }
@@ -852,43 +874,43 @@ async function previewFishVoice(prefix){
   const apiUrl = getPipelineApiUrl();
   const sel = document.getElementById(`${prefix}Voice`);
   const audio = document.getElementById(`${prefix}VoicePreviewAudio`);
-  if (!sel || !sel.value) return setStatus(`${prefix}Status`, 'Choisissez d’abord une voix Fish Audio.', 'error');
+  if (!sel || !sel.value) return setStatus(`${prefix}Status`, "Choisissez d’abord une voix Fish Audio.", ‘error’);
   const opt = sel.options[sel.selectedIndex];
-  const language = opt?.dataset?.language || document.getElementById(`${prefix}Lang`)?.value || 'fr';
-  const text = language === 'fr'
-    ? 'Bonjour, voici un aperçu de cette voix pour vos vidéos ViralVidTech. Le ton est naturel, clair et dynamique.'
-    : 'Hello, this is a preview of this voice for your ViralVidTech videos. The tone is natural, clear, and dynamic.';
-  setStatus(`${prefix}Status`, '⏳ Préparation de l’aperçu voix…', 'ready');
+  const language = opt?.dataset?.language || document.getElementById(`${prefix}Lang`)?.value || ‘fr’;
+  const text = language === ‘fr’
+    ? "Bonjour, voici un aperçu de cette voix pour vos vidéos ViralVidTech."
+    : "Hello, this is a preview of this voice for your ViralVidTech videos.";
+  setStatus(`${prefix}Status`, "⏳ Préparation de l’aperçu voix…", ‘ready’);
   try {
     const r = await fetch(`${apiUrl}/preview-fish-voice`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      method: ‘POST’,
+      headers: { ‘Content-Type’: ‘application/json’, ...getAuthHeaders() },
       body: JSON.stringify({ voice_id: sel.value, language, text })
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
-    const url = d.audio_url || d.preview_url || '';
-    if (!url) throw new Error('Aucune URL audio retournée.');
+    const url = d.audio_url || d.preview_url || ‘’;
+    if (!url) throw new Error(‘Aucune URL audio retournée.’);
     audio.src = url;
-    audio.style.display = 'block';
+    audio.style.display = ‘block’;
     await audio.play().catch(() => {});
-    setStatus(`${prefix}Status`, '✅ Aperçu voix prêt.', 'success');
+    setStatus(`${prefix}Status`, ‘✅ Aperçu voix prêt.’, ‘success’);
   } catch(e) {
-    setStatus(`${prefix}Status`, `❌ Aperçu voix impossible: ${e.message}`, 'error');
+    setStatus(`${prefix}Status`, `❌ Aperçu voix impossible: ${e.message}`, ‘error’);
   }
 }
 
 function previewMusic(prefix){
   const sel = document.getElementById(`${prefix}Music`);
   const audio = document.getElementById(`${prefix}MusicPreviewAudio`);
-  if (!sel || !sel.value) return setStatus(`${prefix}Status`, 'Choisissez d’abord une musique.', 'error');
+  if (!sel || !sel.value) return setStatus(`${prefix}Status`, "Choisissez d’abord une musique.", ‘error’);
   const opt = sel.options[sel.selectedIndex];
-  const url = opt?.dataset?.url || sel.value;
-  if (!url) return setStatus(`${prefix}Status`, 'Cette musique n’a pas d’URL lisible.', 'error');
+  const url = opt?.dataset?.preview || opt?.dataset?.url || sel.value;
+  if (!url) return setStatus(`${prefix}Status`, "Cette musique n’a pas d’URL lisible.", ‘error’);
   audio.src = url;
-  audio.style.display = 'block';
+  audio.style.display = ‘block’;
   audio.play().catch(() => {});
-  setStatus(`${prefix}Status`, '✅ Aperçu musique prêt.', 'success');
+  setStatus(`${prefix}Status`, ‘✅ Aperçu musique prêt.’, ‘success’);
 }
 
 
@@ -1251,43 +1273,46 @@ async function loadPipelineData() {
     }
   } catch(e) {}
 
-  // Fish voices — chargement robuste avec fallback multi-URL
-  try {
-    const { data: d, base } = await fetchJsonWithFallback('/fish-voices', { cache: 'no-store' });
-    _pipelineVoices = d.voices || d.items || d.models || [];
-    if (!_pipelineVoices.length) throw new Error('0 voix retournée par /fish-voices');
-    ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
-      const sel = document.getElementById(id);
-      if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
-    });
-    console.log(`[Fish voices] ${_pipelineVoices.length} voix chargées depuis ${base} (${d.source || 'API'})`);
-  } catch(e) {
-    console.error('[Fish voices] Chargement impossible, fallback frontend:', e);
-    _pipelineVoices = [
-      {id:'a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1', voice_id:'a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1', display_label:'Lucas — Homme, Français naturel', name:'Lucas', language:'fr', language_name:'Français', gender:'male', gender_label:'Homme', accent:'France', style_hint:'Homme, France'},
-      {id:'b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90', voice_id:'b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90', display_label:'Camille — Femme, Française douce', name:'Camille', language:'fr', language_name:'Français', gender:'female', gender_label:'Femme', accent:'France', style_hint:'Femme, France'},
-      {id:'c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83', voice_id:'c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83', display_label:'Théo — Homme, Français dynamique', name:'Théo', language:'fr', language_name:'Français', gender:'male', gender_label:'Homme', accent:'France', style_hint:'Homme, France'},
-      {id:'d2f56ab3-8c91-4f0a-b145-6d0e8f3c2a94', voice_id:'d2f56ab3-8c91-4f0a-b145-6d0e8f3c2a94', display_label:'Emma — Femme, Française énergique', name:'Emma', language:'fr', language_name:'Français', gender:'female', gender_label:'Femme', accent:'France', style_hint:'Femme, France'}
-    ];
-    ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
-      const sel = document.getElementById(id);
-      if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
-    });
-    ['p1Status','p2Status','p3Status','p4Status'].forEach(id => setStatus(id, '⚠️ Voix chargées en mode secours. Vérifiez /fish-voices.', 'error'));
+  // Fish voices — chargement robuste avec fallback frontend
+  {
+    const d = await fetchJsonWithFallback('/fish-voices');
+    if (d && Array.isArray(d.voices) && d.voices.length > 0) {
+      _pipelineVoices = d.voices;
+      console.log(`[Fish voices] ${_pipelineVoices.length} voix chargées (source: ${d.source || '?'})`);
+      ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
+      });
+    } else {
+      console.error('[Fish voices] /fish-voices : aucune voix reçue — fallback frontend', d);
+      _pipelineVoices = [
+        {id:'a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1', voice_id:'a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1', display_label:'Lucas — Homme, Français naturel', name:'Lucas', language:'fr', language_name:'Français', gender:'male', gender_label:'Homme', accent:'France', style_hint:'Homme, France'},
+        {id:'b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90', voice_id:'b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90', display_label:'Camille — Femme, Française douce', name:'Camille', language:'fr', language_name:'Français', gender:'female', gender_label:'Femme', accent:'France', style_hint:'Femme, France'},
+        {id:'c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83', voice_id:'c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83', display_label:'Théo — Homme, Français dynamique', name:'Théo', language:'fr', language_name:'Français', gender:'male', gender_label:'Homme', accent:'France', style_hint:'Homme, France'},
+        {id:'d2f56ab3-8c91-4f0a-b145-6d0e8f3c2a94', voice_id:'d2f56ab3-8c91-4f0a-b145-6d0e8f3c2a94', display_label:'Emma — Femme, Française énergique', name:'Emma', language:'fr', language_name:'Français', gender:'female', gender_label:'Femme', accent:'France', style_hint:'Femme, France'}
+      ];
+      ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
+      });
+      ['p1Status','p2Status','p3Status','p4Status'].forEach(id => setStatus(id, '⚠️ Voix chargées en mode secours. Vérifiez /fish-voices.', 'error'));
+    }
   }
 
-  // Voice styles — {"voice_styles":{"energique":...,"doux":...}}
-  try {
-    const r = await fetch(`${apiUrl}/voice-styles`);
-    if (r.ok) {
-      const d = await r.json();
-      _pipelineVoiceStyles = Object.keys(d.voice_styles || {});
+  // Voice styles — {"voice_styles":{"Dynamique et rapide":[],...}}
+  {
+    const d = await fetchJsonWithFallback('/voice-styles');
+    if (d && d.voice_styles && Object.keys(d.voice_styles).length > 0) {
+      _pipelineVoiceStyles = Object.keys(d.voice_styles);
+      console.log(`[voice-styles] ${_pipelineVoiceStyles.length} styles chargés`);
       ['p1VoiceStyle','p2VoiceStyle','p3VoiceStyle','p4VoiceStyle'].forEach(id => {
         const sel = document.getElementById(id);
         if (sel) populateSelect(sel, _pipelineVoiceStyles, s => s, s => s, 'Tous les styles');
       });
+    } else {
+      console.error('[voice-styles] /voice-styles : réponse invalide', d);
     }
-  } catch(e) {}
+  }
 
   // Reference videos — {"danses":[...],"chants":[...],"discours":[...],"gestes":[...]}
   try {
@@ -1337,15 +1362,16 @@ async function loadPipelineData() {
     }
   } catch(e) {}
 
-  // Music — {"catalog":[{"music_id","music_name","music_style","duration","url"},…],"uploaded":[…]}
-  try {
-    const r = await fetch(`${apiUrl}/available-music`);
-    if (r.ok) {
-      const d = await r.json();
+  // Music — {"catalog":[{"music_id","music_name","music_style","mood","bpm","duration","url","preview_url"},…],"uploaded":[…]}
+  {
+    const d = await fetchJsonWithFallback('/available-music');
+    if (d) {
       const tracks = [...(d.catalog || []), ...(d.uploaded || [])];
+      console.log(`[music] ${d.catalog?.length || 0} catalog + ${d.uploaded?.length || 0} uploaded`);
       ['p1Music','p2Music','p3Music','p4Music'].forEach(id => {
         const sel = document.getElementById(id);
         if (!sel) return;
+        const prevVal = sel.value;
         sel.innerHTML = '<option value="">Pas de musique</option>';
         const byStyle = {};
         tracks.forEach(t => {
@@ -1355,20 +1381,26 @@ async function loadPipelineData() {
         });
         Object.entries(byStyle).forEach(([style, items]) => {
           const og = document.createElement('optgroup');
-          og.label = style;
+          og.label = `🎵 ${style}`;
           items.forEach(t => {
             const opt = document.createElement('option');
             opt.value = t.url || '';
             opt.dataset.url = t.url || '';
+            opt.dataset.preview = t.preview_url || t.url || '';
             opt.dataset.musicName = t.music_name || '';
-            opt.textContent = `${t.music_name} (${t.duration}s)`;
+            const moodStr = t.mood ? ` · ${t.mood}` : '';
+            const bpmStr  = t.bpm  ? ` · ${t.bpm}bpm` : '';
+            opt.textContent = `${t.music_name}${moodStr}${bpmStr} (${t.duration}s)`;
             og.appendChild(opt);
           });
           sel.appendChild(og);
         });
+        if (prevVal) sel.value = prevVal;
       });
+    } else {
+      console.error('[music] /available-music : aucune donnée reçue');
     }
-  } catch(e) {}
+  }
 }
 
 // Filter voices when style changes
@@ -1424,6 +1456,121 @@ async function loadPipelineData() {
       setStatus(statusId, `❌ Upload musique échoué: ${e.message}`, 'error');
     }
     fileInput.value = '';
+  });
+});
+
+// ── Aperçu voix ─────────────────────────────────────────────────────────────
+let _voicePreviewAudio = null;
+
+async function previewVoice(selectId, btnId, statusId) {
+  const sel = document.getElementById(selectId);
+  const btn = document.getElementById(btnId);
+  if (!sel || !btn) return;
+
+  const voiceId = sel.value;
+  if (!voiceId) {
+    if (statusId) setStatus(statusId, '⚠️ Choisissez une voix avant d\'écouter', 'ready');
+    return;
+  }
+
+  // Stop any playing voice preview
+  if (_voicePreviewAudio && !_voicePreviewAudio.paused) {
+    _voicePreviewAudio.pause();
+    _voicePreviewAudio = null;
+    btn.textContent = '▶ Voix';
+    btn.disabled = false;
+    return;
+  }
+
+  const apiUrl = getPipelineApiUrl();
+  const origText = btn.textContent;
+  btn.textContent = '⏳';
+  btn.disabled = true;
+
+  try {
+    const r = await fetch(`${apiUrl}/preview-fish-voice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        voice_id: voiceId,
+        text: 'Bonjour, je suis votre voix virtuelle pour vos vidéos ViralVidTech.',
+        language: 'fr',
+      }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    if (!d.audio_url) throw new Error('URL audio manquante dans la réponse');
+
+    _voicePreviewAudio = new Audio(d.audio_url);
+    btn.textContent = '⏹ Stop';
+    btn.disabled = false;
+    _voicePreviewAudio.play().catch(e => {
+      btn.textContent = origText; btn.disabled = false;
+      if (statusId) setStatus(statusId, `❌ Lecture impossible: ${e.message}`, 'error');
+    });
+    _voicePreviewAudio.addEventListener('ended', () => {
+      btn.textContent = origText;
+      btn.disabled = false;
+      _voicePreviewAudio = null;
+    });
+  } catch(e) {
+    btn.textContent = origText;
+    btn.disabled = false;
+    const msg = e.message || String(e);
+    console.error('[previewVoice]', msg);
+    if (statusId) setStatus(statusId, `❌ Aperçu voix: ${msg}`, 'error');
+  }
+}
+
+// ── Aperçu musique ──────────────────────────────────────────────────────────
+let _musicPreviewAudio = null;
+let _musicPreviewBtnId = null;
+
+function toggleMusicPreview(selectId, btnId) {
+  const sel = document.getElementById(selectId);
+  const btn = document.getElementById(btnId);
+  if (!sel || !btn) return;
+  const previewUrl = sel.selectedOptions[0]?.dataset?.preview || sel.value;
+  if (!previewUrl) { btn.textContent = '▶ Écouter'; return; }
+
+  // If something is already playing, stop it first
+  if (_musicPreviewAudio && !_musicPreviewAudio.paused) {
+    _musicPreviewAudio.pause();
+    const prevBtn = _musicPreviewBtnId ? document.getElementById(_musicPreviewBtnId) : null;
+    if (prevBtn) prevBtn.textContent = '▶ Écouter';
+    // Toggle off if same button
+    if (_musicPreviewBtnId === btnId) {
+      _musicPreviewAudio = null;
+      _musicPreviewBtnId = null;
+      return;
+    }
+  }
+
+  // Start new preview
+  _musicPreviewAudio = new Audio(previewUrl);
+  _musicPreviewBtnId = btnId;
+  btn.textContent = '⏹ Stop';
+  _musicPreviewAudio.volume = 0.6;
+  _musicPreviewAudio.play().catch(() => { btn.textContent = '▶ Écouter'; });
+  _musicPreviewAudio.addEventListener('ended', () => {
+    btn.textContent = '▶ Écouter';
+    _musicPreviewAudio = null;
+    _musicPreviewBtnId = null;
+  });
+}
+
+// Stop preview when user changes track selection
+['p1Music','p2Music','p3Music','p4Music'].forEach(id => {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.addEventListener('change', () => {
+    if (_musicPreviewAudio && !_musicPreviewAudio.paused) {
+      _musicPreviewAudio.pause();
+      const prevBtn = _musicPreviewBtnId ? document.getElementById(_musicPreviewBtnId) : null;
+      if (prevBtn) prevBtn.textContent = '▶ Écouter';
+      _musicPreviewAudio = null;
+      _musicPreviewBtnId = null;
+    }
   });
 });
 

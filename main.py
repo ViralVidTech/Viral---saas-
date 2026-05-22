@@ -11,6 +11,8 @@ import subprocess
 import shutil
 import asyncio
 import re
+import hmac
+import hashlib
 import secrets
 from datetime import datetime, timezone, timedelta
 
@@ -79,6 +81,12 @@ os.makedirs(MUSIC_DIR, exist_ok=True)
 os.makedirs(STATIC_MUSIC_DIR, exist_ok=True)
 
 print(f"[Startup] Fish Audio API key detected: {'YES' if FISH_AUDIO_API_KEY else 'NO'}")
+print("[BOOT] route /fish-voices registered")
+print("[BOOT] route /preview-fish-voice registered")
+print("[BOOT] route /voice-styles registered")
+print("[BOOT] route /available-music registered")
+print("[BOOT] route /music/{filename} registered")
+print("[BOOT] route /static-music/{filename} registered")
 print(f"[Startup] Video job concurrency: max_concurrent={MAX_CONCURRENT_VIDEO_JOBS} queue_size={MAX_VIDEO_QUEUE_SIZE}")
 print(f"[Startup] R2 Storage: {'ENABLED (bucket=' + R2_BUCKET_NAME + ')' if R2_ENDPOINT_URL and R2_BUCKET_NAME else 'DISABLED (local only)'}")
 
@@ -218,6 +226,7 @@ GUEST_MONTHLY_VIDEO_LIMIT    = int(os.getenv("GUEST_MONTHLY_VIDEO_LIMIT",    "2"
 _WATERMARK_TEXT_RAW          = os.getenv("WATERMARK_TEXT", "Made with ViralVidTech")
 WATERMARK_TEXT               = _WATERMARK_TEXT_RAW.replace("'", "").replace(":", "\\:")
 ADMIN_SECRET                 = os.getenv("ADMIN_SECRET", "")
+QUOTA_HMAC_SECRET            = os.getenv("QUOTA_HMAC_SECRET", "")  # HMAC key for IP hashing
 _PLAN_LIMITS: dict[str, int] = {
     "guest":    GUEST_MONTHLY_VIDEO_LIMIT,
     "free":     FREE_MONTHLY_VIDEO_LIMIT,
@@ -294,8 +303,9 @@ if _db_enabled:
     class DBUsageLog(_Base):
         __tablename__ = "usage_logs"
         id        = Column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
-        user_id   = Column(String(32), nullable=True,  index=True)
-        guest_id  = Column(String(64), nullable=True,  index=True)
+        user_id   = Column(String(32), nullable=True, index=True)
+        guest_id  = Column(String(32), nullable=True, index=True)  # 32-char hex, client-provided
+        ip_hash   = Column(String(32), nullable=True, index=True)  # 32-char HMAC of client IP
         action    = Column(String(50), nullable=False)
         month_key = Column(String(7),  nullable=False, index=True)
         created_at = Column(DateTime(timezone=True), server_default=sql_func.now())
@@ -401,11 +411,29 @@ def get_current_month_key() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 def _sanitize_guest_id(gid: str | None) -> str | None:
-    """Accepte uniquement une chaîne hexadécimale (32-64 chars)."""
+    """Format strict : exactement 32 caractères hexadécimaux minuscules."""
     if not gid:
         return None
-    gid = gid.strip()[:64]
-    return gid if re.fullmatch(r"[a-f0-9]{8,64}", gid) else None
+    gid = gid.strip()
+    return gid if re.fullmatch(r"[a-f0-9]{32}", gid) else None
+
+def _get_client_ip(request: Request) -> str:
+    """Extrait l'IP réelle — lit X-Forwarded-For (Render/proxy) en priorité."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return (request.client.host if request.client else "") or "unknown"
+
+def _hash_ip(ip: str) -> str:
+    """Retourne un hash HMAC-SHA256 de 32 chars de l'IP.
+    Retourne '' si QUOTA_HMAC_SECRET n'est pas défini (couplage IP désactivé)."""
+    if not QUOTA_HMAC_SECRET or not ip or ip == "unknown":
+        return ""
+    return hmac.new(
+        QUOTA_HMAC_SECRET.encode("utf-8"),
+        ip.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:32]
 
 def _get_user_plan(user_id: str) -> str:
     """Retourne le plan de l'utilisateur depuis la DB (ne fait jamais confiance au client)."""
@@ -421,17 +449,28 @@ def _get_user_plan(user_id: str) -> str:
         db.close()
 
 def get_usage_count(user_id: str | None = None, guest_id: str | None = None,
-                    action: str = "video_generation") -> int:
-    if not _db_enabled or (not user_id and not guest_id):
+                    ip_hash: str | None = None, action: str = "video_generation") -> int:
+    """Pour les invités, retourne le max entre le count par guest_id et par ip_hash.
+    Empêche le contournement par rotation de l'un ou l'autre."""
+    if not _db_enabled or (not user_id and not guest_id and not ip_hash):
         return 0
     db = _SessionLocal()
     try:
-        q = db.query(DBUsageLog).filter_by(action=action, month_key=get_current_month_key())
+        month = get_current_month_key()
         if user_id:
-            q = q.filter_by(user_id=user_id)
-        else:
-            q = q.filter_by(guest_id=guest_id)
-        return q.count()
+            return db.query(DBUsageLog).filter_by(
+                action=action, month_key=month, user_id=user_id
+            ).count()
+        counts = []
+        if guest_id:
+            counts.append(db.query(DBUsageLog).filter_by(
+                action=action, month_key=month, guest_id=guest_id
+            ).count())
+        if ip_hash:
+            counts.append(db.query(DBUsageLog).filter_by(
+                action=action, month_key=month, ip_hash=ip_hash
+            ).count())
+        return max(counts, default=0)
     except Exception as e:
         print(f"[DB] get_usage_count error: {e}")
         return 0
@@ -439,23 +478,24 @@ def get_usage_count(user_id: str | None = None, guest_id: str | None = None,
         db.close()
 
 def check_video_quota(user_id: str | None = None, guest_id: str | None = None,
-                      plan: str = "guest") -> dict:
+                      ip_hash: str | None = None, plan: str = "guest") -> dict:
     """Retourne {"allowed": bool, "used": int, "limit": int, "plan": str}."""
     limit = get_plan_limit(plan)
     if not _db_enabled:
         return {"allowed": True, "used": 0, "limit": limit, "plan": plan}
-    used = get_usage_count(user_id=user_id, guest_id=guest_id)
+    used = get_usage_count(user_id=user_id, guest_id=guest_id, ip_hash=ip_hash)
     return {"allowed": used < limit, "used": used, "limit": limit, "plan": plan}
 
 def record_usage(user_id: str | None = None, guest_id: str | None = None,
-                 action: str = "video_generation"):
-    if not _db_enabled or (not user_id and not guest_id):
+                 ip_hash: str | None = None, action: str = "video_generation"):
+    """Enregistre une ligne avec guest_id ET ip_hash pour bloquer la rotation des deux."""
+    if not _db_enabled or (not user_id and not guest_id and not ip_hash):
         return
     db = _SessionLocal()
     try:
         db.add(DBUsageLog(
-            id=uuid.uuid4().hex, user_id=user_id, guest_id=guest_id,
-            action=action, month_key=get_current_month_key(),
+            id=uuid.uuid4().hex, user_id=user_id, guest_id=guest_id or None,
+            ip_hash=ip_hash or None, action=action, month_key=get_current_month_key(),
         ))
         db.commit()
     except Exception as e:
@@ -655,12 +695,18 @@ VOICE_STYLES = {
 }
 
 MUSIC_STYLES = {
-    "Épique et motivant": ["motivation", "sport", "finance"],
-    "Doux et apaisant": ["santé", "méditation", "religion"],
-    "Rythmé et énergique": ["gaming", "challenge", "influenceur"],
-    "Mystérieux et intrigant": ["révélation", "technologie"],
-    "Neutre et professionnel": ["éducation", "langues", "IA"],
-    "Joyeux et léger": ["blagues", "cuisine", "voyage"],
+    "Épique motivation":        ["motivation", "sport", "finance", "challenge", "mindset"],
+    "Afrobeat doux":            ["lifestyle", "voyage", "culture", "danse"],
+    "Hip-hop dynamique":        ["gaming", "challenge", "urban", "mode", "influenceur"],
+    "Corporate moderne":        ["business", "finance", "IA", "technologie", "marketing"],
+    "Comédie / humour":         ["humour", "blagues", "famille", "enfants"],
+    "Suspense / mystère":       ["révélation", "cryptomonnaie", "politique"],
+    "Santé / bien-être":        ["méditation", "yoga", "santé", "mindfulness", "bien-être"],
+    "Technologie / IA":         ["IA", "technologie", "coding", "data", "startup"],
+    "Cuisine / lifestyle":      ["cuisine", "lifestyle", "famille", "voyage"],
+    "Émotion / storytelling":   ["histoire", "inspiration", "parentalité", "religion"],
+    "Latin énergique":          ["danse", "sport", "mode", "fitness"],
+    "Lo-fi calme":              ["éducation", "coding", "study", "écriture"],
 }
 
 NICHES_BY_PLAN = {
@@ -1358,6 +1404,7 @@ def _catalog_as_fish_voices():
             "gender_label": gender_fr,
             "accent": accent,
             "style_hint": ", ".join(parts) if parts else "",
+            "styles": v.get("styles", []),
             "description": "",
             "tags": v.get("styles", []),
             "styles": v.get("styles", []),
@@ -1371,8 +1418,9 @@ def _catalog_as_fish_voices():
 async def list_fish_voices():
     # Fallback catalogue local si pas de clé API
     if not FISH_AUDIO_API_KEY:
-        print("[fish-voices] Pas de FISH_AUDIO_API_KEY — utilisation du catalogue local")
-        return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local"}
+        local_voices = _catalog_as_fish_voices()
+        print(f"[fish-voices] returning {len(local_voices)} voices source=local (no API key)")
+        return {"success": True, "voices": local_voices, "source": "local"}
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -1383,8 +1431,9 @@ async def list_fish_voices():
             )
 
         if response.status_code != 200:
-            print(f"[fish-voices] API Fish Audio erreur {response.status_code} — fallback local")
-            return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
+            fallback = _catalog_as_fish_voices()
+            print(f"[fish-voices] API Fish Audio erreur {response.status_code} — returning {len(fallback)} voices source=local_fallback")
+            return {"success": True, "voices": fallback, "source": "local_fallback"}
 
         data = response.json()
         voices = []
@@ -1450,8 +1499,77 @@ async def list_fish_voices():
         return {"success": True, "voices": voices, "source": "live_plus_local"}
 
     except Exception as e:
-        print(f"[fish-voices] Exception: {e} — fallback local")
-        return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
+        fallback = _catalog_as_fish_voices()
+        print(f"[fish-voices] Exception: {e} — returning {len(fallback)} voices source=local_fallback")
+        return {"success": True, "voices": fallback, "source": "local_fallback"}
+
+
+@app.post("/preview-fish-voice")
+async def preview_fish_voice(req: VoicePreviewRequest):
+    """Génère un court extrait audio pour écouter une voix avant de la choisir."""
+    if not FISH_AUDIO_API_KEY:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "FISH_AUDIO_API_KEY manquante — aperçu voix indisponible en local"}
+        )
+
+    preview_text = (req.text.strip() or "Bonjour, je suis votre voix virtuelle.")[:200]
+    print(f"[preview-fish-voice] voice_id={req.voice_id!r} lang={req.language!r}")
+
+    try:
+        payload = {
+            "text": preview_text,
+            "format": "mp3",
+            "latency": "normal",
+            "normalize": True,
+            "reference_id": req.voice_id,
+        }
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                "https://api.fish.audio/v1/tts",
+                headers={
+                    "Authorization": f"Bearer {FISH_AUDIO_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+
+        if response.status_code != 200:
+            try:
+                details = response.json()
+            except Exception:
+                details = response.text[:300]
+            return JSONResponse(
+                status_code=502,
+                content={"error": f"Fish Audio API erreur {response.status_code}", "details": details}
+            )
+
+        filename = f"preview_{uuid.uuid4().hex[:8]}.mp3"
+        filepath = os.path.join(AUDIO_DIR, filename)
+        with open(filepath, "wb") as f:
+            f.write(response.content)
+
+        # Try R2, fallback to PUBLIC_BASE_URL, fallback to stream
+        r2_url = await upload_file_to_storage(filepath, f"audio/{filename}")
+        if r2_url:
+            os.remove(filepath)
+            audio_url = r2_url
+        elif PUBLIC_BASE_URL:
+            audio_url = f"{PUBLIC_BASE_URL}/audio/{filename}"
+        else:
+            # Stream directly — no permanent storage needed for a preview
+            audio_bytes = response.content
+            return StreamingResponse(
+                iter([audio_bytes]),
+                media_type="audio/mpeg",
+                headers={"Content-Disposition": f"inline; filename={filename}"},
+            )
+
+        return {"success": True, "audio_url": audio_url, "voice_id": req.voice_id}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Erreur preview voix: {str(e)}"})
 
 
 # ── GENERATE : Claude + Wan 2.2 ─────────────────────────────────────────────
@@ -2503,13 +2621,14 @@ async def _process_video(job_id: str, req: VideoRequest):
 
 
 async def _create_video_job(req, user_id: str | None = None,
-                            plan: str = "guest", guest_id: str | None = None) -> JSONResponse:
+                            plan: str = "guest", guest_id: str | None = None,
+                            ip_hash: str | None = None) -> JSONResponse:
     """Logique commune à /create-video et /video-jobs."""
     if not ffmpeg_exists():
         return JSONResponse(status_code=500, content={"error": "FFmpeg non installé"})
 
     # ── Quota check (PHASE 4) ─────────────────────────────────────────────────
-    quota = check_video_quota(user_id=user_id, guest_id=guest_id, plan=plan)
+    quota = check_video_quota(user_id=user_id, guest_id=guest_id, ip_hash=ip_hash, plan=plan)
     if not quota["allowed"]:
         return JSONResponse(status_code=403, content={
             "success": False,
@@ -2528,7 +2647,10 @@ async def _create_video_job(req, user_id: str | None = None,
             "queue_size": MAX_VIDEO_QUEUE_SIZE,
         })
 
-    record_usage(user_id=user_id, guest_id=guest_id)
+    record_usage(user_id=user_id, guest_id=guest_id, ip_hash=ip_hash)
+
+    # effective identifier returned to client (for guest_id-less clients)
+    guest_id_assigned = guest_id if guest_id else (ip_hash if ip_hash else None)
 
     return JSONResponse(status_code=202, content={
         "success": True,
@@ -2538,6 +2660,7 @@ async def _create_video_job(req, user_id: str | None = None,
         "plan": plan,
         "quota_used": quota["used"] + 1,
         "quota_limit": quota["limit"],
+        "guest_id_assigned": guest_id_assigned,
         "message": (
             "Rendu démarré immédiatement."
             if result["status"] == "processing"
@@ -2624,12 +2747,12 @@ async def usage_me(request: Request, guest_id: str = Query(default="")):
         user_id = cu["user_id"]
         plan    = _get_user_plan(user_id)
         used    = get_usage_count(user_id=user_id)
-        gid     = None
     else:
         user_id = None
         plan    = "guest"
         gid     = _sanitize_guest_id(guest_id)
-        used    = get_usage_count(guest_id=gid) if gid else 0
+        iph     = _hash_ip(_get_client_ip(request))
+        used    = get_usage_count(guest_id=gid, ip_hash=iph)
     limit = get_plan_limit(plan)
     return JSONResponse(status_code=200, content={
         "plan":      plan,
@@ -2680,7 +2803,12 @@ async def create_video(request: Request, req: VideoRequest):
     user_id  = cu["user_id"] if cu else None
     plan     = _get_user_plan(user_id) if user_id else "guest"
     guest_id = None if user_id else _sanitize_guest_id(req.guest_id)
-    return await _create_video_job(req, user_id=user_id, plan=plan, guest_id=guest_id)
+    ip_hash  = None if user_id else _hash_ip(_get_client_ip(request))
+    if not user_id and req.guest_id and guest_id is None:
+        return JSONResponse(status_code=400, content={
+            "error": "guest_id invalide — 32 caractères hexadécimaux requis"
+        })
+    return await _create_video_job(req, user_id=user_id, plan=plan, guest_id=guest_id, ip_hash=ip_hash)
 
 
 @app.post("/video-jobs")
@@ -2690,7 +2818,12 @@ async def create_video_job(request: Request, req: VideoRequest):
     user_id  = cu["user_id"] if cu else None
     plan     = _get_user_plan(user_id) if user_id else "guest"
     guest_id = None if user_id else _sanitize_guest_id(req.guest_id)
-    return await _create_video_job(req, user_id=user_id, plan=plan, guest_id=guest_id)
+    ip_hash  = None if user_id else _hash_ip(_get_client_ip(request))
+    if not user_id and req.guest_id and guest_id is None:
+        return JSONResponse(status_code=400, content={
+            "error": "guest_id invalide — 32 caractères hexadécimaux requis"
+        })
+    return await _create_video_job(req, user_id=user_id, plan=plan, guest_id=guest_id, ip_hash=ip_hash)
 
 
 async def _check_job_access(job_id: str, request: Request):
@@ -3406,6 +3539,18 @@ VOICE_CATALOG = [
         "styles": ["Doux et chaleureux", "Éducatif et clair"],
         "preview_url": None,
     },
+    # ── Enfant ────────────────────────────────────────────────────────────────
+    {
+        "voice_id": "a9b12cd3-0000-1111-2222-333344445555",
+        "voice_name": "Léa (enfant)",
+        "display_label": "Léa — Enfant, Français clair",
+        "language": "fr",
+        "language_name": "Français",
+        "gender": "child",
+        "accent": "France",
+        "styles": ["Éducatif et clair", "Humoristique et léger"],
+        "preview_url": None,
+    },
 ]
 
 
@@ -3443,49 +3588,60 @@ LANGUAGES = [
     {"code": "ht", "name": "Créole Haïtien"},
 ]
 
-# NOTE : Les URLs ci-dessous sont des pistes de démonstration libre de droit (SoundHelix CC0).
-# Pour la production, remplacez-les par vos propres fichiers musicaux licenciés.
-# Uploadez vos fichiers MP3 dans /music/ ou fournissez des URLs publiques accessibles depuis Render.
+# Pistes de démonstration libres de droit (SoundHelix CC0 — 13 fichiers disponibles).
+# Pour la production, uploadez vos propres MP3 dans static/music/{music_id}.mp3
+# ou fournissez des URLs publiques : ils remplacent automatiquement le fallback SoundHelix.
 _SH = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-{n}.mp3"
 
 MUSIC_CATALOG = [
-    # ── Épique et motivant ──────────────────────────────────────────────
-    {"music_id": "music-epic-001", "music_name": "Epic Rise",       "music_style": "Épique et motivant", "niches": ["motivation", "sport", "finance"],    "duration": 60, "url": _SH.format(n=1)},
-    {"music_id": "music-epic-002", "music_name": "Power Surge",     "music_style": "Épique et motivant", "niches": ["sport", "challenge", "fitness"],     "duration": 45, "url": _SH.format(n=2)},
-    {"music_id": "music-epic-003", "music_name": "Champion",        "music_style": "Épique et motivant", "niches": ["motivation", "sport"],               "duration": 60, "url": _SH.format(n=3)},
-    {"music_id": "music-epic-004", "music_name": "Victory March",   "music_style": "Épique et motivant", "niches": ["finance", "business", "success"],    "duration": 50, "url": _SH.format(n=4)},
-    {"music_id": "music-epic-005", "music_name": "Rise Up",         "music_style": "Épique et motivant", "niches": ["motivation", "mindset"],             "duration": 60, "url": _SH.format(n=5)},
-    {"music_id": "music-epic-006", "music_name": "Unstoppable",     "music_style": "Épique et motivant", "niches": ["sport", "motivation", "challenge"],  "duration": 45, "url": _SH.format(n=6)},
-    # ── Doux et apaisant ───────────────────────────────────────────────
-    {"music_id": "music-soft-001", "music_name": "Peaceful Mind",   "music_style": "Doux et apaisant",   "niches": ["méditation", "bien-être"],           "duration": 60, "url": _SH.format(n=7)},
-    {"music_id": "music-soft-002", "music_name": "Gentle Rain",     "music_style": "Doux et apaisant",   "niches": ["santé", "mindfulness"],              "duration": 60, "url": _SH.format(n=8)},
-    {"music_id": "music-soft-003", "music_name": "Serenity",        "music_style": "Doux et apaisant",   "niches": ["religion", "spiritualité"],          "duration": 55, "url": _SH.format(n=9)},
-    {"music_id": "music-soft-004", "music_name": "Calm Waters",     "music_style": "Doux et apaisant",   "niches": ["parentalité", "famille"],            "duration": 60, "url": _SH.format(n=10)},
-    {"music_id": "music-soft-005", "music_name": "Soft Breeze",     "music_style": "Doux et apaisant",   "niches": ["voyage", "nature"],                  "duration": 45, "url": _SH.format(n=11)},
-    {"music_id": "music-soft-006", "music_name": "Inner Peace",     "music_style": "Doux et apaisant",   "niches": ["mindfulness", "méditation"],         "duration": 60, "url": _SH.format(n=12)},
-    # ── Rythmé et énergique ────────────────────────────────────────────
-    {"music_id": "music-energy-001", "music_name": "Beat Drop",     "music_style": "Rythmé et énergique", "niches": ["gaming", "sport", "mode"],          "duration": 30, "url": _SH.format(n=13)},
-    {"music_id": "music-energy-002", "music_name": "Energy Rush",   "music_style": "Rythmé et énergique", "niches": ["gaming", "challenge"],              "duration": 60, "url": _SH.format(n=1)},
-    {"music_id": "music-energy-003", "music_name": "Pulse",         "music_style": "Rythmé et énergique", "niches": ["fitness", "sport"],                 "duration": 45, "url": _SH.format(n=2)},
-    {"music_id": "music-energy-004", "music_name": "Rhythm Fire",   "music_style": "Rythmé et énergique", "niches": ["influenceur", "mode"],              "duration": 60, "url": _SH.format(n=3)},
-    {"music_id": "music-energy-005", "music_name": "Dance Wave",    "music_style": "Rythmé et énergique", "niches": ["danse", "humour"],                  "duration": 30, "url": _SH.format(n=4)},
-    {"music_id": "music-energy-006", "music_name": "Electric Vibe", "music_style": "Rythmé et énergique", "niches": ["technologie", "IA"],                "duration": 45, "url": _SH.format(n=5)},
-    # ── Mystérieux et intrigant ────────────────────────────────────────
-    {"music_id": "music-mystery-001", "music_name": "Dark Secret",  "music_style": "Mystérieux et intrigant", "niches": ["révélation", "cryptomonnaie"],  "duration": 60, "url": _SH.format(n=6)},
-    {"music_id": "music-mystery-002", "music_name": "Mystery Walk", "music_style": "Mystérieux et intrigant", "niches": ["technologie", "IA"],            "duration": 50, "url": _SH.format(n=7)},
-    {"music_id": "music-mystery-003", "music_name": "Shadow",       "music_style": "Mystérieux et intrigant", "niches": ["finance", "politique"],         "duration": 60, "url": _SH.format(n=8)},
-    {"music_id": "music-mystery-004", "music_name": "Unknown Path", "music_style": "Mystérieux et intrigant", "niches": ["voyage", "découverte"],         "duration": 45, "url": _SH.format(n=9)},
-    {"music_id": "music-mystery-005", "music_name": "Twilight",     "music_style": "Mystérieux et intrigant", "niches": ["révélation", "spiritualité"],   "duration": 55, "url": _SH.format(n=10)},
-    # ── Neutre et professionnel ────────────────────────────────────────
-    {"music_id": "music-neutral-001", "music_name": "Corporate Flow",  "music_style": "Neutre et professionnel", "niches": ["business", "finance"],      "duration": 60, "url": _SH.format(n=11)},
-    {"music_id": "music-neutral-002", "music_name": "Business Beat",   "music_style": "Neutre et professionnel", "niches": ["éducation", "tutoriel"],    "duration": 45, "url": _SH.format(n=12)},
-    {"music_id": "music-neutral-003", "music_name": "Professional",    "music_style": "Neutre et professionnel", "niches": ["IA", "technologie"],        "duration": 60, "url": _SH.format(n=13)},
-    {"music_id": "music-neutral-004", "music_name": "Clean Tone",      "music_style": "Neutre et professionnel", "niches": ["langues", "éducation"],     "duration": 50, "url": _SH.format(n=1)},
-    # ── Joyeux et léger ───────────────────────────────────────────────
-    {"music_id": "music-happy-001", "music_name": "Happy Day",    "music_style": "Joyeux et léger", "niches": ["humour", "blagues", "cuisine"],          "duration": 60, "url": _SH.format(n=2)},
-    {"music_id": "music-happy-002", "music_name": "Fun Times",    "music_style": "Joyeux et léger", "niches": ["famille", "enfants"],                    "duration": 45, "url": _SH.format(n=3)},
-    {"music_id": "music-happy-003", "music_name": "Cheerful",     "music_style": "Joyeux et léger", "niches": ["voyage", "lifestyle"],                   "duration": 60, "url": _SH.format(n=4)},
-    {"music_id": "music-happy-004", "music_name": "Bright Side",  "music_style": "Joyeux et léger", "niches": ["parentalité", "motivation"],             "duration": 45, "url": _SH.format(n=5)},
+    # ── 1. Épique motivation — cinématique, orchestral, puissant ────────
+    {"music_id": "music-motivation-001", "music_name": "Epic Ascent",     "music_style": "Épique motivation",      "mood": "puissant",     "bpm": 140, "niches": ["motivation", "sport", "finance"],    "duration": 60, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
+    {"music_id": "music-motivation-002", "music_name": "Champion's Road", "music_style": "Épique motivation",      "mood": "inspirant",    "bpm": 135, "niches": ["motivation", "sport"],               "duration": 60, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
+    {"music_id": "music-motivation-003", "music_name": "Rise & Conquer",  "music_style": "Épique motivation",      "mood": "épique",       "bpm": 150, "niches": ["challenge", "mindset"],              "duration": 45, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
+    # ── 2. Afrobeat doux — percussions africaines, chaleureux ───────────
+    {"music_id": "music-afro-001",       "music_name": "Lagos Sunset",    "music_style": "Afrobeat doux",           "mood": "chaud",        "bpm": 95,  "niches": ["lifestyle", "voyage", "culture"],    "duration": 60, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
+    {"music_id": "music-afro-002",       "music_name": "Nairobi Vibes",   "music_style": "Afrobeat doux",           "mood": "festif",       "bpm": 100, "niches": ["danse", "culture"],                  "duration": 60, "url": _SH.format(n=5),  "preview_url": _SH.format(n=5)},
+    {"music_id": "music-afro-003",       "music_name": "Accra Groove",    "music_style": "Afrobeat doux",           "mood": "positif",      "bpm": 105, "niches": ["musique", "lifestyle"],              "duration": 45, "url": _SH.format(n=6),  "preview_url": _SH.format(n=6)},
+    # ── 3. Hip-hop dynamique — trap beats, basse, urban ─────────────────
+    {"music_id": "music-hiphop-001",     "music_name": "Street Energy",   "music_style": "Hip-hop dynamique",       "mood": "intense",      "bpm": 90,  "niches": ["gaming", "challenge", "urban"],      "duration": 45, "url": _SH.format(n=7),  "preview_url": _SH.format(n=7)},
+    {"music_id": "music-hiphop-002",     "music_name": "Trap Anthem",     "music_style": "Hip-hop dynamique",       "mood": "agressif",     "bpm": 88,  "niches": ["sport", "fitness", "gaming"],        "duration": 60, "url": _SH.format(n=8),  "preview_url": _SH.format(n=8)},
+    {"music_id": "music-hiphop-003",     "music_name": "Urban Flex",      "music_style": "Hip-hop dynamique",       "mood": "confiant",     "bpm": 95,  "niches": ["mode", "influenceur"],               "duration": 30, "url": _SH.format(n=9),  "preview_url": _SH.format(n=9)},
+    # ── 4. Corporate moderne — synthé propre, piano, électronique ───────
+    {"music_id": "music-corporate-001",  "music_name": "Synth Executive", "music_style": "Corporate moderne",       "mood": "professionnel","bpm": 110, "niches": ["business", "finance", "IA"],         "duration": 60, "url": _SH.format(n=10), "preview_url": _SH.format(n=10)},
+    {"music_id": "music-corporate-002",  "music_name": "Tech Forward",    "music_style": "Corporate moderne",       "mood": "moderne",      "bpm": 115, "niches": ["technologie", "éducation"],          "duration": 60, "url": _SH.format(n=11), "preview_url": _SH.format(n=11)},
+    {"music_id": "music-corporate-003",  "music_name": "Innovation Drive","music_style": "Corporate moderne",       "mood": "ambitieux",    "bpm": 108, "niches": ["startup", "marketing"],              "duration": 45, "url": _SH.format(n=12), "preview_url": _SH.format(n=12)},
+    # ── 5. Comédie / humour — léger, décalé, percussions comiques ───────
+    {"music_id": "music-comedy-001",     "music_name": "Silly Walk",      "music_style": "Comédie / humour",        "mood": "drôle",        "bpm": 128, "niches": ["humour", "blagues", "enfants"],      "duration": 30, "url": _SH.format(n=13), "preview_url": _SH.format(n=13)},
+    {"music_id": "music-comedy-002",     "music_name": "Circus Fun",      "music_style": "Comédie / humour",        "mood": "léger",        "bpm": 135, "niches": ["animation", "humour"],               "duration": 45, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
+    {"music_id": "music-comedy-003",     "music_name": "Clown Bop",       "music_style": "Comédie / humour",        "mood": "absurde",      "bpm": 120, "niches": ["blagues", "famille"],                "duration": 30, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
+    # ── 6. Suspense / mystère — sombre, tendu, cinématique ──────────────
+    {"music_id": "music-suspense-001",   "music_name": "Dark Pulse",      "music_style": "Suspense / mystère",      "mood": "tendu",        "bpm": 80,  "niches": ["révélation", "cryptomonnaie"],       "duration": 60, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
+    {"music_id": "music-suspense-002",   "music_name": "Shadow Protocol", "music_style": "Suspense / mystère",      "mood": "anxieux",      "bpm": 75,  "niches": ["politique", "finance"],              "duration": 55, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
+    {"music_id": "music-suspense-003",   "music_name": "The Unfolding",   "music_style": "Suspense / mystère",      "mood": "mystérieux",   "bpm": 85,  "niches": ["technologie", "découverte"],         "duration": 60, "url": _SH.format(n=5),  "preview_url": _SH.format(n=5)},
+    # ── 7. Santé / bien-être — doux, nature, guérisseur ─────────────────
+    {"music_id": "music-wellness-001",   "music_name": "Morning Calm",    "music_style": "Santé / bien-être",       "mood": "apaisant",     "bpm": 65,  "niches": ["méditation", "yoga", "santé"],       "duration": 60, "url": _SH.format(n=6),  "preview_url": _SH.format(n=6)},
+    {"music_id": "music-wellness-002",   "music_name": "Healing Light",   "music_style": "Santé / bien-être",       "mood": "serein",       "bpm": 70,  "niches": ["mindfulness", "bien-être"],          "duration": 60, "url": _SH.format(n=7),  "preview_url": _SH.format(n=7)},
+    {"music_id": "music-wellness-003",   "music_name": "Nature Breath",   "music_style": "Santé / bien-être",       "mood": "relaxant",     "bpm": 60,  "niches": ["nature", "spiritualité"],            "duration": 55, "url": _SH.format(n=8),  "preview_url": _SH.format(n=8)},
+    # ── 8. Technologie / IA — électronique, futuriste, synthé ───────────
+    {"music_id": "music-tech-001",       "music_name": "Digital Future",  "music_style": "Technologie / IA",        "mood": "futuriste",    "bpm": 120, "niches": ["IA", "technologie", "coding"],       "duration": 60, "url": _SH.format(n=9),  "preview_url": _SH.format(n=9)},
+    {"music_id": "music-tech-002",       "music_name": "Neural Network",  "music_style": "Technologie / IA",        "mood": "électronique", "bpm": 125, "niches": ["IA", "data", "startup"],             "duration": 45, "url": _SH.format(n=10), "preview_url": _SH.format(n=10)},
+    {"music_id": "music-tech-003",       "music_name": "Cyber Pulse",     "music_style": "Technologie / IA",        "mood": "robotique",    "bpm": 118, "niches": ["gaming", "technologie"],             "duration": 60, "url": _SH.format(n=11), "preview_url": _SH.format(n=11)},
+    # ── 9. Cuisine / lifestyle — joyeux, chaleureux, piano acoustique ───
+    {"music_id": "music-cuisine-001",    "music_name": "Kitchen Joy",     "music_style": "Cuisine / lifestyle",     "mood": "joyeux",       "bpm": 108, "niches": ["cuisine", "lifestyle", "famille"],   "duration": 60, "url": _SH.format(n=12), "preview_url": _SH.format(n=12)},
+    {"music_id": "music-cuisine-002",    "music_name": "Sunday Brunch",   "music_style": "Cuisine / lifestyle",     "mood": "détendu",      "bpm": 100, "niches": ["cuisine", "voyage", "mode"],         "duration": 45, "url": _SH.format(n=13), "preview_url": _SH.format(n=13)},
+    {"music_id": "music-cuisine-003",    "music_name": "Café Terrasse",   "music_style": "Cuisine / lifestyle",     "mood": "chaleureux",   "bpm": 105, "niches": ["lifestyle", "voyage"],               "duration": 60, "url": _SH.format(n=1),  "preview_url": _SH.format(n=1)},
+    # ── 10. Émotion / storytelling — piano, cordes, narratif ────────────
+    {"music_id": "music-emotion-001",    "music_name": "Lone Piano",      "music_style": "Émotion / storytelling",  "mood": "mélancolique", "bpm": 68,  "niches": ["histoire", "inspiration"],           "duration": 60, "url": _SH.format(n=2),  "preview_url": _SH.format(n=2)},
+    {"music_id": "music-emotion-002",    "music_name": "Strings of Hope", "music_style": "Émotion / storytelling",  "mood": "touchant",     "bpm": 72,  "niches": ["motivation", "parentalité"],         "duration": 60, "url": _SH.format(n=3),  "preview_url": _SH.format(n=3)},
+    {"music_id": "music-emotion-003",    "music_name": "The Journey",     "music_style": "Émotion / storytelling",  "mood": "nostalgique",  "bpm": 75,  "niches": ["voyage", "religion"],                "duration": 55, "url": _SH.format(n=4),  "preview_url": _SH.format(n=4)},
+    # ── 11. Latin énergique — salsa, reggaeton, tropical ────────────────
+    {"music_id": "music-latin-001",      "music_name": "Fuego Ritmo",     "music_style": "Latin énergique",         "mood": "festif",       "bpm": 115, "niches": ["danse", "sport", "voyage"],          "duration": 60, "url": _SH.format(n=5),  "preview_url": _SH.format(n=5)},
+    {"music_id": "music-latin-002",      "music_name": "Cumbia Nights",   "music_style": "Latin énergique",         "mood": "sensuel",      "bpm": 100, "niches": ["mode", "lifestyle", "danse"],        "duration": 45, "url": _SH.format(n=6),  "preview_url": _SH.format(n=6)},
+    {"music_id": "music-latin-003",      "music_name": "Reggaeton Flow",  "music_style": "Latin énergique",         "mood": "énergique",    "bpm": 95,  "niches": ["fitness", "urban", "challenge"],     "duration": 60, "url": _SH.format(n=7),  "preview_url": _SH.format(n=7)},
+    # ── 12. Lo-fi calme — hip-hop lo-fi, chill, study beats ─────────────
+    {"music_id": "music-lofi-001",       "music_name": "Chill Study",     "music_style": "Lo-fi calme",             "mood": "concentré",    "bpm": 80,  "niches": ["éducation", "coding", "study"],      "duration": 60, "url": _SH.format(n=8),  "preview_url": _SH.format(n=8)},
+    {"music_id": "music-lofi-002",       "music_name": "Rainy Afternoon", "music_style": "Lo-fi calme",             "mood": "mélancolique", "bpm": 75,  "niches": ["lifestyle", "écriture"],             "duration": 60, "url": _SH.format(n=9),  "preview_url": _SH.format(n=9)},
+    {"music_id": "music-lofi-003",       "music_name": "Late Night Beat", "music_style": "Lo-fi calme",             "mood": "rêveur",       "bpm": 85,  "niches": ["gaming", "méditation"],              "duration": 45, "url": _SH.format(n=10), "preview_url": _SH.format(n=10)},
 ]
 
 
@@ -3845,8 +4001,12 @@ async def available_music(style: str = ""):
         local_filename = f"{t['music_id']}.mp3"
         local_path = os.path.join(STATIC_MUSIC_DIR, local_filename)
         if os.path.exists(local_path):
-            t["url"] = f"{base}/static-music/{local_filename}"
-        # else: keep t["url"] as-is (SoundHelix fallback for testing)
+            local_url = f"{base}/static-music/{local_filename}"
+            t["url"] = local_url
+            t["preview_url"] = local_url
+        else:
+            # SoundHelix fallback — ensure preview_url always present
+            t.setdefault("preview_url", t["url"])
         catalog.append(t)
 
     uploaded = []
@@ -3864,6 +4024,7 @@ async def available_music(style: str = ""):
     except Exception:
         pass
 
+    print(f"[available-music] returning {len(catalog)} catalog tracks and {len(uploaded)} uploaded tracks")
     return {
         "catalog": catalog,
         "uploaded": uploaded,
@@ -3890,6 +4051,7 @@ async def get_video_formats():
 
 @app.get("/voice-styles")
 async def get_voice_styles():
+    print(f"[voice-styles] returning {len(VOICE_STYLES)} styles")
     return {"voice_styles": VOICE_STYLES}
 
 
