@@ -925,6 +925,15 @@ async def preview_fish_voice(req: VoicePreviewRequest):
         print(f"[preview-fish-voice] voice_id={req.voice_id!r}")
         resp = await _tts(req.voice_id)
 
+        if resp.status_code != 200 and req.voice_id:
+            # Voix spécifique refusée → réessayer avec la voix par défaut (sans reference_id)
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = resp.text[:300]
+            print(f"[preview-fish-voice] voix refusée ({resp.status_code}), retry sans reference_id: {detail}")
+            resp = await _tts(None)
+
         if resp.status_code != 200:
             try:
                 detail = resp.json()
@@ -932,8 +941,7 @@ async def preview_fish_voice(req: VoicePreviewRequest):
                 detail = resp.text[:300]
             print(f"[preview-fish-voice] ERREUR Fish Audio {resp.status_code}: {detail}")
             return JSONResponse(status_code=502, content={
-                "error": f"Fish Audio a refuse cette voix ({resp.status_code}). "
-                         "Utilisez une voix que vous avez creee dans votre compte Fish Audio.",
+                "error": f"Apercu audio indisponible (Fish Audio {resp.status_code}). Verifiez votre cle API Fish Audio.",
                 "detail": str(detail),
             })
 
@@ -1048,17 +1056,26 @@ def _catalog_as_fish_voices():
     return result
 
 
+_DEFAULT_VOICE_ENTRY = {
+    "id": "", "name": "Voix par défaut", "display_label": "Voix par défaut Fish Audio",
+    "language": "fr", "language_name": "Français",
+    "gender": "", "gender_label": "", "accent": "", "style_hint": "",
+    "description": "Voix standard Fish Audio — fonctionne toujours", "tags": [],
+}
+
+
 @app.get("/fish-voices")
 async def list_fish_voices():
-    # Fallback catalogue local si pas de clé API
     if not FISH_AUDIO_API_KEY:
-        print("[fish-voices] Pas de FISH_AUDIO_API_KEY — utilisation du catalogue local")
-        return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local"}
+        print("[fish-voices] Pas de FISH_AUDIO_API_KEY — voix par défaut uniquement")
+        return {"success": True, "voices": [_DEFAULT_VOICE_ENTRY], "source": "local"}
 
     def _parse_items(items):
         result = []
         for item in items:
             voice_id = item.get("_id", "")
+            if not voice_id:
+                continue
             langs = item.get("languages") or []
             lang_code = langs[0].split("-")[0].lower() if langs else "unknown"
             lang_name = _LANG_LABELS.get(lang_code, lang_code.upper())
@@ -1084,7 +1101,7 @@ async def list_fish_voices():
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            # 1. Voix de l'utilisateur en priorité (self=true) — garanties compatibles TTS
+            # Uniquement les voix que l'utilisateur possède — garanties compatibles TTS API
             r_self = await client.get(
                 "https://api.fish.audio/v1/model",
                 headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
@@ -1092,30 +1109,14 @@ async def list_fish_voices():
             )
             own_voices = _parse_items(r_self.json().get("items", [])) if r_self.status_code == 200 else []
 
-            # 2. Voix publiques en complément
-            r_pub = await client.get(
-                "https://api.fish.audio/v1/model",
-                headers={"Authorization": f"Bearer {FISH_AUDIO_API_KEY}"},
-                params={"page_size": 50, "sort_by": "task_count", "type": "tts"},
-            )
-
-        if r_pub.status_code != 200 and not own_voices:
-            print(f"[fish-voices] API erreur {r_pub.status_code} — fallback local")
-            return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
-
-        pub_voices = _parse_items(r_pub.json().get("items", [])) if r_pub.status_code == 200 else []
-
-        # Fusionner : propres voix en tête, puis publiques sans doublon
-        seen_ids = {v["id"] for v in own_voices}
-        voices = own_voices + [v for v in pub_voices if v["id"] not in seen_ids]
-
-        voices.sort(key=lambda v: (_LANG_PRIORITY.get(v["language"], 9), v["name"]))
-        print(f"[fish-voices] {len(own_voices)} voix utilisateur + {len(pub_voices)} publiques = {len(voices)} total")
+        own_voices.sort(key=lambda v: (_LANG_PRIORITY.get(v["language"], 9), v["name"]))
+        voices = [_DEFAULT_VOICE_ENTRY] + own_voices
+        print(f"[fish-voices] {len(own_voices)} voix utilisateur + voix par défaut")
         return {"success": True, "voices": voices, "source": "live"}
 
     except Exception as e:
-        print(f"[fish-voices] Exception: {e} — fallback local")
-        return {"success": True, "voices": _catalog_as_fish_voices(), "source": "local_fallback"}
+        print(f"[fish-voices] Exception: {e} — voix par défaut uniquement")
+        return {"success": True, "voices": [_DEFAULT_VOICE_ENTRY], "source": "local_fallback"}
 
 
 # ── GENERATE : Claude + Wan 2.2 ─────────────────────────────────────────────
