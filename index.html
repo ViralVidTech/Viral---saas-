@@ -147,6 +147,11 @@
     .section-divider{border:none;border-top:1px solid var(--border);margin:4px 0;}
     .clone-panel{background:rgba(14,165,233,0.06);border:1px solid rgba(14,165,233,0.22);border-radius:14px;padding:16px;display:grid;gap:12px;margin-top:8px;}
     .premium-badge{background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;font-size:0.72rem;font-weight:800;padding:3px 10px;border-radius:20px;white-space:nowrap;}
+
+    .preview-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;}
+    .preview-row button{font-size:0.85rem;padding:9px 12px;}
+    .preview-audio{display:none;width:100%;margin-top:6px;}
+    .format-help{color:var(--muted);font-size:0.82rem;line-height:1.35;}
     @media(max-width:900px){.pipeline-tabs{grid-template-columns:repeat(2,1fr);}}
     @media(max-width:600px){.two-col,.three-col{grid-template-columns:1fr;}}
     @media (max-width:1180px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } .workspace { grid-template-columns:1fr; } .pricing-grid { grid-template-columns:1fr; } .detector-controls { grid-template-columns:1fr 1fr; } .pipeline-steps { grid-template-columns:repeat(2,1fr); } }
@@ -283,7 +288,7 @@
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p1Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
         <div class="three-col">
-          <div class="field"><label>Résolution</label><select id="p1Res"><option value="480p" selected>1280×704 (16:9)</option><option value="portrait">704×1280 (9:16)</option></select></div>
+          <div class="field"><label>Format vidéo</label><select id="p1Format"><option value="hd" selected>HD — 1920×1080 (par défaut)</option><option value="tiktok">TikTok — 1080×1920</option><option value="square">Carré — 1080×1080</option></select><small class="format-help">HD est le format par défaut.</small></div>
           <div class="field"><label>Steps</label><select id="p1Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
         </div>
         <div class="actions"><button class="wan-btn" id="p1Btn">🎬 Générer Pipeline 1</button></div>
@@ -355,7 +360,7 @@
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p2Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
         <div class="three-col">
-          <div class="field"><label>Résolution</label><select id="p2Res"><option value="480p" selected>832×480 (16:9)</option><option value="portrait">480×832 (9:16)</option><option value="720p">1280×720 (HD)</option></select></div>
+          <div class="field"><label>Format vidéo</label><select id="p2Format"><option value="hd" selected>HD — 1920×1080 (par défaut)</option><option value="tiktok">TikTok — 1080×1920</option><option value="square">Carré — 1080×1080</option></select><small class="format-help">HD est le format par défaut.</small></div>
           <div class="field"><label>Steps</label><select id="p2Steps"><option value="10">10 (rapide)</option><option value="20" selected>20 (équilibré)</option><option value="50">50 (qualité)</option></select></div>
         </div>
         <div class="actions"><button class="wan-btn" id="p2Btn">🎬 Générer Pipeline 2</button></div>
@@ -407,6 +412,7 @@
           </div>
         </div>
         <div class="toggle-row"><label class="toggle"><input type="checkbox" id="p3Subs"><span class="toggle-slider"></span></label><span>Sous-titres (Voxtral)</span></div>
+        <div class="field"><label>Format vidéo</label><select id="p3Format"><option value="hd" selected>HD — 1920×1080 (par défaut)</option><option value="tiktok">TikTok — 1080×1920</option><option value="square">Carré — 1080×1080</option></select><small class="format-help">HD est le format par défaut.</small></div>
         <div class="actions"><button class="wan-btn" id="p3Btn">🎬 Générer Pipeline 3</button></div>
         <div class="status" id="p3Status"></div>
         <div class="wan-video-block" id="p3VideoBlock">
@@ -725,6 +731,88 @@ function getPipelineApiUrl() {
   return normalizeApiUrl(raw) || 'https://viral-saas.onrender.com';
 }
 
+function getAuthHeaders(){
+  const token = localStorage.getItem('viral_token') || localStorage.getItem('auth_token') || '';
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+function getPipelineFormat(prefix){
+  return document.getElementById(`${prefix}Format`)?.value || 'hd';
+}
+
+function videoFormatToLtxResolution(format){
+  const f = (format || 'hd').toLowerCase();
+  if (f === 'tiktok') return 'portrait';
+  if (f === 'square') return 'square';
+  return '720p';
+}
+
+function installMediaPreviewControls(){
+  ['p1','p2','p3','p4'].forEach(prefix => {
+    const voiceSel = document.getElementById(`${prefix}Voice`);
+    if (voiceSel && !document.getElementById(`${prefix}VoicePreviewBtn`)) {
+      const row = document.createElement('div');
+      row.className = 'preview-row';
+      row.innerHTML = `<button class="secondary-btn" type="button" id="${prefix}VoicePreviewBtn">▶️ Écouter la voix</button><audio id="${prefix}VoicePreviewAudio" class="preview-audio" controls></audio>`;
+      voiceSel.insertAdjacentElement('afterend', row);
+      document.getElementById(`${prefix}VoicePreviewBtn`).addEventListener('click', () => previewFishVoice(prefix));
+    }
+
+    const musicSel = document.getElementById(`${prefix}Music`);
+    if (musicSel && !document.getElementById(`${prefix}MusicPreviewBtn`)) {
+      const row = document.createElement('div');
+      row.className = 'preview-row';
+      row.innerHTML = `<button class="secondary-btn" type="button" id="${prefix}MusicPreviewBtn">▶️ Écouter la musique</button><audio id="${prefix}MusicPreviewAudio" class="preview-audio" controls></audio>`;
+      musicSel.parentElement?.insertAdjacentElement('afterend', row);
+      document.getElementById(`${prefix}MusicPreviewBtn`).addEventListener('click', () => previewMusic(prefix));
+    }
+  });
+}
+
+async function previewFishVoice(prefix){
+  const apiUrl = getPipelineApiUrl();
+  const sel = document.getElementById(`${prefix}Voice`);
+  const audio = document.getElementById(`${prefix}VoicePreviewAudio`);
+  if (!sel || !sel.value) return setStatus(`${prefix}Status`, 'Choisissez d’abord une voix Fish Audio.', 'error');
+  const opt = sel.options[sel.selectedIndex];
+  const language = opt?.dataset?.language || document.getElementById(`${prefix}Lang`)?.value || 'fr';
+  const text = language === 'fr'
+    ? 'Bonjour, voici un aperçu de cette voix pour vos vidéos ViralVidTech. Le ton est naturel, clair et dynamique.'
+    : 'Hello, this is a preview of this voice for your ViralVidTech videos. The tone is natural, clear, and dynamic.';
+  setStatus(`${prefix}Status`, '⏳ Préparation de l’aperçu voix…', 'ready');
+  try {
+    const r = await fetch(`${apiUrl}/preview-fish-voice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ voice_id: sel.value, language, text })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+    const url = d.audio_url || d.preview_url || '';
+    if (!url) throw new Error('Aucune URL audio retournée.');
+    audio.src = url;
+    audio.style.display = 'block';
+    await audio.play().catch(() => {});
+    setStatus(`${prefix}Status`, '✅ Aperçu voix prêt.', 'success');
+  } catch(e) {
+    setStatus(`${prefix}Status`, `❌ Aperçu voix impossible: ${e.message}`, 'error');
+  }
+}
+
+function previewMusic(prefix){
+  const sel = document.getElementById(`${prefix}Music`);
+  const audio = document.getElementById(`${prefix}MusicPreviewAudio`);
+  if (!sel || !sel.value) return setStatus(`${prefix}Status`, 'Choisissez d’abord une musique.', 'error');
+  const opt = sel.options[sel.selectedIndex];
+  const url = opt?.dataset?.url || sel.value;
+  if (!url) return setStatus(`${prefix}Status`, 'Cette musique n’a pas d’URL lisible.', 'error');
+  audio.src = url;
+  audio.style.display = 'block';
+  audio.play().catch(() => {});
+  setStatus(`${prefix}Status`, '✅ Aperçu musique prêt.', 'success');
+}
+
+
 // ── Shared helpers ────────────────────────────────────────────────────
 function populateSelect(sel, items, valFn, labelFn, emptyLabel) {
   sel.innerHTML = `<option value="">${emptyLabel || '— Choisir —'}</option>`;
@@ -767,6 +855,8 @@ function filterVoicesByStyle(voices, styleVal, voiceSel) {
     items.forEach(v => {
       const opt = document.createElement('option');
       opt.value = v.id || v.voice_id || '';
+      opt.dataset.language = code || v.language || 'fr';
+      opt.dataset.voiceId = opt.value;
       // Construire un label lisible
       const baseLabel = v.display_label || v.name || v.voice_name || opt.value;
       const genderFr = v.gender_label || (v.gender === 'female' ? 'Femme' : v.gender === 'male' ? 'Homme' : '');
@@ -861,11 +951,11 @@ async function runGenerateScript(prefix) {
     }
 }
 
-async function generateFishVoice(apiUrl, text, voiceId, statusId) {
+async function generateFishVoice(apiUrl, text, voiceId, statusId, language) {
   setStatus(statusId, '⏳ Fish Audio génère la voix…', 'ready');
   const res = await fetch(`${apiUrl}/generate-audio-fish`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice_id: voiceId, format: 'mp3', latency: 'balanced' })
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ text, voice_id: voiceId, language: language || 'fr', format: 'mp3', latency: 'balanced' })
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `Erreur voice ${res.status}`); }
   const data = await res.json();
@@ -907,7 +997,7 @@ function splitScenes(text, numScenes) {
   return scenes;
 }
 
-async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId, ltxAudioMode) {
+async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitles, statusId, ltxAudioMode, videoFormat) {
   // ── Désactiver le bouton Generate pendant le rendu ───────────────────────
   const btnId  = statusId.replace('Status', 'Btn');
   const btnEl  = document.getElementById(btnId);
@@ -941,6 +1031,7 @@ async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitl
 
   const clips = Array.isArray(videoUrls) ? videoUrls : [videoUrls];
   const payload = {
+    video_source: clips[0] || '',
     wan_video:  clips[0] || '',
     wan_video2: clips[1] || '',
     wan_video3: clips[2] || '',
@@ -952,6 +1043,7 @@ async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitl
     audio_url: audioUrl,
     music_url: musicUrl,
     ltx_audio_mode: ltxAudioMode || 'fish',
+    video_format: videoFormat || 'hd',
     subtitles,
     duration: 30
   };
@@ -959,7 +1051,7 @@ async function assembleWithFFmpeg(apiUrl, videoUrls, audioUrl, musicUrl, subtitl
   let ffData;
   try {
     const ffRes = await fetch(`${apiUrl}/create-video`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload)
     });
     // 429 = queue pleine
@@ -1170,6 +1262,8 @@ async function loadPipelineData() {
           items.forEach(t => {
             const opt = document.createElement('option');
             opt.value = t.url || '';
+            opt.dataset.url = t.url || '';
+            opt.dataset.musicName = t.music_name || '';
             opt.textContent = `${t.music_name} (${t.duration}s)`;
             og.appendChild(opt);
           });
@@ -1220,6 +1314,7 @@ async function loadPipelineData() {
 
       const opt = document.createElement('option');
       opt.value = url;
+      opt.dataset.url = url;
       opt.textContent = `${d.music_name || file.name} (${d.duration || '?'}s) — Upload`;
       opt.dataset.upload = prefix;
       opt.selected = true;
@@ -1280,6 +1375,7 @@ async function cloneVoice(prefix) {
       if (!sel) return;
       const opt = document.createElement('option');
       opt.value = voiceId;
+      opt.dataset.language = 'fr';
       opt.textContent = `🎤 ${voiceName} (clone)`;
       sel.appendChild(opt);
     });
@@ -1327,7 +1423,8 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     const niche      = document.getElementById('p1Niche')?.value || '';
     const narStyle   = document.getElementById('p1NarStyle')?.value || '';
     const lang       = document.getElementById('p1Lang')?.value || 'fr';
-    const res        = document.getElementById('p1Res')?.value || '832*480';
+    const videoFormat1 = getPipelineFormat('p1');
+    const res        = videoFormatToLtxResolution(videoFormat1);
     const voiceId    = document.getElementById('p1Voice')?.value || '';
     const musicUrl   = document.getElementById('p1Music')?.value || '';
     const wantSubs   = document.getElementById('p1Subs')?.checked || false;
@@ -1348,7 +1445,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     setStatus('p1Status', '🎬 LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, video_type: videoType1, duration_seconds: duration1 })
+      body: JSON.stringify({ prompt: script.slice(0, 500), resolution: res, video_format: videoFormat1, video_type: videoType1, duration_seconds: duration1 })
     });
     if (!ltxR.ok) throw new Error(`LTX erreur ${ltxR.status}`);
     const ltxD = await ltxR.json();
@@ -1362,7 +1459,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     if (audioMode === 'ltx') {
       setStatus('p1Status', '🎬 Mode audio LTX : conservation de l\'audio original…', 'ready');
     } else if (voiceId) {
-      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p1Status');
+      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p1Status', lang);
     }
 
     // 4 — Sous-titres Voxtral (seulement si Fish Audio actif)
@@ -1375,7 +1472,7 @@ document.getElementById('p1Btn').addEventListener('click', async () => {
     // 5 — FFmpeg : assemblage final (obligatoire si LTX mode pour supprimer audio LTX brut)
     const needAssembly = audioUrl || musicUrl || subtitles || clipUrls.length > 1 || audioMode === 'ltx';
     if (needAssembly) {
-      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p1Status', audioMode);
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p1Status', audioMode, videoFormat1);
     }
 
     showPipelineVideo('p1VideoPlayer', 'p1DownloadLink', 'p1VideoBlock', videoUrl);
@@ -1396,7 +1493,8 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     const niche      = document.getElementById('p2Niche')?.value || '';
     const narStyle   = document.getElementById('p2NarStyle')?.value || '';
     const lang       = document.getElementById('p2Lang')?.value || 'fr';
-    const res        = document.getElementById('p2Res')?.value || '832*480';
+    const videoFormat2 = getPipelineFormat('p2');
+    const res        = videoFormatToLtxResolution(videoFormat2);
     const voiceId    = document.getElementById('p2Voice')?.value || '';
     const musicUrl   = document.getElementById('p2Music')?.value || '';
     const wantSubs   = document.getElementById('p2Subs')?.checked || false;
@@ -1417,7 +1515,7 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     setStatus('p2Status', '⏳ LTX 2.3 génère la vidéo…', 'ready');
     const ltxR = await fetch(`${apiUrl}/ltx/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: script.slice(0, 200), resolution: res, video_type: videoType2, duration_seconds: duration2 })
+      body: JSON.stringify({ prompt: script.slice(0, 200), resolution: res, video_format: videoFormat2, video_type: videoType2, duration_seconds: duration2 })
     });
     if (!ltxR.ok) throw new Error(`LTX erreur ${ltxR.status}`);
     const ltxD = await ltxR.json();
@@ -1431,7 +1529,7 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     if (audioMode === 'ltx') {
       setStatus('p2Status', '🎬 Mode audio LTX : conservation de l\'audio original…', 'ready');
     } else if (voiceId) {
-      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p2Status');
+      audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p2Status', lang);
     }
 
     // 4 — Sous-titres Voxtral
@@ -1444,7 +1542,7 @@ document.getElementById('p2Btn').addEventListener('click', async () => {
     // 5 — FFmpeg : assemblage final
     const needAssembly = audioUrl || musicUrl || subtitles || audioMode === 'ltx';
     if (needAssembly) {
-      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrl, audioUrl, musicUrl, subtitles, 'p2Status', audioMode);
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrl, audioUrl, musicUrl, subtitles, 'p2Status', audioMode, videoFormat2);
     }
 
     showPipelineVideo('p2VideoPlayer', 'p2DownloadLink', 'p2VideoBlock', videoUrl);
@@ -1487,7 +1585,7 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
 
     // 2 — Fish Audio
     let audioUrl = '';
-    if (voiceId && script) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p3Status');
+    if (voiceId && script) audioUrl = await generateFishVoice(apiUrl, script, voiceId, 'p3Status', lang);
 
     // 3 — Voxtral
     let subtitles = '';
@@ -1498,10 +1596,11 @@ document.getElementById('p3Btn').addEventListener('click', async () => {
 
     // 4 — FFmpeg (stock mode)
     setStatus('p3Status', '⏳ FFmpeg assemble la vidéo stock…', 'ready');
-    const body = { audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, pipeline_mode: 'stock', wan_video: '',
+    const videoFormat3 = getPipelineFormat('p3');
+    const body = { audio_url: audioUrl, music_url: musicUrl, subtitles, duration: 30, video_format: videoFormat3, pipeline_mode: 'stock', video_source: '', wan_video: '',
       text1: window._p3sc1||'', text2: window._p3sc2||'', text3: window._p3sc3||'', text4: window._p3sc4||'' };
     for (let i = 1; i <= 32; i++) body[`video_url${i === 1 ? '' : i}`] = window[`_p3sv${i}`] || '';
-    const ffR = await fetch(`${apiUrl}/create-video`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const ffR = await fetch(`${apiUrl}/create-video`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(body) });
     if (!ffR.ok) throw new Error(`FFmpeg erreur ${ffR.status}`);
     const ffD = await ffR.json();
     if (!ffD.job_id) throw new Error('Pas de job_id FFmpeg');
@@ -1619,7 +1718,7 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
     if (useVoice) {
       const voiceId   = document.getElementById('p4Voice').value;
       const voiceText = document.getElementById('p4VoiceText').value.trim() || document.getElementById('p4ImgDesc').value.trim() || 'Vidéo générée par IA';
-      if (voiceId) audioUrl = await generateFishVoice(apiUrl, voiceText, voiceId, 'p4Status');
+      if (voiceId) audioUrl = await generateFishVoice(apiUrl, voiceText, voiceId, 'p4Status', 'fr');
     }
 
     // 4 — Optional Voxtral
@@ -1632,7 +1731,7 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
     // 5 — FFmpeg: assemble all scene clips + voice + music
     const musicUrl = useMusic ? document.getElementById('p4Music').value : '';
     if (audioUrl || musicUrl || subtitles || clipUrls.length > 1)
-      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p4Status');
+      videoUrl = await assembleWithFFmpeg(apiUrl, clipUrls, audioUrl, musicUrl, subtitles, 'p4Status', 'fish', 'hd');
 
     showPipelineVideo('p4VideoPlayer', 'p4DownloadLink', 'p4VideoBlock', videoUrl);
     setStatus('p4Status', '✅ Pipeline 4 terminé !', 'success');
@@ -1642,6 +1741,7 @@ document.getElementById('p4Btn').addEventListener('click', async () => {
 });
 
 // ── Auto-load on page ready (defaults to viral-saas.onrender.com if no URL entered) ──
+installMediaPreviewControls();
 loadPipelineData();
 </script>
 </body>
