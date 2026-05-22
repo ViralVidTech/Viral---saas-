@@ -1341,26 +1341,35 @@ async function loadPipelineData() {
   } catch(e) {}
 
   // Languages — {"languages":[{"code":"fr","name":"Français"},…]}
-  try {
-    const r = await fetch(`${apiUrl}/languages`);
-    if (r.ok) {
-      const d = await r.json();
-      const langs = d.languages || [];
-      ['p1Lang','p2Lang','p3Lang'].forEach(id => {
-        const sel = document.getElementById(id);
-        if (!sel) return;
-        const cur = sel.value;
-        populateSelect(sel, langs, l => l.code, l => l.name, '— Langue —');
-        if (cur) sel.value = cur;
-      });
-      const detLang = document.getElementById('detectorLanguage');
-      if (detLang) {
-        const cur = detLang.value;
-        populateSelect(detLang, langs, l => l.code, l => l.name, '— Langue —');
-        if (cur) detLang.value = cur; else detLang.value = 'en';
-      }
+  // Fallback local utilisé si tous les serveurs échouent
+  const _LANG_FALLBACK = [
+    {code:'fr', name:'Français'}, {code:'en', name:'English'},
+    {code:'es', name:'Español'},  {code:'pt', name:'Português'},
+    {code:'de', name:'Deutsch'},  {code:'it', name:'Italiano'},
+    {code:'ar', name:'العربية'},  {code:'zh', name:'中文'},
+    {code:'ja', name:'日本語'},   {code:'ko', name:'한국어'},
+    {code:'ru', name:'Русский'},  {code:'nl', name:'Nederlands'},
+  ];
+  {
+    const d = await fetchJsonWithFallback('/languages');
+    const langs = (d && Array.isArray(d.languages) && d.languages.length > 0)
+      ? d.languages
+      : (() => { console.warn('[languages] fallback local activé'); return _LANG_FALLBACK; })();
+    console.log(`[languages] ${langs.length} langues chargées`);
+    ['p1Lang','p2Lang','p3Lang'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const cur = sel.value;
+      populateSelect(sel, langs, l => l.code, l => l.name, '— Langue —');
+      if (cur) sel.value = cur; else sel.value = 'fr';
+    });
+    const detLang = document.getElementById('detectorLanguage');
+    if (detLang) {
+      const cur = detLang.value;
+      populateSelect(detLang, langs, l => l.code, l => l.name, '— Langue —');
+      if (cur) detLang.value = cur; else detLang.value = 'en';
     }
-  } catch(e) {}
+  }
 
   // Music — {"catalog":[{"music_id","music_name","music_style","mood","bpm","duration","url","preview_url"},…],"uploaded":[…]}
   {

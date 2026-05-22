@@ -4034,6 +4034,7 @@ async def available_music(style: str = ""):
 
 @app.get("/languages")
 async def get_languages():
+    print(f"[languages] returning {len(LANGUAGES)} languages")
     return {"languages": LANGUAGES}
 
 
