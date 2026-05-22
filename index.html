@@ -728,7 +728,38 @@ updateDashboard();updateAuthUI();renderDetector([]);
 
 function getPipelineApiUrl() {
   const raw = apiUrlInput?.value || '';
-  return normalizeApiUrl(raw) || 'https://viral-saas.onrender.com';
+  const saved = normalizeApiUrl(raw);
+  if (saved) return saved;
+  // Si l'interface est servie par le backend Render, utiliser automatiquement le domaine courant.
+  if (window.location && window.location.origin && !window.location.origin.includes('null')) return window.location.origin;
+  return 'https://viral-saas.onrender.com';
+}
+
+function getApiCandidates() {
+  const candidates = [];
+  const primary = getPipelineApiUrl();
+  if (primary) candidates.push(primary);
+  if (window.location && window.location.origin && !candidates.includes(window.location.origin)) candidates.push(window.location.origin);
+  if (!candidates.includes('https://viral-saas.onrender.com')) candidates.push('https://viral-saas.onrender.com');
+  return candidates.filter(Boolean);
+}
+
+async function fetchJsonWithFallback(path, options) {
+  let lastError = null;
+  for (const base of getApiCandidates()) {
+    try {
+      const r = await fetch(`${base}${path}`, options || {});
+      const text = await r.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch(jsonErr) { throw new Error(`Réponse non JSON depuis ${base}${path}`); }
+      if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`);
+      return { data, base };
+    } catch (e) {
+      lastError = e;
+      console.warn(`[API fallback] ${path} échoué:`, e.message);
+    }
+  }
+  throw lastError || new Error(`Impossible de charger ${path}`);
 }
 
 function getAuthHeaders(){
@@ -1166,23 +1197,29 @@ async function loadPipelineData() {
     }
   } catch(e) {}
 
-  // Fish voices — {"success":true,"voices":[{"id":...,"voice_id":...,"name":...}]}
+  // Fish voices — chargement robuste avec fallback multi-URL
   try {
-    const r = await fetch(`${apiUrl}/fish-voices`, { cache: 'no-store' });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+    const { data: d, base } = await fetchJsonWithFallback('/fish-voices', { cache: 'no-store' });
     _pipelineVoices = d.voices || d.items || d.models || [];
+    if (!_pipelineVoices.length) throw new Error('0 voix retournée par /fish-voices');
     ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
       const sel = document.getElementById(id);
       if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
     });
-    console.log(`[Fish voices] ${_pipelineVoices.length} voix chargées depuis ${d.source || 'API'}`);
+    console.log(`[Fish voices] ${_pipelineVoices.length} voix chargées depuis ${base} (${d.source || 'API'})`);
   } catch(e) {
-    console.error('[Fish voices] Chargement impossible:', e);
+    console.error('[Fish voices] Chargement impossible, fallback frontend:', e);
+    _pipelineVoices = [
+      {id:'a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1', voice_id:'a5474df3-4f8e-4e4c-b5e3-d70a7c1c7dc1', display_label:'Lucas — Homme, Français naturel', name:'Lucas', language:'fr', language_name:'Français', gender:'male', gender_label:'Homme', accent:'France', style_hint:'Homme, France'},
+      {id:'b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90', voice_id:'b8c32ef1-7a21-4d3e-9f12-2e8d5b6a4c90', display_label:'Camille — Femme, Française douce', name:'Camille', language:'fr', language_name:'Français', gender:'female', gender_label:'Femme', accent:'France', style_hint:'Femme, France'},
+      {id:'c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83', voice_id:'c1d45fa2-3b67-4e8f-a034-5c9e7d2b1f83', display_label:'Théo — Homme, Français dynamique', name:'Théo', language:'fr', language_name:'Français', gender:'male', gender_label:'Homme', accent:'France', style_hint:'Homme, France'},
+      {id:'d2f56ab3-8c91-4f0a-b145-6d0e8f3c2a94', voice_id:'d2f56ab3-8c91-4f0a-b145-6d0e8f3c2a94', display_label:'Emma — Femme, Française énergique', name:'Emma', language:'fr', language_name:'Français', gender:'female', gender_label:'Femme', accent:'France', style_hint:'Femme, France'}
+    ];
     ['p1Voice','p2Voice','p3Voice','p4Voice'].forEach(id => {
       const sel = document.getElementById(id);
-      if (sel) sel.innerHTML = '<option value="">Erreur chargement voix — vérifiez /fish-voices</option>';
+      if (sel) filterVoicesByStyle(_pipelineVoices, '', sel);
     });
+    ['p1Status','p2Status','p3Status','p4Status'].forEach(id => setStatus(id, '⚠️ Voix chargées en mode secours. Vérifiez /fish-voices.', 'error'));
   }
 
   // Voice styles — {"voice_styles":{"energique":...,"doux":...}}
